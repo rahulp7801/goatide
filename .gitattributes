@@ -53,3 +53,21 @@
 # UPSTREAM_BASE is shell-sourceable (sourced by scripts/upstream-sync.sh):
 # must be LF or `bash source` will choke on CRLF on Linux runners.
 UPSTREAM_BASE text eol=lf
+
+# ----------------------------------------------------------------------------
+# Appended from upstream microsoft/vscode .gitattributes (1.117.0).
+# Upstream-specific rules that don't conflict with the GoatIDE block above.
+# ----------------------------------------------------------------------------
+
+# Upstream pins these specific files to CRLF (legal text):
+LICENSE.txt eol=crlf
+ThirdPartyNotices.txt eol=crlf
+
+# Upstream pins PowerShell scripts to LF.
+*.ps1 eol=lf
+
+# RTF treated as binary by upstream.
+*.rtf -text
+
+# JSON files in upstream are jsonc (with comments) — Linguist hint.
+**/*.json linguist-language=jsonc
