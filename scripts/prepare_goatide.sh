@@ -92,3 +92,26 @@ if [[ -f package.json ]]; then
   mv "$TMP_PKG" package.json
   echo "GoatIDE npm scripts ensured in package.json"
 fi
+
+# --- Sync first-party bridge extension into extensions/ (if present) ---------
+# Plan 01-04: src/vs/goatide/extensions/goatide-bridge/ is the source-of-truth
+# (covered by FORK-04 allowlist for src/vs/goatide/**). Upstream's gulp build
+# discovers built-in extensions from the repo-root extensions/ directory.
+# Idempotently mirror the bridge's manifest + dist/ into extensions/goatide-bridge/
+# so the canonical build picks it up without modifying the upstream gulpfile.
+#
+# FORK-04 note: extensions/goatide-bridge/ is OUTSIDE src/vs/, so refuse-vs-
+# workbench-edits.sh does not inspect this path. extensions/ is upstream's
+# extensions root and adding new first-party extensions there is the standard
+# pattern (same as upstream's own extensions/ subtree).
+BRIDGE_SRC="src/vs/goatide/extensions/goatide-bridge"
+BRIDGE_DST="extensions/goatide-bridge"
+if [[ -d "$BRIDGE_SRC" ]]; then
+  mkdir -p "$BRIDGE_DST"
+  cp "$BRIDGE_SRC/package.json" "$BRIDGE_DST/package.json"
+  if [[ -d "$BRIDGE_SRC/dist" ]]; then
+    rm -rf "$BRIDGE_DST/dist"
+    cp -r "$BRIDGE_SRC/dist" "$BRIDGE_DST/dist"
+  fi
+  echo "GoatIDE bridge extension synced to $BRIDGE_DST"
+fi
