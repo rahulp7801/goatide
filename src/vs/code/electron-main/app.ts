@@ -146,6 +146,8 @@ import { AgentNetworkFilterService, IAgentNetworkFilterService } from '../../pla
 import { ITerminalSandboxService, NullTerminalSandboxService } from '../../platform/sandbox/common/terminalSandboxService.js';
 import { CrossAppIPCService, ICrossAppIPCService } from '../../platform/crossAppIpc/electron-main/crossAppIpcService.js';
 import ErrorTelemetry from '../../platform/telemetry/electron-main/errorTelemetry.js';
+// GoatIDE: kernel-spawn supervisor (Plan 01-04, Phase 1).
+import { spawnKernel, shutdownKernel } from '../../goatide/main/spawn-kernel.js';
 
 /**
  * The main VS Code application. There will only ever be one instance,
@@ -404,6 +406,9 @@ export class CodeApplication extends Disposable {
 		// Dispose on shutdown
 		Event.once(this.lifecycleMainService.onWillShutdown)(() => this.dispose());
 
+		// GoatIDE: gracefully terminate kernel sidecar on shutdown (Plan 01-04, Phase 1).
+		Event.once(this.lifecycleMainService.onWillShutdown)(() => { void shutdownKernel(); });
+
 		// Contextmenu via IPC support
 		registerContextMenuListener();
 
@@ -555,6 +560,15 @@ export class CodeApplication extends Disposable {
 		this.logService.debug('Starting VS Code');
 		this.logService.debug(`from: ${this.environmentMainService.appRoot}`);
 		this.logService.debug('args:', this.environmentMainService.args);
+
+		// GoatIDE: spawn kernel sidecar at app-ready (Plan 01-04, Phase 1).
+		// Source: src/vs/goatide/main/spawn-kernel.ts. Shutdown is wired in registerListeners().
+		try {
+			spawnKernel(this.environmentMainService.appRoot);
+		} catch (err) {
+			// Phase 1 only logs; Phase 4+ surfaces a status-bar "kernel-degraded" banner.
+			this.logService.error('[goatide] kernel spawn failed', err);
+		}
 
 		// Make sure we associate the program with the app user model id
 		// This will help Windows to associate the running program with
