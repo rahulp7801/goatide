@@ -55,18 +55,28 @@ BANNED=(
 mapfile -t FILES < <(git ls-files | grep -E '(^|/)package\.json$|^package-lock\.json$' || true)
 
 FOUND=0
+
+# Filter to only existing files (git ls-files may report tracked-but-deleted entries).
+EXISTING=()
 for f in "${FILES[@]}"; do
-  [ -f "$f" ] || continue
+  [ -f "$f" ] && EXISTING+=("$f")
+done
+
+# Single rg invocation per banned token across all files. Without this the
+# 145-file × 22-token nested loop spawned ~3,190 rg processes and ran > 3 min
+# on the post-upstream-merge tree; this collapses it to 22 invocations.
+# Match the literal `"<name>"` so we hit JSON keys (dependencies block) and
+# lockfile name fields, never substring matches inside arbitrary prose.
+if [ "${#EXISTING[@]}" -gt 0 ]; then
   for b in "${BANNED[@]}"; do
-    # Match the literal `"<name>"` so we hit JSON keys (dependencies block) and lockfile
-    # name fields, but never substring matches inside arbitrary prose. The double quotes
-    # are part of the search string.
-    if rg -q -F "\"$b\"" "$f"; then
-      echo "FORK-07 violation — banned vector library '$b' in $f"
+    HITS=$(rg --no-heading -F "\"$b\"" "${EXISTING[@]}" 2>/dev/null || true)
+    if [ -n "$HITS" ]; then
+      echo "FORK-07 violation — banned vector library '$b':"
+      echo "$HITS" | head -5
       FOUND=1
     fi
   done
-done
+fi
 
 if [ "$FOUND" -eq 0 ]; then
   echo "FORK-07 ok — no vector libraries in dependency tree."
