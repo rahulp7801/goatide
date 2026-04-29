@@ -1,0 +1,78 @@
+name: CI
+
+# GoatIDE CI gate orchestration.
+#
+# Wave 0 scope: refusal-checks + refusal-meta. The four constitutional
+# refusals (FORK-04, FORK-06, FORK-07, FORK-08) and their meta-tests run
+# on every push and PR to main/dev BEFORE any build job executes. No
+# build/lint/test job is wired here yet — those land in Plan 01-03 once
+# upstream microsoft/vscode is cloned and a real package.json exists.
+# Adding a placeholder green build step would violate the spirit of
+# Mandate D (Verification-First Flow) by silently passing without proof.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  refusal-checks:
+    name: Refusal Checks (FORK-04, FORK-06, FORK-07, FORK-08)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout (full history for FORK-04 diff)
+        uses: actions/checkout@v4
+        with:
+          # refuse-vs-workbench-edits.sh diffs HEAD against $UPSTREAM_BASE.SHA;
+          # without full history that diff base is unreachable.
+          fetch-depth: 0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          # Plan 01-03 will introduce .nvmrc when upstream is cloned. Until
+          # then, pin Node 22 here so the runner has native fetch (used by
+          # validate-openvsx.mjs without any npm dependency).
+          node-version: 22
+
+      - name: Install ripgrep
+        # ubuntu-22.04 GitHub runners ship ripgrep preinstalled as of 2026,
+        # but install explicitly so a runner-image regression is caught at
+        # `apt install` time rather than as a mysterious refusal-script
+        # failure mid-CI.
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: FORK-06 — refuse marketplace.visualstudio.com references
+        run: bash scripts/ci/refuse-marketplace.sh
+
+      - name: FORK-07 — refuse vector / embedding libraries
+        run: bash scripts/ci/refuse-vector-libs.sh
+
+      - name: FORK-04 — refuse non-allowlisted vs/workbench edits
+        run: bash scripts/ci/refuse-vs-workbench-edits.sh
+
+      - name: FORK-08 — validate Open VSX recommended ids
+        run: node scripts/validate-openvsx.mjs
+
+  refusal-meta:
+    name: Refusal Meta-Tests
+    runs-on: ubuntu-22.04
+    needs: refusal-checks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Meta-test — refusal-marketplace-meta.sh
+        run: bash scripts/test/refusal-marketplace-meta.sh
+      - name: Meta-test — refusal-vector-meta.sh
+        run: bash scripts/test/refusal-vector-meta.sh
+      - name: Meta-test — refusal-openvsx-meta.sh
+        run: bash scripts/test/refusal-openvsx-meta.sh
+
+  # build-linux / build-mac / build-windows are added in Plan 01-03 once the
+  # upstream microsoft/vscode tree exists. Do not stub them here — Wave 0
+  # CI must remain refusal-only.
