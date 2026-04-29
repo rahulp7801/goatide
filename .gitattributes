@@ -1,0 +1,7 @@
+# Shell scripts MUST use LF line endings — they're executed on Linux CI runners,
+# and CRLF would cause `bash: \r: No such file or directory` failures.
+# Plan 01-02 expands this file with broader cross-platform line-ending policy.
+*.sh text eol=lf
+*.mjs text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
