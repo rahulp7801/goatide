@@ -12,9 +12,11 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    # `master` is the current branch on this fork (branching_strategy=none for v1).
+    # `main` and `dev` are kept as future-friendly aliases per upstream convention.
+    branches: [main, master, dev]
   pull_request:
-    branches: [main, dev]
+    branches: [main, master, dev]
 
 jobs:
   refusal-checks:
@@ -73,6 +75,115 @@ jobs:
       - name: Meta-test — refusal-openvsx-meta.sh
         run: bash scripts/test/refusal-openvsx-meta.sh
 
-  # build-linux / build-mac / build-windows are added in Plan 01-03 once the
-  # upstream microsoft/vscode tree exists. Do not stub them here — Wave 0
-  # CI must remain refusal-only.
+  # build-linux / build-mac / build-windows — Plan 01-05 (Wave 3) phase-verify.
+  # Now that the upstream microsoft/vscode tree (Plan 01-03), brander, and the
+  # kernel/bridge skeleton (Plan 01-04) all exist, the cross-platform build
+  # matrix is wired here so the Phase-1 success criterion 2 ("clean profile
+  # launch on macOS, Windows, Linux") has CI-level coverage. The developer's
+  # host platform covers the manual visual half (FORK-02 chrome + FORK-03
+  # network capture). CI proves the binary builds.
+
+  build-linux:
+    name: Build Linux (gulp vscode-linux-x64)
+    runs-on: ubuntu-22.04
+    needs: refusal-checks
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+      - name: Install Linux native deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential g++ libx11-dev libxkbfile-dev libsecret-1-dev libkrb5-dev python-is-python3 fakeroot rpm jq ripgrep
+      - name: npm install (vscode upstream tree)
+        run: npm install
+      - name: Brander (idempotent)
+        run: bash scripts/prepare_goatide.sh
+      - name: Brander idempotency
+        run: |
+          if [[ -n "$(git diff --stat product.json package.json)" ]]; then
+            echo "Brander not idempotent on Linux runner"; exit 1
+          fi
+      - name: Compile
+        run: npm run compile
+      - name: gulp vscode-linux-x64-min
+        run: npm run gulp vscode-linux-x64-min
+      - name: Smoke test (clean-profile launch via xvfb)
+        # Best-effort smoke; CI runners may struggle with launch (no display,
+        # signing, etc.). The binary build itself is the FORK-01 close; the
+        # developer's host launch (Plan 01-05 Task 3) is the FORK-03 close.
+        run: |
+          sudo apt-get install -y xvfb
+          xvfb-run --auto-servernum bash scripts/test/clean-profile-launch.sh || echo "Smoke launch best-effort failed; binary build is the FORK-01 close, host launch is the FORK-03 close. Logged as research-flag."
+        continue-on-error: true
+
+  build-mac:
+    name: Build macOS (gulp vscode-darwin-arm64)
+    runs-on: macos-14
+    needs: refusal-checks
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+      - name: Install macOS deps
+        run: brew install jq ripgrep
+      - name: npm install
+        run: npm install
+      - name: Brander (idempotent)
+        run: bash scripts/prepare_goatide.sh
+      - name: Brander idempotency
+        run: |
+          if [[ -n "$(git diff --stat product.json package.json)" ]]; then
+            echo "Brander not idempotent on macOS runner"; exit 1
+          fi
+      - name: Compile
+        run: npm run compile
+      - name: gulp vscode-darwin-arm64-min
+        run: npm run gulp vscode-darwin-arm64-min
+      - name: Smoke test (clean-profile launch)
+        run: bash scripts/test/clean-profile-launch.sh || echo "Smoke launch best-effort failed; logged as research-flag."
+        continue-on-error: true
+
+  build-windows:
+    name: Build Windows (gulp vscode-win32-x64)
+    runs-on: windows-2022
+    needs: refusal-checks
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+      - name: Install Windows deps (jq, ripgrep)
+        run: |
+          choco install -y jq ripgrep
+      - name: npm install
+        shell: bash
+        run: npm install
+      - name: Brand
+        shell: bash
+        run: bash scripts/prepare_goatide.sh
+      - name: Brander idempotency (bash)
+        shell: bash
+        run: |
+          if [[ -n "$(git diff --stat product.json package.json)" ]]; then
+            echo "Brander not idempotent on Windows runner"; exit 1
+          fi
+      - name: Compile
+        shell: bash
+        run: npm run compile
+      - name: gulp vscode-win32-x64-min
+        shell: bash
+        run: npm run gulp vscode-win32-x64-min
+      - name: Smoke test (clean-profile launch)
+        shell: bash
+        # Plan 01-02 Task 2: Windows path uses Git Bash with cmd.exe shellout.
+        run: bash scripts/test/clean-profile-launch.sh || echo "Smoke launch best-effort failed; logged as research-flag."
+        continue-on-error: true
