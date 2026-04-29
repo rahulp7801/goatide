@@ -45,7 +45,14 @@ BANNED=(
 # Files to scan: every tracked package.json (workspace-aware) plus the root lockfile.
 # Use `git ls-files` so untracked sentinels from a meta-test are NOT scanned unless
 # they have been `git add -N`'d — meta-tests intentionally do this.
-mapfile -t FILES < <(git ls-files | rg -e '(^|/)package\.json$|^package-lock\.json$' || true)
+#
+# NOTE on the filter: we use `grep -E` (POSIX, available on every CI runner
+# including Git-Bash-on-Windows) instead of `rg` here because ripgrep on
+# Windows mingw refuses to read from a pipe — the same `git ls-files | rg ...`
+# idiom that works on Linux/macOS silently drops every line on Windows.
+# `rg` is still used below for the content scan inside each file (file-arg
+# mode is unaffected by the stdin bug).
+mapfile -t FILES < <(git ls-files | grep -E '(^|/)package\.json$|^package-lock\.json$' || true)
 
 FOUND=0
 for f in "${FILES[@]}"; do
