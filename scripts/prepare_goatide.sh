@@ -26,7 +26,6 @@ command -v jq >/dev/null || {
 }
 
 [[ -f product.json ]] || { echo "product.json not found — run from repo root after upstream merge." >&2; exit 1; }
-[[ -f package.json ]] || { echo "package.json not found — run from repo root after upstream merge." >&2; exit 1; }
 
 # --- Brand product.json ------------------------------------------------------
 PRODUCT_JSON="product.json"
@@ -73,20 +72,23 @@ and .win32x64AppId != "{D77B7E06-80BA-4137-BCF4-654B95CCEBC5}"
 mv "$TMP" "$PRODUCT_JSON"
 echo "GoatIDE branding applied to $PRODUCT_JSON"
 
-# --- Ensure GoatIDE-owned npm scripts in package.json ------------------------
+# --- Ensure GoatIDE-owned npm scripts in package.json (if present) ----------
 # Drift recovery: monthly upstream-sync may modify package.json; the brander
 # re-adds GoatIDE-owned scripts so the developer never has to re-do it manually.
-TMP_PKG=$(mktemp)
-jq --indent 2 '
-    .scripts["upstream-sync"] = "bash scripts/upstream-sync.sh"
-  | .scripts["ci-local"] = "bash scripts/ci/refuse-marketplace.sh && bash scripts/ci/refuse-vector-libs.sh && bash scripts/ci/refuse-vs-workbench-edits.sh && node scripts/validate-openvsx.mjs && bash scripts/test/assert-product-json-branded.sh"
-' package.json > "$TMP_PKG"
+# Skipped silently when package.json is absent (e.g., hermetic test fixtures).
+if [[ -f package.json ]]; then
+  TMP_PKG=$(mktemp)
+  jq --indent 2 '
+      .scripts["upstream-sync"] = "bash scripts/upstream-sync.sh"
+    | .scripts["ci-local"] = "bash scripts/ci/refuse-marketplace.sh && bash scripts/ci/refuse-vector-libs.sh && bash scripts/ci/refuse-vs-workbench-edits.sh && node scripts/validate-openvsx.mjs && bash scripts/test/assert-product-json-branded.sh"
+  ' package.json > "$TMP_PKG"
 
-jq -e '.scripts["upstream-sync"] and .scripts["ci-local"]' "$TMP_PKG" >/dev/null || {
-  echo "prepare_goatide.sh post-edit package.json sanity check failed." >&2
-  rm -f "$TMP_PKG"
-  exit 1
-}
+  jq -e '.scripts["upstream-sync"] and .scripts["ci-local"]' "$TMP_PKG" >/dev/null || {
+    echo "prepare_goatide.sh post-edit package.json sanity check failed." >&2
+    rm -f "$TMP_PKG"
+    exit 1
+  }
 
-mv "$TMP_PKG" package.json
-echo "GoatIDE npm scripts ensured in package.json"
+  mv "$TMP_PKG" package.json
+  echo "GoatIDE npm scripts ensured in package.json"
+fi

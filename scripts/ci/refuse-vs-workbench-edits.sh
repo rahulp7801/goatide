@@ -30,12 +30,14 @@ if [ -z "${SHA:-}" ]; then
 fi
 
 # All files changed in src/vs/** between the pinned upstream SHA and HEAD.
-DIFF=$(git diff --name-only "$SHA"..HEAD -- 'src/vs/' | rg -e '^src/vs/' || true)
+# (POSIX grep used over rg for stdin-via-pipe — Windows mingw bash silently
+# drops piped stdin to ripgrep; same fix as refuse-vector-libs.sh.)
+DIFF=$(git diff --name-only "$SHA"..HEAD -- 'src/vs/' | grep -E '^src/vs/' || true)
 
 # Strip allowlisted paths.
 VIOLATIONS=$(echo "$DIFF" \
-  | rg -v -e '^src/vs/goatide/' \
-  | rg -v -e '^src/vs/code/electron-main/app\.ts$' \
+  | grep -v -E '^src/vs/goatide/' \
+  | grep -v -E '^src/vs/code/electron-main/app\.ts$' \
   || true)
 
 if [ -n "$VIOLATIONS" ]; then

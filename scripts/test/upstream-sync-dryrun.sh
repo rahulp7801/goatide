@@ -99,9 +99,15 @@ SYNCED_AT=2026-01-01T00:00:00Z
 SYNCED_BY=fixture-test
 EOF
 
-# Pre-branded product.json: matches what the brander OUTPUTS. Running the
-# brander against this fixture should be a no-op (idempotent).
-cat > "$FIXTURE/product.json" <<'EOF'
+# Pre-branded product.json: matches what the brander OUTPUTS. The Win32 GUIDs
+# are extracted dynamically from prepare_goatide.sh so the fixture stays
+# coupled to the brander's source-of-truth — when the brander's GUIDs change,
+# this fixture follows automatically.
+GUID_X64=$(grep '^GOATIDE_WIN32_X64_GUID=' "$PREPARE_GOATIDE" | cut -d'"' -f2)
+GUID_ARM=$(grep '^GOATIDE_WIN32_ARM64_GUID=' "$PREPARE_GOATIDE" | cut -d'"' -f2)
+GUID_X86=$(grep '^GOATIDE_WIN32_X86_GUID=' "$PREPARE_GOATIDE" | cut -d'"' -f2)
+
+cat > "$FIXTURE/product.json" <<EOF
 {
   "nameShort": "GoatIDE",
   "nameLong": "GoatIDE",
@@ -112,8 +118,9 @@ cat > "$FIXTURE/product.json" <<'EOF'
   "win32DirName": "GoatIDE",
   "win32NameVersion": "GoatIDE",
   "win32RegValueName": "GoatIDE",
-  "win32x64AppId": "{A1B2C3D4-0001-4000-8000-000000000001}",
-  "win32arm64AppId": "{A1B2C3D4-0002-4000-8000-000000000002}",
+  "win32AppId": "$GUID_X86",
+  "win32x64AppId": "$GUID_X64",
+  "win32arm64AppId": "$GUID_ARM",
   "urlProtocol": "goatide",
   "extensionsGallery": {
     "serviceUrl": "https://open-vsx.org/vscode/gallery",
