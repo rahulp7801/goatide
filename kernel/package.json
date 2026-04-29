@@ -1,0 +1,15 @@
+{
+  "name": "@goatide/kernel",
+  "version": "0.0.1",
+  "private": true,
+  "description": "GoatIDE sidecar kernel — Phase 1 stub. Always-on observation daemon spawned by Electron main.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -p . --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}

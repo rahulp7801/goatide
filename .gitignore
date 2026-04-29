@@ -14,6 +14,12 @@ node_modules/
 .vscode/extensions/**/out/
 extensions/**/dist/
 src/vs/base/browser/ui/codicons/codicon/codicon.ttf
+
+# GoatIDE-owned build artifacts (Plan 01-04: kernel sidecar + bridge extension).
+kernel/dist/
+kernel/node_modules/
+src/vs/goatide/extensions/**/dist/
+src/vs/goatide/extensions/**/node_modules/
 /out*/
 /extensions/**/out/
 build/node_modules
