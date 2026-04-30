@@ -76,6 +76,12 @@ export function traverse(sqlite: Database.Database, input: TraverseInput): Trave
 	const kinds = SCOPE_KINDS[input.scope];
 	const kindPlaceholders = kinds.map(() => '?').join(',');
 
+	// The CTE walk may visit the same node_id at different levels via distinct paths
+	// (e.g., a cycle ring traversed clockwise vs counter-clockwise). UNION dedups whole
+	// rows, but rows differ in (level, edge_path) — so duplicates by node_id are still
+	// possible. The outer SELECT collapses to one row per node_id by picking the
+	// minimum level (shortest path) and a representative edge_path at that level.
+	// "no duplicates by node_id" is a Plan-03-02 must-have for TRAV-02.
 	const stmt = sqlite.prepare(`
 		WITH RECURSIVE walk(node_id, level, edge_path, visited) AS (
 			SELECT n.id, 0, '', '|' || n.id || '|'
@@ -99,15 +105,23 @@ export function traverse(sqlite: Database.Database, input: TraverseInput): Trave
 			   AND e.recorded_at <= @at
 			   AND w.level < @max_hops
 			   AND INSTR(w.visited, '|' || (CASE WHEN e.src_id = w.node_id THEN e.dst_id ELSE e.src_id END) || '|') = 0
+		),
+		walk_dedup AS (
+			-- Collapse multi-path duplicates: pick the (min level, then lex-min edge_path)
+			-- per node_id. SQLite's MIN(level), MIN(edge_path) over GROUP BY node_id is
+			-- deterministic on text/integer columns.
+			SELECT node_id, MIN(level) AS level, MIN(edge_path) AS edge_path
+			FROM walk
+			GROUP BY node_id
 		)
-		SELECT walk.node_id, walk.level, walk.edge_path,
+		SELECT walk_dedup.node_id, walk_dedup.level, walk_dedup.edge_path,
 		       n.kind, n.payload, n.confidence, n.valid_from, n.invalidated_at, n.recorded_at, n.superseded_by
-		FROM walk
-		JOIN nodes n ON n.id = walk.node_id
+		FROM walk_dedup
+		JOIN nodes n ON n.id = walk_dedup.node_id
 		WHERE n.valid_from <= @at
 		  AND (n.invalidated_at IS NULL OR n.invalidated_at > @at)
 		  AND n.recorded_at <= @at
-		ORDER BY walk.level ASC, walk.node_id ASC
+		ORDER BY walk_dedup.level ASC, walk_dedup.node_id ASC
 	`);
 
 	// better-sqlite3: positional ? args first (anchor IDs + edge kinds), then named @-args object.
