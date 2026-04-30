@@ -10,21 +10,15 @@
 // Append-only by application convention — no triggers needed at the storage layer;
 // the bitemporal-substrate triggers only protect nodes/edges/provenance.
 //
-// Plan-03-01 Wave-0 carryover: the `Citation` type is a local placeholder until Plan
-// 03-03 lands `kernel/src/receipt/citation.ts`. Plan 03-03 must replace the local
-// alias with `import type { Citation } from '../../receipt/citation.js'`.
+// Plan 03-03: the `Citation` type is now sourced from kernel/src/receipt/citation.ts
+// (the canonical Zod-validated citation tuple). receipts.ts is the storage-shape file;
+// citation.ts is the validation-shape file. One-way edge: receipt/* imports from graph/*
+// (for NodePayload, GraphDAO types), but graph/schema/receipts.ts imports a TYPE-ONLY
+// reference from receipt/citation.ts — no runtime cycle.
 
 import { sql } from 'drizzle-orm';
 import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
-
-// Local placeholder until Plan 03-03 lands kernel/src/receipt/citation.ts. See header.
-type Citation = {
-	node_id: string;
-	version: string;
-	confidence: 'Explicit' | 'Inferred';
-	edge_path: string;
-	snippet: string;
-};
+import type { Citation } from '../../receipt/citation.js';
 
 export const receipts = sqliteTable('receipts', {
 	id: text('id').primaryKey(),                                                // ULID

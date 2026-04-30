@@ -60,6 +60,14 @@ export interface NodeRow {
 	superseded_by: string | null;
 }
 
+export interface ProvenanceRow {
+	node_id: string;
+	source: string;
+	actor: string;
+	recorded_at: string;
+	detail: Record<string, unknown> | null;
+}
+
 function nowIso(): string {
 	return new Date().toISOString();
 }
@@ -248,6 +256,70 @@ export class GraphDAO {
 			recorded_at: r.recorded_at,
 			superseded_by: r.superseded_by,
 		}));
+	}
+
+	/**
+	 * Find the row that supersedes `nodeId`, by walking the `supersedes` edge.
+	 * Returns null if `nodeId` is the current head (or doesn't exist).
+	 *
+	 * Convention (Phase 2 dao.ts supersede): supersedes edge has src_id=newer, dst_id=older.
+	 * We look for an edge with dst_id=nodeId AND kind='supersedes' AND active
+	 * (invalidated_at IS NULL), then return the row identified by src_id.
+	 *
+	 * Used by Plan 03-03 renderReceipt for the "superseded by ->" badge (REC-03).
+	 */
+	findSuccessor(nodeId: string): NodeRow | null {
+		const sqlite = (this.db as unknown as { $client: BetterSqliteHandle }).$client;
+		const row = sqlite.prepare(`
+			SELECT n.id, n.kind, n.payload, n.confidence, n.valid_from, n.invalidated_at, n.recorded_at, n.superseded_by
+			FROM edges e
+			JOIN nodes n ON n.id = e.src_id
+			WHERE e.dst_id = ? AND e.kind = 'supersedes' AND e.invalidated_at IS NULL
+			ORDER BY e.recorded_at ASC
+			LIMIT 1
+		`).get(nodeId) as {
+			id: string; kind: string; payload: string; confidence: string;
+			valid_from: string; invalidated_at: string | null; recorded_at: string;
+			superseded_by: string | null;
+		} | undefined;
+		if (!row) {
+			return null;
+		}
+		return {
+			id: row.id,
+			kind: row.kind as NodeKind,
+			payload: JSON.parse(row.payload) as NodePayload,
+			confidence: row.confidence as Confidence,
+			valid_from: row.valid_from,
+			invalidated_at: row.invalidated_at,
+			recorded_at: row.recorded_at,
+			superseded_by: row.superseded_by,
+		};
+	}
+
+	/**
+	 * Read the provenance row for a node. REC-06: "Why was this done?" drills into the
+	 * provenance table and returns the originating source/actor/detail.
+	 */
+	queryProvenance(nodeId: string): ProvenanceRow | null {
+		const sqlite = (this.db as unknown as { $client: BetterSqliteHandle }).$client;
+		const row = sqlite.prepare(`
+			SELECT node_id, source, actor, recorded_at, detail
+			FROM provenance
+			WHERE node_id = ?
+		`).get(nodeId) as {
+			node_id: string; source: string; actor: string; recorded_at: string; detail: string | null;
+		} | undefined;
+		if (!row) {
+			return null;
+		}
+		return {
+			node_id: row.node_id,
+			source: row.source,
+			actor: row.actor,
+			recorded_at: row.recorded_at,
+			detail: row.detail ? JSON.parse(row.detail) as Record<string, unknown> : null,
+		};
 	}
 
 	private materialize(raw: typeof nodes.$inferSelect): NodeRow {

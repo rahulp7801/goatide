@@ -11,7 +11,7 @@
 // import surface.
 
 export { openDatabase, type OpenDatabaseHandle } from './db.js';
-export { GraphDAO, type SeedInput, type NodeRow } from './dao.js';
+export { GraphDAO, type SeedInput, type NodeRow, type ProvenanceRow } from './dao.js';
 export {
 	NodePayloadSchema,
 	ProvenanceInputSchema,
