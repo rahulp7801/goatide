@@ -9,7 +9,7 @@
 
 import { sql } from 'drizzle-orm';
 import { sqliteTable, text, foreignKey } from 'drizzle-orm/sqlite-core';
-import { nodes } from './nodes';
+import { nodes } from './nodes.js';
 
 export const provenance = sqliteTable('provenance', {
 	node_id: text('node_id').primaryKey(),

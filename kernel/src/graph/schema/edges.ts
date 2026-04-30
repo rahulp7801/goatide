@@ -10,7 +10,7 @@
 
 import { sql } from 'drizzle-orm';
 import { sqliteTable, text, check, foreignKey, index } from 'drizzle-orm/sqlite-core';
-import { nodes } from './nodes';
+import { nodes } from './nodes.js';
 
 export const EDGE_KINDS = ['parent_of', 'references', 'supersedes', 'derived_from'] as const;
 export type EdgeKind = typeof EDGE_KINDS[number];

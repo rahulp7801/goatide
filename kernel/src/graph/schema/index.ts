@@ -6,7 +6,7 @@
 //   2. DAO + CLI code (Waves 2 & 3) imports from `./graph/schema` not deeper paths
 //   3. tests can pull NODE_KINDS, EDGE_KINDS, etc. from one place
 
-export * from './nodes';
-export * from './edges';
-export * from './provenance';
-export * from './views';
+export * from './nodes.js';
+export * from './edges.js';
+export * from './provenance.js';
+export * from './views.js';

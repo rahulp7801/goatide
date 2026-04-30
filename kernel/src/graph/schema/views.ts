@@ -10,7 +10,7 @@
 
 import { isNull } from 'drizzle-orm';
 import { sqliteView } from 'drizzle-orm/sqlite-core';
-import { nodes } from './nodes';
+import { nodes } from './nodes.js';
 
 export const activeNodes = sqliteView('active_nodes').as((qb) =>
 	qb.select().from(nodes).where(isNull(nodes.invalidated_at))
