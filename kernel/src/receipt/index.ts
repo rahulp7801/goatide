@@ -11,6 +11,10 @@
 
 export { CitationSchema, type Citation } from './citation.js';
 export { ReceiptDAO } from './dao.js';
-export { type ReasoningReceipt } from './builder.js';
-// buildReceipt + ReceiptRefusalError + BuildReceiptInput land in Task 2.
+export {
+	buildReceipt,
+	ReceiptRefusalError,
+	type BuildReceiptInput,
+	type ReasoningReceipt,
+} from './builder.js';
 // renderReceipt + explainCitation + RenderedCitation/RenderedReceipt/ProvenanceTrail land in Task 3.
