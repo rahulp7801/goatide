@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+// GoatIDE CLI entry shim. Wave-3 (Plan 02-04) ships dist/cli/index.js.
+import('../dist/cli/index.js');
