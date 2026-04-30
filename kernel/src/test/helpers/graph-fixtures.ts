@@ -15,9 +15,8 @@
 // edge auto-emitted by supersede(); parent_of / references / derived_from edges are inserted
 // via raw SQL since Phase 3 is the first consumer that needs them).
 //
-// Plan 03-02 carryover: ticket_id is NOT yet part of the Anchor Zod schema (payloads.ts).
-// Wave 0 stores it via `as never` so seedAnchoredNodes compiles; Plan 03-02 must extend
-// the Anchor schema and remove the cast.
+// Plan 03-02: ticket_id is now in the Anchor Zod schema (payloads.ts) — seedAnchoredNodes
+// passes it through without any cast.
 
 import { ulid } from 'ulid';
 import type Database from 'better-sqlite3';
@@ -107,10 +106,8 @@ export function seedSupersessionChain(
 
 /**
  * Seed nodes whose payloads carry a deterministic anchor (file / symbol / ticket_id).
- * Used by anchor.spec.ts (TRAV-04, TRAV-06).
- *
- * NOTE: ticket_id is NOT yet in the Phase-2 Anchor Zod schema. The Wave-0 escape hatch is
- * `as never` on the anchor literal; Plan 03-02 extends payloads.ts and removes the cast.
+ * Used by anchor.spec.ts (TRAV-04, TRAV-06). Plan 03-02 added ticket_id to the Anchor
+ * Zod schema; this fixture passes it through unchanged.
  */
 export function seedAnchoredNodes(
 	dao: GraphDAO,
@@ -124,9 +121,8 @@ export function seedAnchoredNodes(
 			payload: {
 				kind: 'ConstraintNode',
 				body: `anchored node ${i}`,
-				// `as never` is the Wave-0 escape hatch: ticket_id isn't in the Phase-2 Zod schema yet.
-				// Plan 03-02 extends payloads.ts (Anchor + ticket_id) and removes this cast.
-				anchor: { file: a.file, symbol: a.symbol, ticket_id: a.ticket_id } as never,
+				// Plan 03-02 extended payloads.ts Anchor with optional ticket_id — no cast needed.
+				anchor: { file: a.file, symbol: a.symbol, ticket_id: a.ticket_id },
 			},
 			provenance: { source: 'cli', actor: 'test-fixture' },
 		});

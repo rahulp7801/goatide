@@ -30,6 +30,7 @@ const Anchor = z.object({
 	file: z.string().optional(),
 	symbol: z.string().optional(),
 	line: z.number().int().nonnegative().optional(),
+	ticket_id: z.string().optional(),  // Phase 3 (Plan 03-02): TRAV-04 ticket-anchor support
 }).optional();
 
 export const ConstraintPayload   = z.object({ kind: z.literal('ConstraintNode'), body: Body, anchor: Anchor });

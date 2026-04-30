@@ -29,7 +29,10 @@
 
 import { eq, and, isNull, lte, gt, or } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type Database from 'better-sqlite3';
 import { ulid } from 'ulid';
+
+type BetterSqliteHandle = Database.Database;
 
 import { nodes, type NodeKind, type Confidence } from './schema/nodes.js';
 import { edges, type EdgeKind } from './schema/edges.js';
@@ -195,6 +198,56 @@ export class GraphDAO {
 				lte(nodes.recorded_at, t),
 			)
 		).all().map((r) => this.materialize(r));
+	}
+
+	/**
+	 * Look up nodes whose payload contains an exact-equality match at a JSON path,
+	 * filtered by bitemporal active-set as of `asOf`.
+	 *
+	 * MANDATE C: This method does EXACT equality only. There is no `queryByAnchorLike`
+	 * or fuzzy variant. The CI gate `scripts/ci/refuse-fuzzy-fallback.sh` catches any
+	 * import of fuzzy libraries; this method's contract is the structural backstop.
+	 *
+	 * @param jsonPath e.g. '$.anchor.file', '$.anchor.symbol', '$.anchor.ticket_id'
+	 * @param value    The exact string to match
+	 * @param asOf     ISO-8601 transaction time
+	 */
+	queryByAnchor(args: { jsonPath: string; value: string }, asOf: string): NodeRow[] {
+		// drizzle-orm 0.45.2's `drizzle()` factory return type intersects BetterSQLite3Database
+		// with `{ $client: Database }` — accessing the underlying handle is the path of least
+		// resistance for json_extract over LIKE/LOWER ambiguity. NodePayload type is inferred
+		// from the JSON-stored shape; no Zod re-parse needed at the read boundary (DAO trusts
+		// what it wrote).
+		const sqlite = (this.db as unknown as { $client: BetterSqliteHandle }).$client;
+		const stmt = sqlite.prepare(`
+			SELECT id, kind, payload, confidence, valid_from, invalidated_at, recorded_at, superseded_by
+			FROM nodes
+			WHERE json_extract(payload, ?) = ?
+			  AND valid_from <= ?
+			  AND (invalidated_at IS NULL OR invalidated_at > ?)
+			  AND recorded_at <= ?
+			ORDER BY valid_from ASC
+		`);
+		const rows = stmt.all(args.jsonPath, args.value, asOf, asOf, asOf) as Array<{
+			id: string;
+			kind: string;
+			payload: string;
+			confidence: string;
+			valid_from: string;
+			invalidated_at: string | null;
+			recorded_at: string;
+			superseded_by: string | null;
+		}>;
+		return rows.map((r) => ({
+			id: r.id,
+			kind: r.kind as NodeKind,
+			payload: JSON.parse(r.payload) as NodePayload,
+			confidence: r.confidence as Confidence,
+			valid_from: r.valid_from,
+			invalidated_at: r.invalidated_at,
+			recorded_at: r.recorded_at,
+			superseded_by: r.superseded_by,
+		}));
 	}
 
 	private materialize(raw: typeof nodes.$inferSelect): NodeRow {
