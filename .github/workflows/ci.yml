@@ -94,6 +94,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+      - name: Install kernel/ deps
+        working-directory: ./kernel
+        run: npm install
+      - name: Run kernel/ vitest suite
+        working-directory: ./kernel
+        run: npx vitest run --reporter=dot
+        # Phase 2 sanity check + (waves 1-4) integration tests against real on-disk SQLite.
+        # FORBIDDEN flags: --watch (would hang CI). Required: 'run' subcommand for clean exit.
       - name: Install Linux native deps
         run: |
           sudo apt-get update
@@ -131,6 +139,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+      - name: Install kernel/ deps
+        working-directory: ./kernel
+        run: npm install
+      - name: Run kernel/ vitest suite
+        working-directory: ./kernel
+        run: npx vitest run --reporter=dot
       - name: Install macOS deps
         run: brew install jq ripgrep
       - name: npm install
@@ -161,6 +175,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
+      - name: Install kernel/ deps
+        working-directory: ./kernel
+        shell: bash
+        run: npm install
+      - name: Run kernel/ vitest suite
+        working-directory: ./kernel
+        shell: bash
+        run: npx vitest run --reporter=dot
       - name: Install Windows deps (jq, ripgrep)
         run: |
           choco install -y jq ripgrep
