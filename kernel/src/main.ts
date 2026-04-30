@@ -1,28 +1,48 @@
-// kernel/src/main.ts — Phase-1 stub
-// Per STATE.md ## Decisions: the kernel runs as a separate Node process spawned by
-// Electron main. Phase 1 only proves the spawn works; observation/IPC arrives Phase 2+.
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// kernel/src/main.ts — Phase 3 (Plan 03-04) RPC daemon entry.
 //
-// Runtime contract for Phase 1:
-//   1. Print `[kernel] up` with pid + start timestamp on launch.
-//   2. Emit a heartbeat every 30s so a developer running `npm run start` can see it alive.
-//   3. Exit cleanly (code 0) on SIGTERM / SIGINT.
-// No JSON-RPC, no observation, no restart logic. Phase 2+ replaces this.
+// REPLACES the Phase-1 heartbeat stub (which wrote to stdout — Pitfall 3 violation).
+//
+// Runtime contract:
+//   1. Read DB path from GOATIDE_DB env var or platform default (resolveDbPath()).
+//   2. openDatabase() runs migrations idempotently (PRAGMAs + 0000+0001+0002).
+//   3. createRpcServer wires queryGraph + proposeEdit handlers.
+//   4. connection.listen() starts serving on stdin/stdout.
+//   5. ALL log output → STDERR (stdout reserved for JSON-RPC framing).
+//   6. SIGTERM/SIGINT close the DB and exit cleanly.
+//
+// Phase 1's heartbeat is intentionally GONE. The bridge process can detect liveness
+// via the JSON-RPC connection itself (connection drop = kernel down).
 
-const startedAt = new Date().toISOString();
-console.log(`[kernel] up pid=${process.pid} started=${startedAt}`);
+import { openDatabase, GraphDAO } from './graph/index.js';
+import { ReceiptDAO } from './receipt/index.js';
+import { resolveDbPath } from './cli/db-path.js';
+import { createRpcServer } from './rpc/index.js';
 
-// Heartbeat every 30s so a developer running `npm run start` can see the kernel alive.
-const heartbeat = setInterval(() => {
-	console.log(`[kernel] heartbeat pid=${process.pid} uptime=${Math.floor(process.uptime())}s`);
-}, 30_000);
+const dbPath = process.env.GOATIDE_DB ?? resolveDbPath();
+const handle = openDatabase(dbPath);
+const dao = new GraphDAO(handle.db);
+const receiptDao = new ReceiptDAO(handle.db);
+
+const connection = createRpcServer({ dao, receiptDao, sqlite: handle.sqlite });
+connection.listen();
+
+// STDERR — stdout is reserved for JSON-RPC framing (Pitfall 3).
+console.error(`[kernel] rpc up pid=${process.pid} db=${dbPath}`);
 
 function shutdown(signal: NodeJS.Signals): void {
-	clearInterval(heartbeat);
-	console.log(`[kernel] received ${signal}, exiting cleanly`);
+	console.error(`[kernel] received ${signal}, exiting cleanly`);
+	try {
+		handle.close();
+	} catch (e) {
+		console.error(`[kernel] close error: ${e instanceof Error ? e.message : String(e)}`);
+	}
 	process.exit(0);
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
-
-// The setInterval handle keeps the event loop alive; no explicit keep-alive needed.
