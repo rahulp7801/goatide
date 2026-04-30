@@ -27,3 +27,5 @@ export {
 export { hasGhostingTokens, GHOSTING_TOKENS } from './ghosting.js';
 export { NODE_KINDS, type NodeKind, CONFIDENCE_VALUES, type Confidence } from './schema/nodes.js';
 export { EDGE_KINDS, type EdgeKind } from './schema/edges.js';
+export { traverse, type Scope, type TraverseInput, type TraverseRow, type TraverseResult } from './traverse.js';
+export { resolveAnchor, type AnchorRequest } from './anchor.js';
