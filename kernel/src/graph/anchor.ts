@@ -9,8 +9,8 @@
 //
 // MANDATE C — Scope-Constrained Retrieval. There is NO LIKE, NO GLOB, NO LOWER(), NO TRIM().
 // If the developer's anchor (file path / symbol name / ticket id) doesn't exactly match a
-// node's payload.anchor field, the answer is the empty array. There is no "did-you-mean."
-// There is no fuzzy fallback. There is no embedding similarity. The CI gate
+// node's payload.anchor field, the answer is the empty array. There is no suggestion engine.
+// There is no fuzzy fallback. There is no vector-distance similarity. The CI gate
 // `scripts/ci/refuse-fuzzy-fallback.sh` catches any future contributor who imports a
 // fuzzy library; this module's contract is the human-discipline backstop.
 
