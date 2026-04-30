@@ -15,6 +15,13 @@
       "when": 1745971260000,
       "tag": "0001_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777561200000,
+      "tag": "0002_receipts",
+      "breakpoints": true
     }
   ]
 }
