@@ -20,7 +20,7 @@ on:
 
 jobs:
   refusal-checks:
-    name: Refusal Checks (FORK-04, FORK-06, FORK-07, FORK-08)
+    name: Refusal Checks (FORK-04, FORK-06, FORK-07, FORK-08, TRAV-06)
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout (full history for FORK-04 diff)
@@ -57,6 +57,9 @@ jobs:
       - name: FORK-08 — validate Open VSX recommended ids
         run: node scripts/validate-openvsx.mjs
 
+      - name: TRAV-06 — refuse fuzzy / similarity / did-you-mean fallback
+        run: bash scripts/ci/refuse-fuzzy-fallback.sh
+
   refusal-meta:
     name: Refusal Meta-Tests
     runs-on: ubuntu-22.04
@@ -74,6 +77,8 @@ jobs:
         run: bash scripts/test/refusal-vector-meta.sh
       - name: Meta-test — refusal-openvsx-meta.sh
         run: bash scripts/test/refusal-openvsx-meta.sh
+      - name: Meta-test — refusal-fuzzy-fallback-meta.sh
+        run: bash scripts/test/refusal-fuzzy-fallback-meta.sh
 
   # build-linux / build-mac / build-windows — Plan 01-05 (Wave 3) phase-verify.
   # Now that the upstream microsoft/vscode tree (Plan 01-03), brander, and the
