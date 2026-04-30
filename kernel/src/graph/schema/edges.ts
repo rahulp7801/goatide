@@ -1,0 +1,36 @@
+// kernel/src/graph/schema/edges.ts — Phase 2 (Plan 02-02) bitemporal edges table.
+//
+// Edges connect nodes through typed relationships. Same four bitemporal timestamps as
+// `nodes` (GRAPH-02), same immutability guarantees from triggers (GRAPH-03/04), kind
+// allowlist via CHECK (GRAPH-06).
+//
+// Per 02-RESEARCH.md ## Pattern: Schema Shape, ## Pitfall 12 (no ON DELETE CASCADE).
+// No cascade: append-only means no parent ever vanishes, and cascade would interact
+// weirdly with the BEFORE-DELETE trigger anyway.
+
+import { sql } from 'drizzle-orm';
+import { sqliteTable, text, check, foreignKey, index } from 'drizzle-orm/sqlite-core';
+import { nodes } from './nodes';
+
+export const EDGE_KINDS = ['parent_of', 'references', 'supersedes', 'derived_from'] as const;
+export type EdgeKind = typeof EDGE_KINDS[number];
+
+export const edges = sqliteTable('edges', {
+	id: text('id').primaryKey(),
+	kind: text('kind').notNull(),
+	src_id: text('src_id').notNull(),
+	dst_id: text('dst_id').notNull(),
+	valid_from: text('valid_from').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+	invalidated_at: text('invalidated_at'),
+	recorded_at: text('recorded_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+	// Soft FK on superseded_by → nodes.id, enforced by the DAO (Wave 2). Same rationale as nodes.
+	superseded_by: text('superseded_by'),
+}, (t) => [
+	check('edges_kind_allowlist',
+		sql`${t.kind} IN ('parent_of','references','supersedes','derived_from')`),
+	foreignKey({ columns: [t.src_id], foreignColumns: [nodes.id], name: 'edges_src_fk' }),
+	foreignKey({ columns: [t.dst_id], foreignColumns: [nodes.id], name: 'edges_dst_fk' }),
+	// Phase-3 traversal indexes — partial on (invalidated_at IS NULL) for the common active path.
+	index('edges_active_src').on(t.src_id).where(sql`${t.invalidated_at} IS NULL`),
+	index('edges_active_dst').on(t.dst_id).where(sql`${t.invalidated_at} IS NULL`),
+]);
