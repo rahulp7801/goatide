@@ -23,7 +23,14 @@ import type Database from 'better-sqlite3';
 import type { GraphDAO } from '../../graph/dao.js';
 import type { EdgeKind } from '../../graph/schema/edges.js';
 
-/** Parent → child via parent_of edge. Both nodes are ConstraintNodes with optional anchors. */
+/**
+ * Parent → child via parent_of edge. Both nodes are ConstraintNodes.
+ *
+ * `anchorFile` (optional) attaches an anchor.file payload to the PARENT only — the natural
+ * "this file's owner constraint" semantics. The child has no anchor; it's reachable from
+ * the parent via the parent_of edge. Anchoring both would make queryByAnchor return both
+ * as seeds (level 0), defeating the parent→child level test in TRAV-05 e2e.
+ */
 export function seedSimpleParentChild(
 	dao: GraphDAO,
 	sqlite: Database.Database,
@@ -41,7 +48,7 @@ export function seedSimpleParentChild(
 		payload: {
 			kind: 'ConstraintNode',
 			body: opts.childBody ?? 'child constraint',
-			anchor: opts.anchorFile ? { file: opts.anchorFile } : undefined,
+			// No anchor — child is reachable from parent via parent_of edge.
 		},
 		provenance: { source: 'cli', actor: 'test-fixture' },
 	});
