@@ -31,7 +31,7 @@ export function formatNodeTable(rows: NodeRow[]): string {
 	const widths = Object.fromEntries(COLS.map((c) => [c, c.length])) as Record<Col, number>;
 	for (const r of rows) {
 		for (const c of COLS) {
-			const v = String((r as Record<string, unknown>)[c] ?? '');
+			const v = String((r as unknown as Record<string, unknown>)[c] ?? '');
 			if (v.length > widths[c]) {
 				widths[c] = v.length;
 			}
@@ -41,7 +41,7 @@ export function formatNodeTable(rows: NodeRow[]): string {
 	lines.push(COLS.map((c) => c.padEnd(widths[c])).join('  '));
 	lines.push(COLS.map((c) => '-'.repeat(widths[c])).join('  '));
 	for (const r of rows) {
-		lines.push(COLS.map((c) => String((r as Record<string, unknown>)[c] ?? '').padEnd(widths[c])).join('  '));
+		lines.push(COLS.map((c) => String((r as unknown as Record<string, unknown>)[c] ?? '').padEnd(widths[c])).join('  '));
 	}
 	// Append body lines (indented tail) for readability without spending column budget.
 	for (const r of rows) {

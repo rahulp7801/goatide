@@ -9,7 +9,7 @@
     "goatide-cli": "./bin/goatide-cli"
   },
   "scripts": {
-    "build": "tsc -p .",
+    "build": "tsc -p . && node -e \"const fs=require('node:fs');fs.cpSync('src/graph/migrations','dist/graph/migrations',{recursive:true,force:true});\"",
     "watch": "tsc -p . --watch",
     "test": "vitest run",
     "test:watch": "vitest",
