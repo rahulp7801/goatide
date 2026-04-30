@@ -17,4 +17,10 @@ export {
 	type BuildReceiptInput,
 	type ReasoningReceipt,
 } from './builder.js';
-// renderReceipt + explainCitation + RenderedCitation/RenderedReceipt/ProvenanceTrail land in Task 3.
+export {
+	renderReceipt,
+	explainCitation,
+	type RenderedCitation,
+	type RenderedReceipt,
+	type ProvenanceTrail,
+} from './render.js';
