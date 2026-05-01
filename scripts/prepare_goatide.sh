@@ -106,6 +106,31 @@ if [[ -f package.json ]]; then
 	echo "GoatIDE npm scripts + TypeScript ~5.9.0 pin ensured in package.json"
 fi
 
+# --- Brand build/rspack and build/vite HTML templates --------------------
+# These are upstream-bundler dev-server fixtures that bake hardcoded
+# marketplace.visualstudio.com URLs into a data-settings attribute on a
+# meta tag (verified in 01.1-RESEARCH.md ## Architecture Patterns > Pattern 2).
+# Idempotent: re-running on already-rewritten URLs is a no-op (sed -i on
+# longest-match-first expressions per Pitfall 1).
+# Pitfall 5 caveat: npm run serve-out-rspack/vite (upstream-only dev-server
+# commands) may 404 on the rewritten Open VSX URLs because marketplace's
+# path shape does not 1:1 match Open VSX. The shipped IDE binary reads
+# product.json's extensionsGallery, NOT these HTMLs, so this is a
+# documented dev-server caveat, not a runtime bug.
+HTMLS=("build/rspack/workbench-rspack.html" "build/vite/workbench-vite.html")
+for HTML in "${HTMLS[@]}"; do
+	if [[ -f "$HTML" ]]; then
+		sed -i \
+			-e 's#https://marketplace\.visualstudio\.com/_apis/public/gallery/searchrelevancy/extensionquery#https://open-vsx.org/vscode/gallery/search#g' \
+			-e 's#https://marketplace\.visualstudio\.com/_apis/public/gallery#https://open-vsx.org/vscode/gallery#g' \
+			-e 's#https://marketplace\.visualstudio\.com/items#https://open-vsx.org/vscode/item#g' \
+			-e 's#https://marketplace\.visualstudio\.com/publishers#https://open-vsx.org/vscode/publisher#g' \
+			-e 's#https://marketplace\.vsallin\.net/_apis/public/gallery#https://open-vsx.org/vscode/gallery#g' \
+			"$HTML"
+		echo "GoatIDE HTML brand applied to $HTML"
+	fi
+done
+
 # --- Sync first-party bridge extension into extensions/ (if present) ---------
 # Plan 01-04: src/vs/goatide/extensions/goatide-bridge/ is the source-of-truth
 # (covered by FORK-04 allowlist for src/vs/goatide/**). Upstream's gulp build
