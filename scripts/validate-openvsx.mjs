@@ -1,4 +1,7 @@
-#!/usr/bin/env node
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
 // FORK-08 — Validate every recommended-extension ID against Open VSX.
 //
 // Constitutional mandate: GoatIDE points the IDE at Open VSX. A typo-squat
@@ -18,62 +21,72 @@
 //   - malformed id (no `.`) -> failure
 //
 //   - When zero manifests are found (current Wave-0 state), prints
-//     "No extension manifests found, nothing to validate." and exits 0.
+//     'No extension manifests found, nothing to validate.' and exits 0.
 //
 // Constraints:
 //   - No npm dependencies. `node:fs/promises` + global `fetch` only. The
 //     script must run from a fresh clone before `npm install`.
+//   - JSONC line comments (`// ...`) at line-start position are stripped
+//     before JSON.parse so .vscode/extensions.json (JSONC by VS Code
+//     convention) parses. Block comments and inline comments are NOT
+//     supported; the regex matches only `^\s*//.*$`.
 //   - 8s per-request timeout via AbortSignal.timeout.
 //   - Sequential probing keeps the load on Open VSX polite for the small
 //     extension counts expected; switch to bounded parallelism only if
 //     manifest counts exceed ~20.
 //
+// Invocation: `node scripts/validate-openvsx.mjs` (no shebang — keeps
+// the file lint-clean per the local code-no-unexternalized-strings rule
+// and matches the CI workflow + meta-test invocation pattern).
+//
 // Exit codes:
 //   0 — all recommended IDs resolved (or no manifests found)
 //   1 — at least one ID failed to resolve
-import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 
 const SKIP_DIRS = new Set([
-  "node_modules",
-  ".git",
-  "out",
-  "dist",
-  ".planning",
-  ".vscode-test",
+	'node_modules',
+	'.git',
+	'out',
+	'dist',
+	'.planning',
+	'.vscode-test',
 ]);
 const REQUEST_TIMEOUT_MS = 8000;
-const OPENVSX_API = "https://open-vsx.org/api";
+const OPENVSX_API = 'https://open-vsx.org/api';
 
 /**
  * Recursively walk `root` and yield every absolute path matching
  * `.vscode/extensions.json`. Skips heavy / irrelevant directories.
  */
 async function findExtensionManifests(root) {
-  const out = [];
-  async function walk(dir) {
-    let entries;
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return; // unreadable dir — skip silently
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        if (SKIP_DIRS.has(entry.name)) continue;
-        await walk(join(dir, entry.name));
-      } else if (
-        entry.isFile() &&
-        entry.name === "extensions.json" &&
-        // canonical: parent dir basename === ".vscode"
-        dir.split(/[\\/]/).pop() === ".vscode"
-      ) {
-        out.push(join(dir, entry.name));
-      }
-    }
-  }
-  await walk(root);
-  return out;
+	const out = [];
+	async function walk(dir) {
+		let entries;
+		try {
+			entries = await readdir(dir, { withFileTypes: true });
+		} catch {
+			return; // unreadable dir — skip silently
+		}
+		for (const entry of entries) {
+			if (entry.isDirectory()) {
+				if (SKIP_DIRS.has(entry.name)) {
+					continue;
+				}
+				await walk(join(dir, entry.name));
+			} else if (
+				entry.isFile() &&
+				entry.name === 'extensions.json' &&
+				// canonical: parent dir basename === '.vscode'
+				dir.split(/[\\/]/).pop() === '.vscode'
+			) {
+				out.push(join(dir, entry.name));
+			}
+		}
+	}
+	await walk(root);
+	return out;
 }
 
 /**
@@ -81,74 +94,84 @@ async function findExtensionManifests(root) {
  * on any failure mode (404, network error, timeout, malformed ID).
  */
 async function probeExtensionId(manifestPath, id) {
-  const trimmed = String(id).trim();
-  const dotIdx = trimmed.indexOf(".");
-  if (dotIdx <= 0 || dotIdx === trimmed.length - 1) {
-    return `${manifestPath}: malformed extension id '${trimmed}'`;
-  }
-  const namespace = trimmed.slice(0, dotIdx);
-  const name = trimmed.slice(dotIdx + 1);
-  const url = `${OPENVSX_API}/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`;
+	const trimmed = String(id).trim();
+	const dotIdx = trimmed.indexOf('.');
+	if (dotIdx <= 0 || dotIdx === trimmed.length - 1) {
+		return `${manifestPath}: malformed extension id '${trimmed}'`;
+	}
+	const namespace = trimmed.slice(0, dotIdx);
+	const name = trimmed.slice(dotIdx + 1);
+	const url = `${OPENVSX_API}/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`;
 
-  let res;
-  try {
-    res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-  } catch (err) {
-    const msg = err && err.message ? err.message : String(err);
-    return `${manifestPath}: ${trimmed} network error: ${msg}`;
-  }
-  if (!res.ok) {
-    return `${manifestPath}: ${trimmed} not found on Open VSX (HTTP ${res.status})`;
-  }
-  return null;
+	let res;
+	try {
+		res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+	} catch (err) {
+		const msg = err && err.message ? err.message : String(err);
+		return `${manifestPath}: ${trimmed} network error: ${msg}`;
+	}
+	if (!res.ok) {
+		return `${manifestPath}: ${trimmed} not found on Open VSX (HTTP ${res.status})`;
+	}
+	return null;
 }
 
 async function main() {
-  const root = process.cwd();
-  const manifests = await findExtensionManifests(root);
+	const root = process.cwd();
+	const manifests = await findExtensionManifests(root);
 
-  if (manifests.length === 0) {
-    console.log("No extension manifests found, nothing to validate.");
-    return 0;
-  }
+	if (manifests.length === 0) {
+		console.log('No extension manifests found, nothing to validate.');
+		return 0;
+	}
 
-  const failures = [];
-  let totalIds = 0;
+	const failures = [];
+	let totalIds = 0;
 
-  for (const manifestPath of manifests) {
-    let parsed;
-    try {
-      const raw = await readFile(manifestPath, "utf8");
-      parsed = JSON.parse(raw);
-    } catch (err) {
-      failures.push(`${manifestPath}: failed to parse JSON: ${err.message}`);
-      continue;
-    }
-    const recommendations = Array.isArray(parsed?.recommendations)
-      ? parsed.recommendations
-      : [];
-    for (const id of recommendations) {
-      totalIds += 1;
-      const failure = await probeExtensionId(manifestPath, id);
-      if (failure) failures.push(failure);
-    }
-  }
+	for (const manifestPath of manifests) {
+		let parsed;
+		try {
+			const raw = await readFile(manifestPath, 'utf8');
+			// Strip line comments (`// ...` to end-of-line) so JSONC manifests parse.
+			// Block comments (`/* ... */`) are NOT handled — VS Code extensions.json
+			// convention uses only line comments at line-start; verified live in the
+			// GoatIDE tree (01.1-RESEARCH.md ## Architecture Patterns > Pattern 3).
+			// Preserves no-npm-deps contract (lines 27-29 above).
+			const stripped = raw.replace(/^\s*\/\/.*$/gm, '');
+			parsed = JSON.parse(stripped);
+		} catch (err) {
+			failures.push(`${manifestPath}: failed to parse JSON: ${err.message}`);
+			continue;
+		}
+		const recommendations = Array.isArray(parsed?.recommendations)
+			? parsed.recommendations
+			: [];
+		for (const id of recommendations) {
+			totalIds += 1;
+			const failure = await probeExtensionId(manifestPath, id);
+			if (failure) {
+				failures.push(failure);
+			}
+		}
+	}
 
-  if (failures.length === 0) {
-    console.log(
-      `Validated ${totalIds} extension id(s) across ${manifests.length} manifest(s) — all resolve on Open VSX.`,
-    );
-    return 0;
-  }
+	if (failures.length === 0) {
+		console.log(
+			`Validated ${totalIds} extension id(s) across ${manifests.length} manifest(s) — all resolve on Open VSX.`,
+		);
+		return 0;
+	}
 
-  console.log("Open VSX validation failed:");
-  for (const f of failures) console.log(`  - ${f}`);
-  return 1;
+	console.log('Open VSX validation failed:');
+	for (const f of failures) {
+		console.log(`  - ${f}`);
+	}
+	return 1;
 }
 
 main()
-  .then((code) => process.exit(code))
-  .catch((err) => {
-    console.error("validate-openvsx.mjs crashed:", err);
-    process.exit(1);
-  });
+	.then((code) => process.exit(code))
+	.catch((err) => {
+		console.error('validate-openvsx.mjs crashed:', err);
+		process.exit(1);
+	});
