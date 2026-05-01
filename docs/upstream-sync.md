@@ -99,3 +99,35 @@ After Phase-1 first-merge of `1.117.0`, these gate failures were observed and re
 - **FORK-08**: upstream `extensions/copilot/.vscode/extensions.json` recommends six MS-internal extensions (`connor4312.esbuild-problem-matchers`, `ms-vscode.extension-test-runner`, `ms-vscode.debug-value-editor`, `ms-vscode.web-editors`, `ms-vscode.visualization-runner`, `ms-vscode.ts-file-path-support`) that do not exist on Open VSX. Root `.vscode/extensions.json` uses JSONC (with comments) and the validator's strict-JSON parser fails on it.
 
 These are Phase-1 research flags, surfaced for downstream resolution by a planned `1.x` checker iteration.
+
+## Phase 1.1 — TypeScript pin override (build-toolchain escalation closure)
+
+Phase 1 surfaced a TypeScript-version vs. vscode 1.117.0 `.d.ts` conflict
+(`01-05-phase-verify-evidence.md ## Build-Toolchain Escalation`, issue #4):
+`typescript@6.0.2` rejects vscode 1.117.0's `vscode.d.ts` with duplicate-
+index-signature errors at lines 6, 4530, 6950, 8861, 16716. The Phase 1.1
+resolution pins TypeScript at `~5.9.0` via root `package.json`'s
+`overrides` block (Lane A from `01.1-RESEARCH.md ## Architecture Patterns
+> Pattern 1`). The pin is preserved across upstream-sync by
+`scripts/prepare_goatide.sh` — see the package.json drift-recovery jq
+extended in Plan 01.1-02.
+
+On every upstream-sync, after the merge, `prepare_goatide.sh` will:
+  1. Restore the GoatIDE-owned npm scripts.
+  2. Restore `devDependencies.typescript = "~5.9.0"` and
+     `overrides.typescript = "~5.9.0"`.
+
+**Reverification command (run after every monthly sync):**
+
+```sh
+bash scripts/test/brander-asserts-pin-meta.sh    # exits 0 = brander still preserves pin
+bash scripts/test/upstream-sync-dryrun.sh        # exits 0 = full FORK-05 ceremony intact
+npm install                                       # re-resolves to ~5.9.x
+node -p "require('./node_modules/typescript/package.json').version"  # must start with 5.9.
+```
+
+**Reconsider this pin at every monthly upstream-sync:** if the new
+`UPSTREAM_BASE.TAG` points at a vscode 1.118+ that no longer uses
+`[key: string]: any` in those 5 .d.ts spots, the override may be removable.
+Verify before deleting by removing the overrides entry and re-running
+`npm run compile-check-ts-native`.
