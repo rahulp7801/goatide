@@ -131,3 +131,69 @@ node -p "require('./node_modules/typescript/package.json').version"  # must star
 `[key: string]: any` in those 5 .d.ts spots, the override may be removable.
 Verify before deleting by removing the overrides entry and re-running
 `npm run compile-check-ts-native`.
+
+## Phase 1.1 — FORK-06 closure (HTML brander + per-file allowlist)
+
+Phase 1 surfaced FORK-06 RED on 13 hits across 7 file categories
+(`01-05-phase-verify-evidence.md ## Known Phase-1 Escalations > FORK-06`).
+Phase 1.1 closes the escalation in two parts:
+
+### Part A — Brand the HTML lane
+
+The HIGH-risk hits in `build/rspack/workbench-rspack.html` and
+`build/vite/workbench-vite.html` (which bake hardcoded
+`marketplace.visualstudio.com` URLs into the rendered workbench HTML)
+are now rewritten by `scripts/prepare_goatide.sh` on every run. The
+brander uses `sed -i` with longest-match-first ordering on five URL
+mappings (verified in `01.1-RESEARCH.md ## Code Examples > Example 2`):
+
+  - `marketplace.visualstudio.com/_apis/public/gallery/searchrelevancy/extensionquery` -> `open-vsx.org/vscode/gallery/search`
+  - `marketplace.visualstudio.com/_apis/public/gallery` -> `open-vsx.org/vscode/gallery`
+  - `marketplace.visualstudio.com/items` -> `open-vsx.org/vscode/item`
+  - `marketplace.visualstudio.com/publishers` -> `open-vsx.org/vscode/publisher`
+  - `marketplace.vsallin.net/_apis/public/gallery` -> `open-vsx.org/vscode/gallery`
+
+The rewritten URLs match what `product.json`'s `extensionsGallery`
+already points at, so the IDE binary's runtime config and the
+dev-server fixtures are now consistent.
+
+**Pitfall 5 caveat:** `npm run serve-out-rspack` and `npm run vite dev`
+(upstream-only dev-server commands) may 404 on the rewritten Open VSX
+URLs because marketplace's path shape does not 1:1 match Open VSX. The
+GoatIDE developer never invokes those commands; the shipped binary is
+unaffected. Documented for future contributors.
+
+### Part B — Per-file allowlist with rationale
+
+The remaining 5 file categories are not runtime config — they are
+example/fixture/translation strings. They are allowlisted in
+`scripts/ci/refuse-marketplace.sh` with per-glob rationale:
+
+| Category | Files | Rationale |
+|---|---|---|
+| Doc/changelog | `cli/CONTRIBUTING.md`, `extensions/copilot/CHANGELOG.md`, `extensions/theme-seti/CONTRIBUTING.md`, `README.md` | Informational text, not runtime config |
+| French policy fixtures | `build/lib/test/fixtures/policies/{darwin,win32}/fr-fr/*`, `build/lib/test/policyConversion.test.ts` | French YOLO-mode warning translation; not user-facing |
+| English YOLO-mode warning | `src/vs/workbench/contrib/chat/browser/tools/languageModelToolsService.ts` | String literal mentions Dev Containers extension URL as compromise example |
+
+Two additional self-reference allowlist entries surfaced during
+implementation: `scripts/test/upstream-sync-dryrun.sh` (comment block
+documenting the FORK-06 brander rationale) and
+`scripts/prepare_goatide.sh` (the brander itself contains the source
+pattern as the LHS of the sed rewrite expressions; without it the
+gate could never go GREEN). Both have inline-comment rationale in
+`refuse-marketplace.sh`.
+
+### Reverification command (run after every monthly sync)
+
+```
+bash scripts/prepare_goatide.sh   # idempotently re-brands HTMLs
+git diff --quiet build/rspack/workbench-rspack.html build/vite/workbench-vite.html
+bash scripts/ci/refuse-marketplace.sh   # exits 0
+bash scripts/test/refusal-marketplace-meta.sh   # exits 0
+bash scripts/test/upstream-sync-dryrun.sh   # exits 0; HTML idempotency assertion is GREEN
+```
+
+If a future upstream-sync introduces a NEW marketplace reference outside
+the allowlisted categories, refuse-marketplace.sh will fail loudly with
+the file path. Brand it (preferred) or extend the allowlist with new
+rationale (only as last resort).
