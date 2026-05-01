@@ -197,3 +197,89 @@ If a future upstream-sync introduces a NEW marketplace reference outside
 the allowlisted categories, refuse-marketplace.sh will fail loudly with
 the file path. Brand it (preferred) or extend the allowlist with new
 rationale (only as last resort).
+
+## Phase 1.1 — FORK-08 closure (Open VSX delta)
+
+Phase 1 surfaced FORK-08 RED on two issues (`01-05-phase-verify-evidence.md
+## Known Phase-1 Escalations > FORK-08`):
+
+  1. JSONC parse failure on `.vscode/extensions.json` files with `//` comments
+     (`scripts/validate-openvsx.mjs`'s strict `JSON.parse` threw SyntaxError on
+     the `// See https://go.microsoft.com/fwlink/?LinkId=827846` line at the
+     top of root `.vscode/extensions.json`).
+  2. Six `ms-vscode.*` / `connor4312.*` extension IDs in
+     `extensions/copilot/.vscode/extensions.json` not on Open VSX (HTTP 404)
+     plus four additional 404 IDs in root `.vscode/extensions.json`.
+
+Phase 1.1 closes both:
+
+### Part A — JSONC tolerance
+
+`scripts/validate-openvsx.mjs` strips line comments via the regex
+`raw.replace(/^\s*\/\/.*$/gm, '')` before `JSON.parse`. Preserves the
+script's no-npm-deps contract (`node:fs/promises` + global `fetch` only).
+Block comments (`/* ... */`) and inline comments (after a value) are NOT
+supported — verified live in the GoatIDE tree: only line comments at
+line-start position appear in any `.vscode/extensions.json` file we
+manage. If a future upstream-sync introduces a manifest with block
+comments, the validator will raise a JSON parse error with the file
+path; widen the regex (or pull in `jsonc-parser` if the cost-benefit
+flips) at that point, not preemptively.
+
+### Part B — Per-extension decisions (live Open VSX probe, 2026-05-01)
+
+Per-extension decisions are removal-with-rationale, not allowlist-with-
+rationale: the whole point of FORK-08 is to refuse typo-squat regressions.
+Allowlisting an unresolvable ID would let real regressions through. The
+6+4 IDs below are upstream-developer-tooling that the GoatIDE dogfood
+developer does not need; the `recommendations` array is a workspace-
+setup hint for first-time VS Code workspace open, not a runtime
+dependency (Pitfall 6 verified in Part C below).
+
+| ID | File | Open VSX status | Decision | Rationale |
+|---|---|---|---|---|
+| connor4312.esbuild-problem-matchers | `extensions/copilot/.vscode/extensions.json` | 404 (live probe 2026-05-01) | Removed | Upstream-developer-tooling for esbuild problem-matchers; not user-facing |
+| ms-vscode.extension-test-runner | `extensions/copilot/.vscode/extensions.json` AND `.vscode/extensions.json` | 404 (live probe 2026-05-01) | Removed from both | Upstream tooling for VS Code extension tests; goatide kernel has its own test infra (vitest, kernel/) and Phase 4 bridge will have its own runner |
+| ms-vscode.debug-value-editor | `extensions/copilot/.vscode/extensions.json` | 404 (live probe 2026-05-01) | Removed | Upstream developer-tooling for debugging VS Code internals |
+| ms-vscode.web-editors | `extensions/copilot/.vscode/extensions.json` | 404 (live probe 2026-05-01) | Removed | Upstream tooling for web editor development |
+| ms-vscode.visualization-runner | `extensions/copilot/.vscode/extensions.json` | 404 (live probe 2026-05-01) | Removed | Upstream developer-tooling |
+| ms-vscode.ts-file-path-support | `extensions/copilot/.vscode/extensions.json` | 404 (live probe 2026-05-01) | Removed | Upstream tooling |
+| jrieken.vscode-pr-pinger | `.vscode/extensions.json` | 404 (live probe 2026-05-01) | Removed | Internal Microsoft developer tool (Jonas Rieken's PR pinger); not on Open VSX |
+| typescriptteam.native-preview | `.vscode/extensions.json` | 404 (live probe 2026-05-01) | Removed | TypeScript team internal preview build of TS native (Go) port; not on Open VSX |
+| ms-vscode.ts-customized-language-service | `.vscode/extensions.json` | 404 (live probe 2026-05-01) | Removed | Internal MS TS language service variant; not on Open VSX |
+| dbaeumer.vscode-eslint | both | 200 (live probe 2026-05-01) | Kept | Standard ESLint extension; available on Open VSX |
+| editorconfig.editorconfig | `.vscode/extensions.json` | 200 (live probe 2026-05-01) | Kept | Standard EditorConfig extension; available on Open VSX |
+| github.vscode-pull-request-github | `.vscode/extensions.json` | 200 (live probe 2026-05-01) | Kept | GitHub PR extension; available on Open VSX |
+| ms-vscode.vscode-github-issue-notebooks | `.vscode/extensions.json` | 200 (live probe 2026-05-01) | Kept | Available on Open VSX (verified live; planner had flagged for verification) |
+| esbenp.prettier-vscode | `extensions/copilot/.vscode/extensions.json` | 200 (live probe 2026-05-01) | Kept | Standard Prettier extension; available on Open VSX |
+| vitest.explorer | `extensions/copilot/.vscode/extensions.json` | 200 (live probe 2026-05-01) | Kept | Vitest test explorer; available on Open VSX |
+| charliermarsh.ruff | `extensions/copilot/.vscode/extensions.json` | 200 (live probe 2026-05-01) | Kept | Python Ruff linter; available on Open VSX |
+
+After removals: `extensions/copilot/.vscode/extensions.json`
+recommendations[] = 4 IDs (eslint, prettier, vitest, ruff). Root
+`.vscode/extensions.json` recommendations[] = 4 IDs (eslint,
+editorconfig, github-pr, github-issue-notebooks). All 8 IDs across the
+2 manifests resolve on Open VSX (validator exit 0).
+
+### Part C — Pitfall 6 mitigation (Open Question 2)
+
+Verified `extensions/copilot/package.json`'s `scripts.test`
+(`"npm-run-all test:*"`) and the full `devDependencies` (93 keys) +
+`dependencies` (44 keys) blocks do NOT reference any of the 6 removed
+IDs. The recommendations are workspace-setup hints for first-time VS
+Code workspace open, not runtime requirements. Removal does not break
+the copilot test suite.
+
+### Reverification command (run after every monthly sync)
+
+```sh
+node scripts/validate-openvsx.mjs              # exits 0 = FORK-08 GREEN
+bash scripts/test/refusal-openvsx-meta.sh      # exits 0 = refusal still fires + clears
+```
+
+If a future upstream-sync re-introduces a 404 ID into either
+`extensions/*/.vscode/extensions.json` or root `.vscode/extensions.json`,
+the validator will fail loudly with the exact ID and HTTP status.
+Decide per-extension (remove vs allowlist with rationale) and append a
+new row to the table above. Allowlisting should be the rare path —
+removal preserves the typo-squat refusal value.
