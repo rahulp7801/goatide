@@ -190,6 +190,29 @@
 	margin-bottom: 0;
 }
 
+/* When the body hosts the embedded plan editor, drop the markdown padding
+ * so the editor's own gutter aligns with the widget edges. The editor uses
+ * `automaticLayout: true` and fills the wrapper. */
+.interactive-session .chat-plan-review-container .chat-confirmation-widget-message.chat-plan-review-body.chat-plan-review-body-editor {
+	/* Drop horizontal/bottom padding so the editor's gutter aligns with
+	 * the widget edges, but keep a small gap below the title bar. */
+	padding: 4px 0 0;
+	/* Markdown content naturally pushes the wrapper to its `max-height`,
+	 * but the editor starts at 0 and waits for `automaticLayout` to size
+	 * itself. Without an explicit min-height the widget collapses to a
+	 * sliver before the editor ever measures itself. Match the widget's
+	 * own min-height so the editor has somewhere to grow into. */
+	min-height: min(280px, 35vh);
+}
+
+.interactive-session .chat-plan-review-container.chat-plan-review-expanded .chat-confirmation-widget-message.chat-plan-review-body.chat-plan-review-body-editor {
+	min-height: min(520px, 60vh);
+}
+
+.interactive-session .chat-plan-review-container .chat-plan-review-body-editor > .monaco-editor {
+	height: 100%;
+}
+
 /* ---------- Feedback section (fixed; outside scroll) ---------- */
 .interactive-session .chat-plan-review-container .chat-plan-review-feedback {
 	display: flex;

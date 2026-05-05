@@ -32,7 +32,12 @@ export class ChatPlanReviewData implements IChatPlanReview {
 		public source?: ToolDataSource,
 	) { }
 
-
+	/**
+	 * Marks the plan review as dismissed without a user choice (e.g. the
+	 * containing response was cancelled). Resolves the completion promise
+	 * with `undefined`, sets `isUsed`, and clears any draft state. Safe
+	 * to call multiple times — subsequent calls are no-ops.
+	 */
 	dismiss(): void {
 		if (this.isUsed) {
 			return;
