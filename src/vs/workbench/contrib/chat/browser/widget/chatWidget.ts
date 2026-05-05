@@ -2234,6 +2234,10 @@ export class ChatWidget extends Disposable implements IChatWidget {
 	}
 
 	unlockFromCodingAgent(): void {
+		if (!this.inputPartDisposable.value) {
+			return; // Widget input not yet rendered
+		}
+
 		// Clear all state related to locking
 		this._lockedAgent = undefined;
 		this._lockedToCodingAgentContextKey.set(false);
