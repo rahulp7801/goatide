@@ -1,16 +1,18 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "CommonJS",
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "esModuleInterop": true,
-    "sourceMap": true,
-    "lib": ["ES2022"],
-    "types": ["vscode", "node"],
-    "typeRoots": ["./node_modules/@types"]
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "Node16",
+		"moduleResolution": "Node16",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"outDir": "dist",
+		"rootDir": "src",
+		"types": ["vscode", "node", "mocha"],
+		"typeRoots": ["./node_modules/@types"],
+		"jsx": "react-jsx",
+		"lib": ["ES2022", "DOM", "DOM.Iterable"]
+	},
+	"include": ["src/**/*"]
 }
