@@ -146,3 +146,27 @@ export interface QueryNodesResult {
 }
 
 export const QueryNodesRequest = new RequestType<QueryNodesParams, QueryNodesResult, Error>('graph.queryNodes');
+
+// -------- graph.heartbeat (CANV-10 — liveness probe) --------
+//
+// Lightweight liveness probe. Bridge polls every 10s; on 30s of missed heartbeat (3
+// consecutive misses) the bridge transitions ConnectionStateMachine to degraded. The
+// kernel reports its pid + db_path + uptime_ms so the bridge can verify it's the same
+// process it spawned (defense-in-depth against pid recycling under fast-restart).
+//
+// Note: method namespace is `graph.heartbeat` to stay consistent with the other methods
+// (every name starts with `graph.`). If a future phase introduces a non-graph surface
+// (e.g. Phase 6 MCP), the namespace may be revisited.
+
+export interface HeartbeatParams {
+	/* intentionally empty — heartbeat is parameterless */
+}
+
+export interface HeartbeatResult {
+	ok: boolean;
+	pid: number;
+	db_path: string;
+	uptime_ms: number;
+}
+
+export const HeartbeatRequest = new RequestType<HeartbeatParams, HeartbeatResult, Error>('graph.heartbeat');

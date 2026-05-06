@@ -18,6 +18,7 @@ export {
 	AtomicAcceptRequest,
 	QueryAttemptByStagingPathRequest,
 	QueryNodesRequest,
+	HeartbeatRequest,
 	type QueryGraphParams,
 	type QueryGraphResult,
 	type ProposeEditParams,
@@ -30,4 +31,6 @@ export {
 	type QueryAttemptByStagingPathResult,
 	type QueryNodesParams,
 	type QueryNodesResult,
+	type HeartbeatParams,
+	type HeartbeatResult,
 } from './methods.js';

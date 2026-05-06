@@ -146,3 +146,22 @@ export interface QueryNodesResult {
 }
 
 export const QueryNodesRequest = new RequestType<QueryNodesParams, QueryNodesResult, Error>('graph.queryNodes');
+
+// -------- graph.heartbeat (CANV-10 — liveness probe) --------
+//
+// Lightweight liveness probe; bridge-side mirror of the kernel's HeartbeatRequest. Used by
+// HeartbeatPoller (Plan 04-06) to detect a hung-but-alive kernel that doesn't drop the
+// stdio connection.
+
+export interface HeartbeatParams {
+	/* intentionally empty — heartbeat is parameterless */
+}
+
+export interface HeartbeatResult {
+	ok: boolean;
+	pid: number;
+	db_path: string;
+	uptime_ms: number;
+}
+
+export const HeartbeatRequest = new RequestType<HeartbeatParams, HeartbeatResult, Error>('graph.heartbeat');

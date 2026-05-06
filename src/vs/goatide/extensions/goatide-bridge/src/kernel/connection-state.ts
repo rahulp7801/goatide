@@ -40,6 +40,38 @@ export class ConnectionStateMachine {
 		return this.state.kind === 'degraded';
 	}
 
+	/**
+	 * Drive an exponential-backoff reconnect loop. Plan 04-06.
+	 *
+	 * On each attempt: transition to 'reconnecting' → wait `delay` ms → invoke retryFn.
+	 * If retryFn resolves, return (the retryFn is responsible for transitioning to
+	 * 'connected' — KernelClient.connect does this at the end). If retryFn throws,
+	 * double the delay (capped at maxDelayMs) and try again, up to maxAttempts.
+	 *
+	 * Plan defaults: 1s start, 30s cap, unlimited attempts. The reconnect command in
+	 * extension.ts caps at 5 attempts so a permanently-dead kernel doesn't loop forever
+	 * — caller can re-issue the command for another round.
+	 */
+	async startReconnectAttempts(
+		retryFn: () => Promise<void>,
+		opts?: { initialDelayMs?: number; maxDelayMs?: number; maxAttempts?: number },
+	): Promise<void> {
+		let delay = opts?.initialDelayMs ?? 1_000;
+		const maxDelay = opts?.maxDelayMs ?? 30_000;
+		const maxAttempts = opts?.maxAttempts ?? Infinity;
+		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+			this.transition({ kind: 'reconnecting', attempt, nextRetryMs: delay });
+			await new Promise<void>((r) => setTimeout(r, delay));
+			try {
+				await retryFn();
+				return;   // success — retryFn transitioned to connected.
+			} catch {
+				delay = Math.min(delay * 2, maxDelay);   // exponential backoff, capped.
+			}
+		}
+		throw new Error(`startReconnectAttempts: gave up after ${maxAttempts} attempts`);
+	}
+
 	dispose(): void {
 		this.emitter.dispose();
 	}

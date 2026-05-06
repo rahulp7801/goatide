@@ -26,18 +26,22 @@ import {
 	AtomicAcceptRequest,
 	QueryAttemptByStagingPathRequest,
 	QueryNodesRequest,
+	HeartbeatRequest,
 	type QueryGraphResult,
 	type ProposeEditResult,
 	type RecordRejectionResult,
 	type AtomicAcceptResult,
 	type QueryAttemptByStagingPathResult,
 	type QueryNodesResult,
+	type HeartbeatResult,
 } from './methods.js';
 
 export interface CreateRpcServerArgs {
 	dao: GraphDAO;
 	receiptDao: ReceiptDAO;
 	sqlite: Database.Database;
+	/** DB path for heartbeat reporting (Plan 04-06). Defaults to '<unknown>' if not provided. */
+	dbPath?: string;
 	/** Override stdin/stdout for tests (defaults to process.stdin/process.stdout). */
 	reader?: rpc.MessageReader;
 	writer?: rpc.MessageWriter;
@@ -256,6 +260,21 @@ export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnectio
 		}
 		return { nodes: out };
 	});
+
+	// -------- graph.heartbeat (CANV-10) --------
+	//
+	// Lightweight liveness probe — capture startMs at handler-registration time. The
+	// returned db_path is whatever createRpcServer was passed (defaults to '<unknown>'
+	// if not threaded through main.ts). Pid + uptime_ms are derived at-call time so a
+	// stale probe response from a long-restarted kernel can still be detected.
+	const startMs = Date.now();
+	const reportedDbPath = args.dbPath ?? '<unknown>';
+	connection.onRequest(HeartbeatRequest, (): HeartbeatResult => ({
+		ok: true,
+		pid: process.pid,
+		db_path: reportedDbPath,
+		uptime_ms: Date.now() - startMs,
+	}));
 
 	return connection;
 }

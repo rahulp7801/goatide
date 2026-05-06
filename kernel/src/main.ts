@@ -28,7 +28,7 @@ const handle = openDatabase(dbPath);
 const dao = new GraphDAO(handle.db);
 const receiptDao = new ReceiptDAO(handle.db);
 
-const connection = createRpcServer({ dao, receiptDao, sqlite: handle.sqlite });
+const connection = createRpcServer({ dao, receiptDao, sqlite: handle.sqlite, dbPath });
 connection.listen();
 
 // STDERR — stdout is reserved for JSON-RPC framing (Pitfall 3).
