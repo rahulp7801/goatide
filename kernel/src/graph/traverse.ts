@@ -167,14 +167,76 @@ export function traverse(sqlite: Database.Database, input: TraverseInput): Trave
 	// the statement (avoids the per-level prepare overhead). The frontier carries (node_id,
 	// edge_path) pairs because we need each node's accumulated edge_path to extend in the
 	// recursive step.
+	//
+	// Index-friendly 4-way UNION ALL: `e.src_id = f.node_id OR e.dst_id = f.node_id` would prevent
+	// SQLite from using either of the partial indexes (idx_edges_active_src / idx_edges_active_dst)
+	// because OR-clauses across distinct columns force a sequential scan or an inefficient
+	// OR-by-union-decomposition. Splitting into 4 branches with explicit `INDEXED BY` hints lets
+	// the planner do partial-index seeks on the active subset (the dominant case for current-time
+	// queries — the only case the per-save Verification Canvas actually issues):
+	//   Branch 1: src_id = frontier.id AND invalidated_at IS NULL  (active forward edges; index seek)
+	//   Branch 2: dst_id = frontier.id AND invalidated_at IS NULL  (active reverse edges; index seek)
+	//   Branch 3: src_id = frontier.id AND invalidated_at > @at    (historical fwd edges; rare)
+	//   Branch 4: dst_id = frontier.id AND invalidated_at > @at    (historical rev edges; rare)
+	// The historical branches are unhinted; the planner picks whatever fits (typically a covering
+	// scan). EXPLAIN QUERY PLAN at 10K-node scale shows branches 1 + 2 do index SEARCH USING
+	// idx_edges_active_src/dst (down from full SCAN e); per-level query elapsed drops from ~376ms
+	// to ~0ms in the dominant case. Plan 04-08 ## W12 latency gap-closure.
 	const kindPlaceholders = kinds.map(() => '?').join(',');
 	const stepStmt = sqlite.prepare(`
+		WITH frontier(node_id, edge_path) AS (
+			SELECT
+				json_extract(value, '$.id')   AS node_id,
+				json_extract(value, '$.path') AS edge_path
+			FROM json_each(@frontier_json)
+		),
+		step_edges(prev_id, prev_path, next_id, edge_kind, edge_id) AS (
+			-- Branch 1: active forward edges (src_id matches; partial-index seek).
+			SELECT f.node_id, f.edge_path, e.dst_id, e.kind, e.id
+			FROM frontier f
+			JOIN edges e INDEXED BY idx_edges_active_src ON e.src_id = f.node_id
+			WHERE e.invalidated_at IS NULL
+			  AND e.kind IN (${kindPlaceholders})
+			  AND e.valid_from <= @at
+			  AND e.recorded_at <= @at
+			UNION ALL
+			-- Branch 2: active reverse edges (dst_id matches; partial-index seek).
+			SELECT f.node_id, f.edge_path, e.src_id, e.kind, e.id
+			FROM frontier f
+			JOIN edges e INDEXED BY idx_edges_active_dst ON e.dst_id = f.node_id
+			WHERE e.invalidated_at IS NULL
+			  AND e.kind IN (${kindPlaceholders})
+			  AND e.valid_from <= @at
+			  AND e.recorded_at <= @at
+			UNION ALL
+			-- Branch 3: historical forward edges (invalidated but still in-time-window for at).
+			-- Unhinted; planner picks. This branch fires only for back-in-time bitemporal queries
+			-- (rare; the per-save Verification Canvas always uses current-time asOf).
+			SELECT f.node_id, f.edge_path, e.dst_id, e.kind, e.id
+			FROM frontier f
+			JOIN edges e ON e.src_id = f.node_id
+			WHERE e.invalidated_at IS NOT NULL
+			  AND e.invalidated_at > @at
+			  AND e.kind IN (${kindPlaceholders})
+			  AND e.valid_from <= @at
+			  AND e.recorded_at <= @at
+			UNION ALL
+			-- Branch 4: historical reverse edges (mirror of Branch 3).
+			SELECT f.node_id, f.edge_path, e.src_id, e.kind, e.id
+			FROM frontier f
+			JOIN edges e ON e.dst_id = f.node_id
+			WHERE e.invalidated_at IS NOT NULL
+			  AND e.invalidated_at > @at
+			  AND e.kind IN (${kindPlaceholders})
+			  AND e.valid_from <= @at
+			  AND e.recorded_at <= @at
+		)
 		SELECT
-			f.node_id           AS prev_id,
-			f.edge_path         AS prev_path,
-			CASE WHEN e.src_id = f.node_id THEN e.dst_id ELSE e.src_id END AS next_id,
-			e.kind              AS edge_kind,
-			e.id                AS edge_id,
+			s.prev_id           AS prev_id,
+			s.prev_path         AS prev_path,
+			s.next_id           AS next_id,
+			s.edge_kind         AS edge_kind,
+			s.edge_id           AS edge_id,
 			n.kind              AS node_kind,
 			n.payload           AS payload,
 			n.confidence        AS confidence,
@@ -182,24 +244,13 @@ export function traverse(sqlite: Database.Database, input: TraverseInput): Trave
 			n.invalidated_at    AS invalidated_at,
 			n.recorded_at       AS recorded_at,
 			n.superseded_by     AS superseded_by
-		FROM (
-			SELECT
-				json_extract(value, '$.id')   AS node_id,
-				json_extract(value, '$.path') AS edge_path
-			FROM json_each(@frontier_json)
-		) f
-		JOIN edges e
-			ON (e.src_id = f.node_id OR e.dst_id = f.node_id)
-		   AND e.kind IN (${kindPlaceholders})
-		   AND e.valid_from <= @at
-		   AND (e.invalidated_at IS NULL OR e.invalidated_at > @at)
-		   AND e.recorded_at <= @at
+		FROM step_edges s
 		JOIN nodes n
-			ON n.id = (CASE WHEN e.src_id = f.node_id THEN e.dst_id ELSE e.src_id END)
+			ON n.id = s.next_id
 		   AND n.valid_from <= @at
 		   AND (n.invalidated_at IS NULL OR n.invalidated_at > @at)
 		   AND n.recorded_at <= @at
-		ORDER BY next_id ASC, e.kind ASC, e.id ASC
+		ORDER BY s.next_id ASC, s.edge_kind ASC, s.edge_id ASC
 	`);
 
 	// BFS loop. At each level we expand the current frontier (level L nodes) into next
@@ -208,7 +259,12 @@ export function traverse(sqlite: Database.Database, input: TraverseInput): Trave
 	let frontier: Array<{ id: string; path: string }> = seedRows.map((r) => ({ id: r.node_id, path: '' }));
 	for (let level = 0; level < input.max_hops && frontier.length > 0; level++) {
 		const frontierJson = JSON.stringify(frontier);
-		const rows = stepStmt.all(...kinds, { at: input.at, frontier_json: frontierJson }) as Array<{
+		// kinds is supplied 4x to feed the 4 UNION ALL branches in stepStmt
+		// (active-fwd + active-rev + historical-fwd + historical-rev).
+		const rows = stepStmt.all(
+			...kinds, ...kinds, ...kinds, ...kinds,
+			{ at: input.at, frontier_json: frontierJson },
+		) as Array<{
 			prev_id: string;
 			prev_path: string;
 			next_id: string;
