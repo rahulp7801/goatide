@@ -1,20 +1,54 @@
-// src/vs/goatide/extensions/goatide-bridge/src/extension.ts — Phase-1 stub
-// Per STATE.md ## Decisions: the bridge extension is the IPC partner for the
-// kernel sidecar. Phase 1 has no IPC yet — activate() resolves immediately to
-// prove the extension loads. Phase 4 (Verification Canvas) replaces this with
-// the per-save hook + kernel JSON-RPC client.
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// src/vs/goatide/extensions/goatide-bridge/src/extension.ts — Phase 4 (Plan 04-05).
+// REPLACES Phase-1 stub. Activates KernelClient + CanvasPanel + save-gate.
 
 import * as vscode from 'vscode';
+import * as path from 'node:path';
+import { KernelClient } from './kernel/client.js';
+import { CanvasPanel } from './canvas/panel.js';
+import { registerSaveGate } from './save-gate/on-will-save.js';
+import { scanForOrphanStagingFiles } from './save-gate/recovery-scan.js';
 
-export function activate(context: vscode.ExtensionContext): Thenable<void> {
-	console.log('[goatide-bridge] activate (Phase-1 stub)');
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+	console.log('[goatide-bridge] activate (Phase 4)');
+
+	// kernel/dist/main.js — relative to this extension's dist/extension.js position.
+	// Layout: <fork-root>/src/vs/goatide/extensions/goatide-bridge/dist/extension.js
+	// Kernel:  <fork-root>/kernel/dist/main.js
+	const kernelPath = path.resolve(context.extensionUri.fsPath, '..', '..', '..', '..', 'kernel', 'dist', 'main.js');
+
+	const kernel = new KernelClient();
+	context.subscriptions.push({ dispose: () => kernel.dispose() });
+	try {
+		await kernel.connect(kernelPath);
+	} catch (e) {
+		vscode.window.showErrorMessage(`GoatIDE: failed to start kernel sidecar: ${e instanceof Error ? e.message : String(e)}`);
+		// Continue activation in degraded state — Plan 04-06 banner picks up the connection state.
+	}
+
+	const panel = CanvasPanel.getOrCreate(context);
+	context.subscriptions.push({ dispose: () => panel.dispose() });
+
+	// Recovery scan first — clean up orphan staging files from any previous crash before
+	// we wire the new save-gate listener (which would create more staging files).
+	await scanForOrphanStagingFiles(context, kernel).catch((e) => {
+		console.error('[goatide-bridge] recovery scan failed', e);
+	});
+
+	registerSaveGate(context, kernel, panel);
+
+	// Reconnect command — Plan 04-06 wires the actual reconnect logic (this plan registers a stub).
 	context.subscriptions.push(
-		new vscode.Disposable(() => console.log('[goatide-bridge] dispose'))
+		vscode.commands.registerCommand('goatide.kernel.reconnect', async () => {
+			vscode.window.showInformationMessage('GoatIDE: reconnect logic lands in Plan 04-06.');
+		}),
 	);
-	return Promise.resolve();
 }
 
-export function deactivate(): Thenable<void> {
-	console.log('[goatide-bridge] deactivate');
-	return Promise.resolve();
+export async function deactivate(): Promise<void> {
+	// Subscriptions handle cleanup via context.subscriptions.
 }
