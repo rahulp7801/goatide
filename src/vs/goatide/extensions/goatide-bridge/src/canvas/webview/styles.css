@@ -1,0 +1,109 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+/* src/canvas/webview/styles.css - Phase 4 (Plan 04-03) Canvas styles using VS Code theme tokens. */
+
+body {
+	margin: 0;
+	padding: 0;
+	font-family: sans-serif;
+	font-size: 13px;
+	color: var(--vscode-foreground, #cccccc);
+	background-color: var(--vscode-editor-background, #1e1e1e);
+}
+
+.goatide-canvas {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 12px;
+}
+
+.goatide-canvas-modal {
+	border: 2px solid var(--vscode-statusBarItem-errorBackground, #5a1d1d);
+}
+
+.goatide-canvas-destructive .goatide-canvas-header {
+	background-color: var(--vscode-statusBarItem-errorBackground, #5a1d1d);
+	color: var(--vscode-statusBarItem-errorForeground, #fff);
+}
+
+.goatide-canvas-header {
+	display: flex;
+	justify-content: space-between;
+	padding: 8px 12px;
+	background-color: var(--vscode-titleBar-activeBackground, #3c3c3c);
+}
+
+.goatide-canvas-citations {
+	border-top: 1px solid var(--vscode-panel-border, #2b2b2b);
+	padding-top: 8px;
+}
+
+.goatide-citation-section + .goatide-citation-section {
+	margin-top: 12px;
+}
+
+.goatide-citation-row {
+	display: grid;
+	grid-template-columns: 1fr 2fr 80px auto auto;
+	gap: 8px;
+	padding: 6px 0;
+	border-bottom: 1px dotted var(--vscode-panel-border, #2b2b2b);
+	align-items: baseline;
+}
+
+.goatide-citation-breadcrumb {
+	font-family: monospace;
+	color: var(--vscode-descriptionForeground, #999);
+}
+
+.goatide-citation-snippet {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.goatide-citation-superseded {
+	color: var(--vscode-editorWarning-foreground, #ffb454);
+	font-size: 11px;
+}
+
+.goatide-canvas-actions {
+	display: flex;
+	gap: 8px;
+	padding-top: 12px;
+}
+
+.goatide-canvas-actions button {
+	padding: 6px 16px;
+	background-color: var(--vscode-button-background, #0e639c);
+	color: var(--vscode-button-foreground, #ffffff);
+	border: none;
+	cursor: pointer;
+}
+
+.goatide-canvas-actions button:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.goatide-canvas-reject {
+	background-color: var(--vscode-button-secondaryBackground, #3a3d41) !important;
+}
+
+.goatide-degraded-banner {
+	padding: 8px 16px;
+	background-color: var(--vscode-statusBarItem-errorBackground, #5a1d1d);
+	color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+}
+
+.goatide-confirm-phrase {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px;
+	border: 1px dashed var(--vscode-statusBarItem-errorBackground, #5a1d1d);
+}
