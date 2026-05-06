@@ -22,3 +22,8 @@ export {
 	DESTRUCTIVE_DIFF_PATTERNS,
 	DESTRUCTIVE_PATH_PATTERNS,
 } from './destructive.js';
+
+export {
+	classifyTier,
+	DEFAULT_HIGH_IMPACT_CONTRACT_PREFIXES,
+} from './classifier.js';
