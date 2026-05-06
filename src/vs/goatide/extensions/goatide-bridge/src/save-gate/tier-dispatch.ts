@@ -29,10 +29,26 @@ import type { CanvasPanel, CanvasDecision } from '../canvas/panel.js';
 import type { Citation, ReasoningReceipt } from '../kernel/methods.js';
 import type { CanvasShowPayload } from '../canvas/messages.js';
 import { applyEditAtomically } from './apply-edit.js';
-import { getCanvasModule, type CanvasTier, type CitationDetail } from './canvas-module.js';
+import { getCanvasModule, type CanvasTier, type CitationDetail, type AnchorResultCacheLike } from './canvas-module.js';
 
 // Re-export for consumers of tier-dispatch (Plan 04-05 had these as local types here).
 export type { CanvasTier, CitationDetail };
+
+// Module-scoped LRU+TTL cache for hydrateCitationDetails. One instance per extension host
+// (singleton); not per-save. Per Phase-4 gap-closure W12 (04-VERIFICATION.md ## W12 Latency
+// Gap), repeated saves of the same file inside a 60s window short-circuit kernel.queryNodes.
+// EXACT-key match only (TRAV-06 / Mandate C) - no fuzzy / prefix fallback. The cache is
+// allocated lazily once getCanvasModule() resolves, since AnchorResultCache lives in the
+// dynamic-imported kernel/dist/canvas/index.js (CJS<->ESM bridge).
+let citationCacheInstance: AnchorResultCacheLike | undefined;
+
+async function getCitationCache(): Promise<AnchorResultCacheLike> {
+	if (citationCacheInstance === undefined) {
+		const mod = await getCanvasModule();
+		citationCacheInstance = new mod.AnchorResultCache(); // defaults: 100 entries, 60_000 ms TTL
+	}
+	return citationCacheInstance;
+}
 
 export interface DispatchInputs {
 	kernel: KernelClient;
@@ -47,7 +63,12 @@ export interface DispatchInputs {
 
 export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 	const canvasMod = await getCanvasModule();
-	const citationDetails = await hydrateCitationDetails(inputs.kernel, inputs.receipt.citations);
+	const citationDetails = await hydrateCitationDetails(
+		inputs.kernel,
+		inputs.receipt.citations,
+		inputs.doc.uri.fsPath,
+		inputs.receipt.graph_snapshot_tx_time ?? new Date().toISOString(),
+	);
 	// W2: read the high-impact contract allowlist from VS Code configuration (declared in
 	// bridge package.json contributes.configuration). Falls back to DEFAULT_HIGH_IMPACT_CONTRACT_PREFIXES
 	// if the user has not set it. Per Plan 04-02 truth #1, the classifier itself never hardcodes
@@ -182,16 +203,32 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 	}
 }
 
-async function hydrateCitationDetails(kernel: KernelClient, citations: Citation[]): Promise<CitationDetail[]> {
+async function hydrateCitationDetails(
+	kernel: KernelClient,
+	citations: Citation[],
+	anchorPath: string,
+	asOf: string,
+): Promise<readonly CitationDetail[]> {
 	if (citations.length === 0) {
 		return [];
 	}
+	// Plan 04-08 (W12): consult the module-scoped AnchorResultCache before issuing the RPC.
+	// EXACT-key match only - the cache is keyed on (anchorPath, asOf) and the asOf advances
+	// after every DAO supersede() / seed(), so stale entries are unreachable by construction.
+	const cache = await getCitationCache();
+	const cacheKey = `${anchorPath}|${asOf}`;
+	const cached = cache.get(cacheKey);
+	if (cached !== undefined) {
+		return cached;
+	}
 	const result = await kernel.queryNodes({ node_ids: citations.map((c) => c.node_id) });
-	return result.nodes.map((n) => ({
+	const details: readonly CitationDetail[] = result.nodes.map((n) => ({
 		node_id: n.node_id,
 		kind: n.kind,
 		contract_path: n.contract_path,
 	}));
+	cache.set(cacheKey, details);
+	return details;
 }
 
 function deriveBodyPreview(_details: readonly CitationDetail[], citation: Citation): string {

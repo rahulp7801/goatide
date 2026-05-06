@@ -29,11 +29,31 @@ export interface TierClassifierInputs {
 	citationDetails?: readonly CitationDetail[];
 }
 
+// Plan 04-08 — AnchorResultCache surface mirror. Bridge cannot statically import the
+// kernel-side concrete class (CJS<->ESM moduleResolution gap, same as the type-mirror
+// pattern above), so we declare a structural shape and let the dynamic import resolve
+// the real constructor at runtime. The kernel-side AnchorResultCache satisfies this
+// shape by construction (kernel/src/test/canvas/anchor-cache.test.ts is the contract test).
+export interface AnchorResultCacheLike {
+	get(key: string): readonly CitationDetail[] | undefined;
+	set(key: string, value: readonly CitationDetail[]): void;
+	invalidateByAnchorPath(anchorPath: string): number;
+	clear(): void;
+	size(): number;
+}
+
+export interface AnchorResultCacheLikeCtor {
+	new(options?: { maxEntries?: number; ttlMs?: number; now?: () => number }): AnchorResultCacheLike;
+}
+
 export interface CanvasModule {
 	classifyTier: (inputs: TierClassifierInputs) => CanvasTier;
 	detectDestructive: (diff: string, anchorPath?: string) => boolean;
 	destructiveVerbForConfirmation: (diff: string) => string;
 	DEFAULT_HIGH_IMPACT_CONTRACT_PREFIXES: readonly string[];
+	AnchorResultCache: AnchorResultCacheLikeCtor;
+	DEFAULT_MAX_ENTRIES: number;
+	DEFAULT_TTL_MS: number;
 }
 
 let cachedCanvasModule: CanvasModule | undefined;
