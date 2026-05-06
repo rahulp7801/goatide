@@ -1,0 +1,10 @@
+# Phase 1.2 — Foreign-platform vendor binaries from @anthropic-ai/claude-agent-sdk.
+# rcedit.exe in build/gulpfile.vscode.ts:684 globs all `*.node` files in the
+# Windows build output to set PE version metadata. It chokes on non-Windows
+# binaries with "rcedit.exe failed: Unable to load file ... arm64-linux/audio-capture.node".
+# Exclude all non-win32 platform variants from the Windows build entirely —
+# they are dead weight on Windows runtime and break rcedit.
+@anthropic-ai/claude-agent-sdk/vendor/audio-capture/arm64-darwin/**
+@anthropic-ai/claude-agent-sdk/vendor/audio-capture/arm64-linux/**
+@anthropic-ai/claude-agent-sdk/vendor/audio-capture/x64-darwin/**
+@anthropic-ai/claude-agent-sdk/vendor/audio-capture/x64-linux/**
