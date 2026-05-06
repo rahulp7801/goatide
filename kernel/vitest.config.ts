@@ -7,7 +7,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
 	test: {
-		include: ['src/**/*.spec.ts'],
+		include: ['src/**/*.spec.ts', 'src/**/*.test.ts'],
 		// SQLite native module needs process isolation per test file: default 'threads' pool
 		// uses worker_threads which can produce module-loading races on better-sqlite3's native
 		// binding. Forks give each test file its own process so the binding loads cleanly.
