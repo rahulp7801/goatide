@@ -10,7 +10,7 @@
 // .cjs spec entries cover the webview-build smoke test which runs without tsx.
 
 module.exports = {
-	require: ['tsx/register'],
+	'node-option': ['import=tsx'],
 	extension: ['ts', 'tsx', 'cjs'],
 	spec: ['test/**/*.test.ts', 'test/**/*.test.tsx', 'test/**/*.test.cjs'],
 	recursive: true,

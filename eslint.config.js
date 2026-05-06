@@ -2420,4 +2420,20 @@ export default tseslint.config(
 				},
 			],
 		}
+	},
+	// GoatIDE first-party extensions live under src/vs/goatide/extensions/** with
+	// isolated dep trees (per Phase 01-04 source-of-truth-vs-build-path pattern) and
+	// don't follow upstream's layered import-patterns model. Disable the layer-driven
+	// `local/code-import-patterns` rule for these files — they bundle their deps
+	// per-package (vscode-jsonrpc, monaco-editor, etc.) rather than going through the
+	// upstream module graph. FORK-04 is the structural enforcement; this rule is
+	// upstream-internal layering insurance that doesn't apply here.
+	{
+		files: [
+			'src/vs/goatide/extensions/**/*.ts',
+			'src/vs/goatide/extensions/**/*.tsx',
+		],
+		rules: {
+			'local/code-import-patterns': 'off',
+		}
 	});
