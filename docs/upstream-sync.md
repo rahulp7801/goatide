@@ -283,3 +283,41 @@ the validator will fail loudly with the exact ID and HTTP status.
 Decide per-extension (remove vs allowlist with rationale) and append a
 new row to the table above. Allowlisting should be the rare path —
 removal preserves the typo-squat refusal value.
+
+## Phase 1.2 — LFS push-ability strategy: GitHub fork
+
+### Decision
+
+GoatIDE's origin (`rahulp7801/goatide`) is a GitHub fork of `microsoft/vscode`. This is a structural choice that resolves the GH008 LFS pre-receive blocker by leveraging GitHub's fork-network LFS storage sharing — pushed commits referencing upstream LFS pointers (test fixtures: `extensions/copilot/test/simulation/cache/**/*.sqlite`, `test/componentFixtures/.screenshots/baseline/**`) resolve via the parent's LFS storage rather than requiring duplicate uploads to the fork's own storage.
+
+### Why this path (vs. the three alternatives evaluated in `.planning/phases/01.2-.../01.2-RESEARCH.md`)
+
+- **Path 1 (fetch+push upstream LFS data):** Multi-GB per upstream-sync; eats into the user's free 10 GB monthly LFS bandwidth quota; recurring tax.
+- **Path 2 (`git lfs migrate export` blanket):** Rewrites all 1.95M reachable commits; breaks upstream-sync diffability; destructive.
+- **Path 3 (hybrid scoped migrate-export):** Same destructive rewrite, scoped to two upstream-only path families; reversible via `--object-map`; but recurring (must be re-applied on every monthly upstream-sync); the regression-detection meta-test adds permanent surface area.
+- **Path F (this — GitHub fork):** Zero local destructive work; LFS evaporates as a problem; upstream-sync is structurally simpler (`gh` CLI's "Sync fork" flow is available alongside the existing `scripts/upstream-sync.sh`); no recurring tax. Tradeoff: origin is PUBLIC (GitHub forks of public repos are public by default), and the fork relationship is visible on the user's GitHub profile. Accepted for a research-thesis dogfood project where the codebase will be publicly shareable anyway.
+
+### What changed structurally
+
+- `rahulp7801/goatide` is now a fork of `microsoft/vscode` (created 2026-05-06 via `gh repo fork microsoft/vscode --fork-name=goatide`).
+- The previous empty private `rahulp7801/goatide` was renamed to `rahulp7801/goatide-private-archive` to free the name; it can be deleted at any time.
+- Local `origin` URL unchanged (still `https://github.com/rahulp7801/goatide.git`); the fork takeover was transparent at the git remote level.
+- The fork's default branch is `main` (inherited from upstream); GoatIDE work pushes to `master` (matches the `[master]` trigger in `.github/workflows/ci.yml`). Both branches coexist; `main` tracks upstream, `master` is the GoatIDE delta.
+
+### Detach-time considerations (future)
+
+If the fork relationship is ever severed (via GitHub Settings → "Leave fork network" or GitHub Support), the LFS sharing benefit goes away. At that point the chosen path becomes one of:
+1. Pay for LFS storage on the detached repo (multi-GB upload).
+2. Run `git lfs migrate export` to scrub upstream-only LFS pointers from history (the deferred destructive work).
+3. Accept broken LFS smudge for cloners (cosmetic).
+
+This is not a near-term concern. The fork is the correct primitive for the current research-thesis stage.
+
+### Reverification command (run after every monthly sync)
+
+```sh
+git push origin master --dry-run         # exits 0 = LFS pointers resolve via fork network
+gh run list --limit 1                     # CI matrix triggered on push
+```
+
+If a future upstream-sync introduces a NEW LFS-tracked path that the fork-network mechanism cannot resolve (e.g., the user detaches the fork, or upstream's LFS storage moves), `git push --dry-run` will report the missing pointers verbatim and the fix becomes: re-run `gh repo sync` or fall back to one of Paths 1-3 above.
