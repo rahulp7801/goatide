@@ -681,19 +681,28 @@ function patchWin32DependenciesTask(destinationFolderName: string) {
 		const patchPromises = deps.map<Promise<unknown>>(async dep => {
 			const basename = path.basename(dep);
 
-			await rcedit(path.join(cwd, dep), {
-				'file-version': baseVersion,
-				'version-string': {
-					'CompanyName': 'Microsoft Corporation',
-					'FileDescription': product.nameLong,
-					'FileVersion': packageJson.version,
-					'InternalName': basename,
-					'LegalCopyright': 'Copyright (C) 2026 Microsoft. All rights reserved',
-					'OriginalFilename': basename,
-					'ProductName': product.nameLong,
-					'ProductVersion': packageJson.version,
-				}
-			});
+			try {
+				await rcedit(path.join(cwd, dep), {
+					'file-version': baseVersion,
+					'version-string': {
+						'CompanyName': 'Microsoft Corporation',
+						'FileDescription': product.nameLong,
+						'FileVersion': packageJson.version,
+						'InternalName': basename,
+						'LegalCopyright': 'Copyright (C) 2026 Microsoft. All rights reserved',
+						'OriginalFilename': basename,
+						'ProductName': product.nameLong,
+						'ProductVersion': packageJson.version,
+					}
+				});
+			} catch (err) {
+				// GoatIDE Phase 1.2 — Skip foreign-platform .node files that rcedit cannot
+				// load (they're built for darwin/linux and shipped as transitive deps of
+				// extensions/copilot's @github/copilot, @teddyzhu/clipboard-*,
+				// @anthropic-ai/claude-agent-sdk audio-capture, etc.). They are dead weight
+				// at Windows runtime; failing the build over their PE-metadata is wrong.
+				console.warn(`rcedit skipped non-Windows binary: ${dep}`);
+			}
 		});
 
 		await Promise.all(patchPromises);
