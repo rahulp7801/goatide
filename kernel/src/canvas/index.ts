@@ -15,3 +15,10 @@ export {
 	type CitationDetail,
 	type TierClassifierInputs,
 } from './types.js';
+
+export {
+	detectDestructive,
+	destructiveVerbForConfirmation,
+	DESTRUCTIVE_DIFF_PATTERNS,
+	DESTRUCTIVE_PATH_PATTERNS,
+} from './destructive.js';
