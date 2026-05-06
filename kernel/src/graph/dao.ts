@@ -49,6 +49,25 @@ export interface SeedInput {
 	provenance: ProvenanceInput;
 }
 
+/** Input shape for {@link GraphDAO.writeEdge}. */
+export interface WriteEdgeInput {
+	kind: EdgeKind;
+	src_id: string;
+	dst_id: string;
+}
+
+/**
+ * Inner-tx parameter shape from drizzle-orm's db.transaction(fn). Extracted via the
+ * Parameters<Parameters<...>[0]>[0] pattern so the DAO's writeEdge overload can accept
+ * an enclosing tx without re-deriving the type at each call site.
+ *
+ * Plan 02-03 SUMMARY documented `db.transaction(fn)` returning the callback's value
+ * synchronously (not the raw better-sqlite3 callable shape); same drizzle 0.45.2 surface
+ * is in play here. The inner tx exposes `.insert(...).values(...).run()` — same builder
+ * shape as the outer db, with no transaction-management methods.
+ */
+export type WriteEdgeTx = Parameters<Parameters<BetterSQLite3Database['transaction']>[0]>[0];
+
 export interface NodeRow {
 	id: string;
 	kind: NodeKind;
@@ -172,6 +191,43 @@ export class GraphDAO {
 		});
 
 		return { newId };
+	}
+
+	/**
+	 * Append-only edge insert. The DAO has no delete or generic update; this is the third
+	 * (and final) mutation surface alongside seed() and supersede().
+	 *
+	 * Caller-owned transaction overload: pass the inner tx parameter from db.transaction(fn)
+	 * to enlist the edge insert in an enclosing tx. atomicAccept (kernel/src/rpc/server.ts —
+	 * Plan 04-04) uses the no-arg form because dao.seed already runs its own tx; we accept
+	 * a documented two-tx pattern (seed + writeEdge each in own tx — partial state would
+	 * orphan the Attempt without an edge, which is survivable: the edge insert below is
+	 * idempotent against the just-inserted Attempt).
+	 *
+	 * Validates kind ∈ EDGE_KINDS via the SQLite CHECK trigger; throws SqliteError on
+	 * violation. ULID id; ts captured outside any tx (Pitfall 3).
+	 */
+	writeEdge(input: WriteEdgeInput): { id: string };
+	writeEdge(input: WriteEdgeInput, tx: WriteEdgeTx): { id: string };
+	writeEdge(input: WriteEdgeInput, tx?: WriteEdgeTx): { id: string } {
+		const id = ulid();
+		const ts = nowIso();
+		const row = {
+			id,
+			kind: input.kind,
+			src_id: input.src_id,
+			dst_id: input.dst_id,
+			valid_from: ts,
+			recorded_at: ts,
+		};
+		if (tx) {
+			tx.insert(edges).values(row).run();
+		} else {
+			this.db.transaction((innerTx) => {
+				innerTx.insert(edges).values(row).run();
+			});
+		}
+		return { id };
 	}
 
 	// -------- READ API --------
