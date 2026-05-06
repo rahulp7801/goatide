@@ -14,6 +14,7 @@
 
 import esbuild from 'esbuild';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,3 +35,10 @@ await esbuild.build({
 	},
 	logLevel: 'info',
 });
+
+// Copy index.html so panel.ts can read it from dist/canvas/index.html.
+fs.mkdirSync(path.resolve(__dirname, 'dist/canvas'), { recursive: true });
+fs.copyFileSync(
+	path.resolve(__dirname, 'src/canvas/webview/index.html'),
+	path.resolve(__dirname, 'dist/canvas/index.html'),
+);
