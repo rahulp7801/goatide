@@ -104,6 +104,13 @@ export function seedSupersessionChain(
 	const chainIds = [firstId];
 	let currentId = firstId;
 	for (let i = 2; i <= depth; i++) {
+		// Busy-wait 2ms so consecutive ISO-8601 timestamps differ at millisecond resolution.
+		// On fast hardware (macOS-14 ARM), two back-to-back Date.now() calls can return
+		// the same millisecond, which collapses bitemporal at-filter joins (TRAV-03):
+		// v(i-1).invalidated_at == v(i).valid_from == v(i-1).recorded_at, so the filter
+		// `invalidated_at > at` fails when at == recorded_at.
+		const spinUntil = Date.now() + 2;
+		while (Date.now() < spinUntil) { /* spin */ }
 		const { newId } = dao.supersede(currentId, { kind: 'ConstraintNode', body: `v${i}` });
 		chainIds.push(newId);
 		currentId = newId;
