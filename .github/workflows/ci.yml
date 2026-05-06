@@ -102,6 +102,9 @@ jobs:
       - name: Install kernel/ deps
         working-directory: ./kernel
         run: npm install
+      - name: Build kernel/ (dist/ required by e2e tests)
+        working-directory: ./kernel
+        run: npm run build
       - name: Run kernel/ vitest suite
         working-directory: ./kernel
         run: npx vitest run --reporter=dot
@@ -147,6 +150,9 @@ jobs:
       - name: Install kernel/ deps
         working-directory: ./kernel
         run: npm install
+      - name: Build kernel/ (dist/ required by e2e tests)
+        working-directory: ./kernel
+        run: npm run build
       - name: Run kernel/ vitest suite
         working-directory: ./kernel
         run: npx vitest run --reporter=dot
@@ -184,6 +190,10 @@ jobs:
         working-directory: ./kernel
         shell: bash
         run: npm install
+      - name: Build kernel/ (dist/ required by e2e tests)
+        working-directory: ./kernel
+        shell: bash
+        run: npm run build
       - name: Run kernel/ vitest suite
         working-directory: ./kernel
         shell: bash
