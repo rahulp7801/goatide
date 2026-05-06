@@ -37,7 +37,20 @@ export const ConstraintPayload   = z.object({ kind: z.literal('ConstraintNode'),
 export const DecisionPayload     = z.object({ kind: z.literal('DecisionNode'),   body: Body, anchor: Anchor, derived_under_priority: z.string().optional() });
 export const ContractPayload     = z.object({ kind: z.literal('ContractNode'),   body: Body, anchor: Anchor, contract_path: z.string().optional() });
 export const OpenQuestionPayload = z.object({ kind: z.literal('OpenQuestion'),   body: Body, anchor: Anchor });
-export const AttemptPayload      = z.object({ kind: z.literal('Attempt'),        body: Body, anchor: Anchor, attempt_kind: z.string().optional() });
+
+// CANV-04/05/09: AttemptPayload extension. The 'tier' enum literal is duplicated here from
+// kernel/src/canvas/types.ts CanvasTierSchema — graph/* cannot import from canvas/* (layering).
+// Cross-checked by kernel/src/test/canvas/attempt-payload.spec.ts.
+const AttemptTierEnum = z.enum(['silent', 'inline', 'modal']);
+
+export const AttemptPayload = z.object({
+	kind: z.literal('Attempt'),
+	body: Body,
+	anchor: Anchor,
+	attempt_kind: z.string().optional(),                      // 'accepted' | 'rejected' | 'kernel_degraded' | 'shutdown_save_bypass' (Plan 04-04 sets these)
+	accept_latency_ms: z.number().nonnegative().optional(),   // CANV-09 telemetry
+	tier: AttemptTierEnum.optional(),                         // CANV-04/05 record-keeping
+});
 
 export const NodePayloadSchema = z.discriminatedUnion('kind', [
 	ConstraintPayload,
