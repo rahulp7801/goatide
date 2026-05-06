@@ -16,10 +16,10 @@
 # Sentinel filename is unique enough that cleanup is idempotent.
 set -euo pipefail
 
-SENTINEL="scripts/__refusal_meta_market.tmp"
+SENTINEL="scripts/__refusal_meta_market.txt"
 
 cleanup() {
-  rm -f "$SENTINEL"
+	rm -f "$SENTINEL"
 }
 trap cleanup EXIT
 
@@ -31,8 +31,8 @@ echo "https://marketplace.visualstudio.com/items?itemName=fake.fake" > "$SENTINE
 EXIT_CODE=0
 bash scripts/ci/refuse-marketplace.sh > /dev/null 2>&1 || EXIT_CODE=$?
 if [ "$EXIT_CODE" -eq 0 ]; then
-  echo "META FAIL: refuse-marketplace did not fire on injected violation"
-  exit 1
+	echo "META FAIL: refuse-marketplace did not fire on injected violation"
+	exit 1
 fi
 
 # 3. Cleanup happens via trap, but do it now too so step 4 sees the clean state.
@@ -42,8 +42,8 @@ rm -f "$SENTINEL"
 EXIT_CODE=0
 bash scripts/ci/refuse-marketplace.sh > /dev/null 2>&1 || EXIT_CODE=$?
 if [ "$EXIT_CODE" -ne 0 ]; then
-  echo "META FAIL: refuse-marketplace stuck red after cleanup (exit $EXIT_CODE)"
-  exit 1
+	echo "META FAIL: refuse-marketplace stuck red after cleanup (exit $EXIT_CODE)"
+	exit 1
 fi
 
 echo "META PASS: refuse-marketplace.sh fires on violation and clears on cleanup."
