@@ -120,13 +120,16 @@ fi
 HTMLS=("build/rspack/workbench-rspack.html" "build/vite/workbench-vite.html")
 for HTML in "${HTMLS[@]}"; do
 	if [[ -f "$HTML" ]]; then
-		sed -i \
+		# Cross-platform in-place edit: GNU sed accepts `sed -i` with no arg,
+		# BSD sed (macOS default) requires `sed -i ''`. Pipe + mv side-steps
+		# the difference entirely. Atomic on POSIX (mv within same FS).
+		sed \
 			-e 's#https://marketplace\.visualstudio\.com/_apis/public/gallery/searchrelevancy/extensionquery#https://open-vsx.org/vscode/gallery/search#g' \
 			-e 's#https://marketplace\.visualstudio\.com/_apis/public/gallery#https://open-vsx.org/vscode/gallery#g' \
 			-e 's#https://marketplace\.visualstudio\.com/items#https://open-vsx.org/vscode/item#g' \
 			-e 's#https://marketplace\.visualstudio\.com/publishers#https://open-vsx.org/vscode/publisher#g' \
 			-e 's#https://marketplace\.vsallin\.net/_apis/public/gallery#https://open-vsx.org/vscode/gallery#g' \
-			"$HTML"
+			"$HTML" > "$HTML.tmp" && mv "$HTML.tmp" "$HTML"
 		echo "GoatIDE HTML brand applied to $HTML"
 	fi
 done
