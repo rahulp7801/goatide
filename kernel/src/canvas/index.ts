@@ -27,3 +27,11 @@ export {
 	classifyTier,
 	DEFAULT_HIGH_IMPACT_CONTRACT_PREFIXES,
 } from './classifier.js';
+
+// Plan 04-08 — gap-closure W12: bridge<->kernel anchor-result LRU+TTL cache.
+export {
+	AnchorResultCache,
+	DEFAULT_MAX_ENTRIES,
+	DEFAULT_TTL_MS,
+	type AnchorResultCacheOptions,
+} from './anchor-cache.js';
