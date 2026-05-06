@@ -3,25 +3,27 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Wave-0 stub for CANV-04 + CANV-08 — bridge tier classifier integration.
-// (Pure-logic classifier itself lives in kernel/src/test/canvas/* — this file covers
-// the bridge wiring: classifier output → tier-dispatch → canvas show/silent/inline.)
-// Plan 04-02 implements the kernel-side pure classifier; Plan 04-04 wires it into the
-// bridge save-gate.
+// Bridge classifier integration — SUPERSEDED by:
+//   - kernel/src/test/canvas/tier-classifier.test.ts (8 passing pure-logic tests for the
+//     5-signal ordered guard chain — destructive / high-impact-contract / inferred / explicit /
+//     empty)
+//   - test/integration/save-gate.test.ts (the CANV-04 / SC #4 inline-tier non-blocking
+//     runtime assertion added by Plan 04-09 / W13 gap-closure — proves the bridge wiring of
+//     classifier output -> tier-dispatch -> file write for the inline tier)
+//
+// The 4 stubs that previously lived here referenced classifyTier as an unimplemented
+// placeholder. They were Plan-04-01-era stubs that became stale once Plan 04-02 (kernel-side
+// classifier) + Plan 04-05 (bridge save-gate wiring) landed. Per Plan 04-09, they are removed
+// entirely rather than rewritten — the kernel + integration coverage is sufficient. Adding
+// bridge-side unit duplicates of the kernel-side classifier assertions would be redundant.
+//
+// If a future change to the bridge wiring of classifyTier (e.g., a new signal added at the
+// bridge layer) requires bridge-only assertions, add them HERE and remove this comment.
 
 import { describe, it } from 'mocha';
 
-describe('CANV-04 + CANV-08 — bridge tier classifier integration', () => {
-	it.skip('classifier: destructive diff routes to modal — Plan 04-02 has not yet implemented classifyTier', () => {
-		// Stub. Plan 04-02 fills this in.
-	});
-	it.skip('classifier: high-impact ContractNode citation routes to modal — Plan 04-02 has not yet implemented citesHighImpactContract', () => {
-		// Stub. Plan 04-02.
-	});
-	it.skip('classifier: all-Explicit-promoted citations route to silent — Plan 04-02 has not yet implemented signal weighting', () => {
-		// Stub. Plan 04-02.
-	});
-	it.skip('classifier: Inferred-unpromoted citation routes to inline — Plan 04-02 has not yet implemented signal weighting', () => {
-		// Stub. Plan 04-02.
+describe('CANV-04 + CANV-08 — bridge classifier integration (SUPERSEDED)', () => {
+	it('coverage delegated to kernel/src/test/canvas/tier-classifier.test.ts and integration/save-gate.test.ts', () => {
+		// Intentional no-op — see the file header for the full coverage map.
 	});
 });
