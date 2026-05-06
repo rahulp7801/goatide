@@ -3,44 +3,42 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// kernel/src/test/canvas/benchmark.spec.ts — Phase 4 (Plan 04-07) per-save latency benchmark.
+// kernel/src/test/canvas/benchmark.spec.ts — Phase 4 (Plan 04-07/04-08) per-save latency benchmark.
 //
 // Carries the open question from Phase-1 RESEARCH ## Open Questions #3 + STATE ## Blockers/Concerns:
 // "Recursive CTE performance ceiling unknown — Phase 4 includes a benchmark gate at 10K-node /
 // 50K-edge synthetic graph". Spec target: per-save total p99 < 500 ms across 100 saves.
 //
 // =============================================================================================
-// PHASE-4 EXECUTION FINDING (2026-05-06): TARGET MISSED — gap-closure required
+// PHASE-4 GAP-CLOSURE (Plan 04-08, 2026-05-06): TARGET MET
 // =============================================================================================
-// Measured (kernel/scripts/bench-diagnostic.mjs, this same code path; full numbers in
-// .planning/phases/04-verification-canvas-per-save-tiered/04-07-phase-verify-evidence.md):
+// Pre-fix measurements (Plan 04-07 close, 2026-05-06):
+//   1 K nodes  / 5 K edges:  p99 = 12 168 ms  (24x over 500ms target)
+//   10 K nodes / 50 K edges: p99 = 115 348 ms (230x over 500ms target)
 //
-//   Scale                       Samples   Seed nodes  Seed edges   p50         p99         Target met
-//   1 K nodes / 5 K edges       100       12 ms       31 ms        11 489 ms   12 168 ms   NO (24×)
-//   10 K nodes / 50 K edges     3         91 ms       399 ms       114 794 ms  115 348 ms  NO (230×)
+// Post-fix measurements (Plan 04-08, 2026-05-06):
+//   1 K nodes  / 5 K edges:  p99 = 15 ms  (target 500ms; 33x margin) — 811x speedup
+//   10 K nodes / 50 K edges: p99 = 23 ms  (target 500ms; 21x margin) — 5,015x speedup
 //
-// Per-save bottleneck is the recursive-CTE traverse (kernel/src/graph/traverse.ts) — the
-// `walk` BFS expands ≈ 5⁴ = 625 path-rows per anchor seed before `walk_dedup` collapses to
-// O(node_count) rows. resolveAnchor returns ~10 candidates per file path (i % 100 fanout
-// in the seed fixture), giving ≈ 6 250 walk rows per traverse() call. SQLite's recursive CTE
-// row materialisation then scales linearly with `walk` size, not `walk_dedup` size.
-//
-// Gap-closure recommendation (forwarded to Phase-4-iter, anchor: RESEARCH ## Risk 2):
-//   1. Add an LRU cache at the bridge↔kernel boundary on (anchorPath, asOf) → CitationDetail[]
-//      so the same file path saved repeatedly does not re-run traverse. Default 100-entry,
-//      per-window TTL = 60 s. Eviction on supersede() / seed() of any anchor-matching node.
-//   2. Push the visited-set guard down into the recursive step's anchor-edge JOIN so duplicate
-//      paths are pruned BEFORE materialisation, not after — turns 5⁴ branching into the
-//      walk_dedup cardinality directly. SQLite supports this via correlated subquery on the
-//      visited TEXT column.
-//   3. If 1+2 still miss, add bitemporal-active-only partial indexes on edges(src_id, dst_id)
-//      WHERE invalidated_at IS NULL — the recorded_at <= @at filter currently does a full
-//      table scan because the existing partial index only covers the active subset.
-//
-// Spec posture for Phase-4 close: this file is `it.skip`-gated so CI stays green during the
-// gap. The bench-diagnostic.mjs script runs on demand outside vitest and writes
-// kernel/benchmark-results.json — phase-verify evidence file embeds the JSON. Phase-4-iter
-// owns un-skipping after the LRU cache lands.
+// 3-layer mitigation that landed:
+//   1. Walk-dedup pushdown via JS-iterative BFS (kernel/src/graph/traverse.ts) — duplicate
+//      paths pruned BEFORE materialisation; walk row count is now O(reachable_nodes).
+//      The recursive-CTE NOT-EXISTS self-reference strategy from the plan is impossible
+//      in SQLite (verified: "multiple recursive references"); the iterative-BFS fallback
+//      uses one prepared per-level query parameterised by json_each over the frontier.
+//   2. AnchorResultCache LRU + TTL at the bridge<->kernel boundary
+//      (kernel/src/canvas/anchor-cache.ts + src/vs/goatide/extensions/goatide-bridge/src/
+//      save-gate/tier-dispatch.ts) — repeated saves of the same file inside 60s short-circuit
+//      kernel.queryNodes. NOT exercised by THIS spec directly (the spec is kernel-internal;
+//      the bridge layer is what consumes the cache). The 1K + 10K assertions exercise the
+//      kernel-side fix only — even without the cache, the per-save p99 is now 33x under target.
+//   3. Bitemporal-active partial indexes (kernel/src/graph/migrations/0004_traverse_perf_indexes.sql) —
+//      idx_edges_active_src + idx_edges_active_dst + idx_nodes_active_kind. Force-applied via
+//      INDEXED BY in the per-level query's 4-way UNION ALL split (active-fwd + active-rev +
+//      historical-fwd + historical-rev). Without the INDEXED BY hint the planner picks SCAN
+//      e even after ANALYZE because the partial-index WHERE clause doesn't subsume the
+//      bitemporal OR predicate. EXPLAIN QUERY PLAN at 10K-scale shows the active branches
+//      do SEARCH e USING INDEX idx_edges_active_src/dst — down from full SCAN e over 50K rows.
 // =============================================================================================
 //
 // W8 (per Plan 04-07 PLAN.md): writes a deterministic schema to kernel/benchmark-results.json
@@ -78,13 +76,8 @@ interface BenchmarkResults {
 	timestamp: string;
 }
 
-describe('Phase-4 benchmark — 10K-node + 50K-edge graph; per-save p99 < 500ms', () => {
-	// SKIPPED: target missed at Phase-4 close (10K-scale p99 ≈ 115 s, target 500 ms). See the
-	// header comment for measured numbers + gap-closure recommendation. Phase-4-iter unflips
-	// after LRU cache lands. Run on demand via `node scripts/bench-diagnostic.mjs` for fresh
-	// numbers; the script and this spec share the same code path so any perf change is visible
-	// in either entry point.
-	it.skip('seeds 10K nodes + 50K edges + measures end-to-end save latency', async () => {
+describe('Phase-4 benchmark — synthetic graph; per-save p99 < 500ms', () => {
+	it('seeds 10K nodes + 50K edges + measures end-to-end save latency', async () => {
 		const TARGET_P99_MS = 500;
 		const SEED_NODES = 10_000;
 		const EDGES_PER_NODE = 5;
@@ -176,7 +169,7 @@ describe('Phase-4 benchmark — 10K-node + 50K-edge graph; per-save p99 < 500ms'
 
 			// --- Measure phase ---
 			// 100 saves through the production buildReceipt + classifyTier chain (Zod + drizzle
-			// + recursive-CTE traverse + ReceiptDAO write). This is the per-save latency the
+			// + JS-iterative-BFS traverse + ReceiptDAO write). This is the per-save latency the
 			// bridge experiences between onWillSaveTextDocument and dispatchTier.
 			const latencies: number[] = [];
 			for (let s = 0; s < SAMPLE_SAVES; s++) {
@@ -204,7 +197,7 @@ describe('Phase-4 benchmark — 10K-node + 50K-edge graph; per-save p99 < 500ms'
 
 			// eslint-disable-next-line no-console
 			console.log(
-				`per-save latency over ${SAMPLE_SAVES} samples: ` +
+				`[10K] per-save latency over ${SAMPLE_SAVES} samples: ` +
 					`p50=${p50}ms p99=${p99}ms max=${max}ms min=${min}ms mean=${mean.toFixed(1)}ms`,
 			);
 
@@ -229,14 +222,94 @@ describe('Phase-4 benchmark — 10K-node + 50K-edge graph; per-save p99 < 500ms'
 			// eslint-disable-next-line no-console
 			console.log(`benchmark-results.json written to ${outPath}`);
 
-			// RESEARCH ## Open Questions #3 target. Phase-4-iter unflips this assertion after
-			// the LRU cache + walk-dedup-pushdown gap-closure lands.
+			// RESEARCH ## Open Questions #3 target. Plan 04-08 gap-closure landed: 10K p99 = 23ms
+			// post-fix vs 115 348ms pre-fix (5,015x speedup). The assertion runs in CI now.
 			expect(p99).toBeLessThan(TARGET_P99_MS);
 
 			handle.close();
 		} finally {
 			tmp.dispose();
 		}
-	}, 600_000);  // 10 min budget — bulk seed ~500 ms; 100 full saves at ~12 s/save = ~20 min.
-	             // Spec STAYS skipped at Phase-4 close (target missed by 24× at 1K, 230× at 10K).
+	}, 120_000);  // Post-fix budget: 60s seed + ~3s measure phase. Pre-fix had 600s timeout
+	              // because the 100 saves at ~12-115s/save would otherwise blow the test budget.
+
+	it('seeds 1K nodes + 5K edges + measures end-to-end save latency (realistic Phase-5 scale)', async () => {
+		const TARGET_P99_MS = 500;
+		const SEED_NODES = 1_000;     // <-- LITERAL — the realistic Phase-5 graph state.
+		const EDGES_PER_NODE = 5;
+		const SAMPLE_SAVES = 100;
+
+		const tmp = mkTempDb();
+		try {
+			const handle = openDatabase(tmp.dbPath);
+			const dao = new GraphDAO(handle.db);
+			const receiptDao = new ReceiptDAO(handle.db);
+			const sqlite = handle.sqlite;
+
+			// Bulk-seed 1K nodes (same pattern as the 10K test) — completes in < 100ms.
+			const nodeIds: string[] = [];
+			const seedTs = new Date().toISOString();
+			const insertNode = sqlite.prepare(
+				`INSERT INTO nodes (id, kind, payload, confidence, valid_from, recorded_at) VALUES (?, ?, ?, 'Explicit', ?, ?)`,
+			);
+			const insertProv = sqlite.prepare(
+				`INSERT INTO provenance (node_id, source, actor, recorded_at) VALUES (?, 'cli', 'phase-4-benchmark-1k', ?)`,
+			);
+			sqlite.transaction(() => {
+				for (let i = 0; i < SEED_NODES; i++) {
+					const id = `01J${i.toString().padStart(23, '0').slice(-23)}`;
+					nodeIds.push(id);
+					const payload = JSON.stringify({
+						kind: 'ConstraintNode',
+						body: `synthetic rule ${i} — Phase-4 benchmark 1K`,
+						anchor: { file: `src/m${i % 100}/f${i}.ts` },
+					});
+					insertNode.run(id, 'ConstraintNode', payload, seedTs, seedTs);
+					insertProv.run(id, seedTs);
+				}
+			})();
+
+			const insertEdge = sqlite.prepare(
+				`INSERT INTO edges (id, kind, src_id, dst_id, valid_from, recorded_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			);
+			let edgeCounter = 0;
+			sqlite.transaction(() => {
+				for (let i = 0; i < SEED_NODES; i++) {
+					for (let j = 1; j <= EDGES_PER_NODE; j++) {
+						const dst = (i + j) % SEED_NODES;
+						const eid = `01E${edgeCounter.toString().padStart(23, '0').slice(-23)}`;
+						edgeCounter++;
+						insertEdge.run(eid, j === 1 ? 'parent_of' : 'references', nodeIds[i], nodeIds[dst], seedTs, seedTs);
+					}
+				}
+			})();
+
+			const latencies: number[] = [];
+			for (let s = 0; s < SAMPLE_SAVES; s++) {
+				const file = `src/m${s % 100}/f${s}.ts`;
+				const diff = buildSampleDiff({
+					filePath: file,
+					oldText: `// before save ${s}`,
+					newText: `// before save ${s}\n// after save ${s}`,
+				});
+				const asOf = new Date().toISOString();
+				const start = Date.now();
+				const receipt = buildReceipt({ diff, destructive: false, asOf }, dao, receiptDao, handle.sqlite);
+				const tier = classifyTier({ receipt, diff, anchorPath: file });
+				const elapsed = Date.now() - start;
+				latencies.push(elapsed);
+				expect(['silent', 'inline', 'modal']).toContain(tier);
+			}
+
+			latencies.sort((a, b) => a - b);
+			const p99 = latencies[Math.floor(latencies.length * 0.99)];
+			// eslint-disable-next-line no-console
+			console.log(`[1K] p99=${p99}ms (target ${TARGET_P99_MS}ms)`);
+			expect(p99).toBeLessThan(TARGET_P99_MS);
+
+			handle.close();
+		} finally {
+			tmp.dispose();
+		}
+	}, 120_000);
 });
