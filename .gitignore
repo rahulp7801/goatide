@@ -18,6 +18,10 @@ src/vs/base/browser/ui/codicons/codicon/codicon.ttf
 # GoatIDE-owned build artifacts (Plan 01-04: kernel sidecar + bridge extension).
 kernel/dist/
 kernel/node_modules/
+# Phase-4 benchmark diagnostic output (Plan 04-07; W8 schema is durable but
+# the JSON file is per-run, not source-of-record).
+kernel/benchmark-results.json
+kernel/benchmark-results-*.json
 src/vs/goatide/extensions/**/dist/
 src/vs/goatide/extensions/**/node_modules/
 /out*/
