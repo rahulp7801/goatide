@@ -115,6 +115,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential g++ libx11-dev libxkbfile-dev libsecret-1-dev libkrb5-dev python-is-python3 fakeroot rpm jq ripgrep
       - name: npm install (vscode upstream tree)
+        env:
+          # Authenticate @vscode/ripgrep's postinstall download against
+          # github.com/microsoft/ripgrep-prebuilt — unauthenticated requests
+          # hit the 60/hr API rate limit and fail with 403.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm install
       - name: Brander (idempotent)
         run: bash scripts/prepare_goatide.sh
@@ -159,6 +164,8 @@ jobs:
       - name: Install macOS deps
         run: brew install jq ripgrep
       - name: npm install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm install
       - name: Brander (idempotent)
         run: bash scripts/prepare_goatide.sh
@@ -203,6 +210,8 @@ jobs:
           choco install -y jq ripgrep
       - name: npm install
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm install
       - name: Brand
         shell: bash
