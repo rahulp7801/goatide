@@ -10,22 +10,36 @@
 #   0 — clean tree, no banned references found
 #   1 — at least one banned reference found (printed to stderr-friendly stdout)
 #
-# Allowlisted directories: docs/, .planning/, UPSTREAM_BASE
-# (UPSTREAM_BASE may legitimately reference upstream-version metadata.)
+# IMPLEMENTATION NOTE (Phase 1.2 cross-platform fix):
+# This gate uses `git ls-files | grep -vE | rg -F` rather than `rg --glob`
+# tree-scan. Reasons (mirrors refuse-vector-libs.sh comment):
+#   - rg's tree-scan respects platform-dependent ignore files and runner-image
+#     gitignore configurations; on Ubuntu 22.04 GitHub runners it ignores
+#     `scripts/__refusal_meta_market.txt`-style sentinels even though they're
+#     tracked (or intent-to-added). The git-ls-files-piped pattern is
+#     deterministic across linux/macos/windows-mingw.
+#   - Untracked sentinels from a meta-test are NOT scanned unless they have
+#     been `git add -N`'d — meta-tests intentionally do this (see
+#     refusal-marketplace-meta.sh).
+#   - rg on Windows mingw refuses stdin pipes; the POSIX `grep -vE` filter
+#     dodges that footgun. Per-file `rg -F` invocation is unaffected by the
+#     stdin bug.
 set -euo pipefail
 
 PATTERN='marketplace\.visualstudio\.com|vscode-update\.azurewebsites\.net|gallery\.vsassets\.io'
 
-# Allowlisted with rationale (Phase 1.1):
+# Allowlisted paths (anchored regex; one alternation per line for readability).
+# Rationale (Phase 1.1 — see RESEARCH.md ## Architecture Patterns > Pattern 2):
+#   - docs/, .planning/, UPSTREAM_BASE: documentation + project state
 #   - cli/CONTRIBUTING.md, extensions/copilot/CHANGELOG.md,
 #     extensions/theme-seti/CONTRIBUTING.md, README.md (root):
 #     doc/changelog references; informational, not runtime config.
 #   - build/lib/test/fixtures/policies/{darwin,win32}/fr-fr/*,
 #     build/lib/test/policyConversion.test.ts:
 #     French YOLO-mode warning translation; not user-facing in GoatIDE.
-#   - src/vs/workbench/contrib/chat/browser/tools/languageModelToolsService.ts:
+#   - src/vs/workbench/contrib/chat/.../languageModelToolsService.ts:
 #     YOLO-mode warning string literal mentioning Dev Containers extension URL
-#     as a compromise example (not config). FORK-04: this file is in workbench
+#     as a compromise example (not config). FORK-04: the file is in workbench
 #     so it is off-limits for editing — the allowlist here is for the
 #     refusal grep gate, NOT for editing rights.
 #   - scripts/test/upstream-sync-dryrun.sh:
@@ -35,29 +49,58 @@ PATTERN='marketplace\.visualstudio\.com|vscode-update\.azurewebsites\.net|galler
 #     the brander itself contains the source pattern (in a header comment
 #     and as the LHS of sed -e rewrite expressions); these are the rewrite
 #     RULES, not runtime config — without them the gate could never go GREEN.
-# (Source: 01.1-RESEARCH.md ## Architecture Patterns > Pattern 2 lines 246-253;
-#  01-05-phase-verify-evidence.md ## Known Phase-1 Escalations > FORK-06.)
+#   - scripts/ci/refuse-marketplace.sh and scripts/test/refusal-marketplace-meta.sh:
+#     the gate file and its own meta-test (would create circular self-match).
+#   - .devcontainer/README.md (Phase 1.2 — surfaced when the gate switched to
+#     git-ls-files): upstream-shipped onboarding doc that links to two VS Code
+#     marketplace extensions (Resource Monitor + GitHub Codespaces) as
+#     informational install instructions for upstream contributors. Not a
+#     runtime gallery URL, not user-facing in GoatIDE. Documentation reference.
+#   - .github/workflows/ci.yml (Phase 1.2 — surfaced when the gate switched
+#     to git-ls-files): contains the literal string "marketplace.visualstudio.com"
+#     in the FORK-06 step's `name:` field. This is the gate's own self-naming;
+#     allowlisting prevents circular failure. The OLD rg-tree-scan implicitly
+#     ignored this via `--glob '!.git/**'` matching `.github/` as a prefix; the
+#     new git-ls-files pattern surfaces it, so it must be allowlisted explicitly.
 # (NOTE: build/rspack/workbench-rspack.html and build/vite/workbench-vite.html
 #  are NOT allowlisted — they are now branded by prepare_goatide.sh.)
+ALLOWLIST_REGEX='^(docs/|\.planning/|UPSTREAM_BASE$'
+ALLOWLIST_REGEX+='|cli/CONTRIBUTING\.md$'
+ALLOWLIST_REGEX+='|extensions/copilot/CHANGELOG\.md$'
+ALLOWLIST_REGEX+='|extensions/theme-seti/CONTRIBUTING\.md$'
+ALLOWLIST_REGEX+='|README\.md$'
+ALLOWLIST_REGEX+='|build/lib/test/fixtures/policies/'
+ALLOWLIST_REGEX+='|build/lib/test/policyConversion\.test\.ts$'
+ALLOWLIST_REGEX+='|src/vs/workbench/contrib/chat/browser/tools/languageModelToolsService\.ts$'
+ALLOWLIST_REGEX+='|scripts/test/upstream-sync-dryrun\.sh$'
+ALLOWLIST_REGEX+='|scripts/prepare_goatide\.sh$'
+ALLOWLIST_REGEX+='|scripts/ci/refuse-marketplace\.sh$'
+ALLOWLIST_REGEX+='|scripts/test/refusal-marketplace-meta\.sh$'
+ALLOWLIST_REGEX+='|\.devcontainer/README\.md$'
+ALLOWLIST_REGEX+='|\.github/workflows/ci\.yml$)'
 
-# rg returns exit 1 on no matches; we want that to mean "clean", not "fail".
-HITS=$(rg --no-heading --color=never -e "$PATTERN" \
-	--glob '!docs/**' \
-	--glob '!.planning/**' \
-	--glob '!UPSTREAM_BASE' \
-	--glob '!.git/**' \
-	--glob '!scripts/ci/refuse-marketplace.sh' \
-	--glob '!scripts/test/refusal-marketplace-meta.sh' \
-	--glob '!cli/CONTRIBUTING.md' \
-	--glob '!extensions/copilot/CHANGELOG.md' \
-	--glob '!extensions/theme-seti/CONTRIBUTING.md' \
-	--glob '!README.md' \
-	--glob '!build/lib/test/fixtures/policies/**' \
-	--glob '!build/lib/test/policyConversion.test.ts' \
-	--glob '!src/vs/workbench/contrib/chat/browser/tools/languageModelToolsService.ts' \
-	--glob '!scripts/test/upstream-sync-dryrun.sh' \
-	--glob '!scripts/prepare_goatide.sh' \
-	|| true)
+# Enumerate tracked files (and intent-to-add sentinels from meta-tests),
+# strip allowlisted paths, drop tracked-but-deleted entries. Pass to rg via
+# xargs because the unfiltered tree (~14k files) exceeds Windows mingw's
+# argv limit when expanded into a single rg invocation; xargs batches args
+# in chunks of ARG_MAX. -0/-r/-a NUL-delimit so filenames with spaces survive.
+TMPLIST=$(mktemp)
+trap 'rm -f "$TMPLIST"' EXIT
+
+git ls-files -z | grep -zvE "$ALLOWLIST_REGEX" \
+	| while IFS= read -r -d '' f; do
+		[ -f "$f" ] && printf '%s\0' "$f"
+	done > "$TMPLIST"
+
+if [ ! -s "$TMPLIST" ]; then
+	echo "FORK-06 ok — no scannable files (empty tree?)"
+	exit 0
+fi
+
+# xargs -0 batches NUL-delimited filenames into multiple rg calls. Default
+# regex mode (NOT -F fixed-string) so `marketplace\.visualstudio\.com|...`
+# is interpreted as a regex. xargs -r/-a avoids invoking rg with zero args.
+HITS=$(xargs -0 -a "$TMPLIST" rg --no-heading --color=never "$PATTERN" 2>/dev/null || true)
 
 if [ -n "$HITS" ]; then
 	echo "FORK-06 violation — Microsoft Marketplace references found:"
