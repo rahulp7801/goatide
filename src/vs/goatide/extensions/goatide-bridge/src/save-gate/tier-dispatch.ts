@@ -21,55 +21,18 @@
 // but stable as long as kernel/ stays workspaced under the fork.
 
 import * as vscode from 'vscode';
-// Bridge is CJS (no type:module in package.json); kernel/dist is ESM. Cross-format type
-// imports under Node16 moduleResolution require resolution-mode attributes which TS 5.6
-// supports but emits as CJS-incompatible. Simpler path: locally redeclare the small
-// classifier API surface (4 symbols). Drift between this and kernel/canvas/types.ts is
-// caught by Plan 04-02's attempt-payload.spec structural cross-check on the enum + by
-// the bridge integration test which exercises the runtime module via dynamic import.
+// Plan 04-06: getCanvasModule + CanvasTier + CitationDetail are now in canvas-module.ts so
+// on-will-save.ts can reuse the dynamic-import helper for the CANV-10 destructive-block
+// check under degraded state.
 import type { KernelClient } from '../kernel/client.js';
 import type { CanvasPanel, CanvasDecision } from '../canvas/panel.js';
 import type { Citation, ReasoningReceipt } from '../kernel/methods.js';
 import type { CanvasShowPayload } from '../canvas/messages.js';
 import { applyEditAtomically } from './apply-edit.js';
+import { getCanvasModule, type CanvasTier, type CitationDetail } from './canvas-module.js';
 
-// Bridge-side mirror of kernel/src/canvas/types.ts. Same z.enum values; drift caught by
-// kernel/src/test/canvas/attempt-payload.spec.ts cross-check on the kernel side and by
-// runtime mismatch in the dynamic-import wrapper at bridge load time.
-export type CanvasTier = 'silent' | 'inline' | 'modal';
-
-export interface CitationDetail {
-	node_id: string;
-	kind: 'ConstraintNode' | 'DecisionNode' | 'ContractNode' | 'OpenQuestion' | 'Attempt';
-	contract_path?: string;
-}
-
-interface TierClassifierInputs {
-	receipt: ReasoningReceipt;
-	diff: string;
-	anchorPath?: string;
-	contractAllowlist?: readonly string[];
-	citationDetails?: readonly CitationDetail[];
-}
-
-interface CanvasModule {
-	classifyTier: (inputs: TierClassifierInputs) => CanvasTier;
-	detectDestructive: (diff: string, anchorPath?: string) => boolean;
-	destructiveVerbForConfirmation: (diff: string) => string;
-	DEFAULT_HIGH_IMPACT_CONTRACT_PREFIXES: readonly string[];
-}
-
-let cachedCanvasModule: CanvasModule | undefined;
-
-async function getCanvasModule(): Promise<CanvasModule> {
-	if (cachedCanvasModule) {
-		return cachedCanvasModule;
-	}
-	// Dynamic import bridges CJS bridge → ESM kernel/dist. Path resolved at runtime.
-	const mod = await import('../../../../../../../kernel/dist/canvas/index.js');
-	cachedCanvasModule = mod as unknown as CanvasModule;
-	return cachedCanvasModule;
-}
+// Re-export for consumers of tier-dispatch (Plan 04-05 had these as local types here).
+export type { CanvasTier, CitationDetail };
 
 export interface DispatchInputs {
 	kernel: KernelClient;

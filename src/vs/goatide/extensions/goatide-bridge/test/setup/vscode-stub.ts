@@ -36,16 +36,50 @@ class EventEmitterStub<T> {
 	}
 }
 
+// Plan 04-06: status-bar surfaces. createStatusBarItem returns a recordable stub so tests
+// can assert on text/backgroundColor/show/hide calls. StatusBarAlignment + ThemeColor are
+// real-enough surrogates.
+class StatusBarItemStub {
+	text = '';
+	tooltip: string | undefined = undefined;
+	command: string | undefined = undefined;
+	backgroundColor: ThemeColorStub | undefined = undefined;
+	visible = false;
+	disposed = false;
+	show(): void { this.visible = true; }
+	hide(): void { this.visible = false; }
+	dispose(): void { this.disposed = true; }
+}
+
+class ThemeColorStub {
+	constructor(public readonly id: string) { }
+}
+
+// Recordable showErrorMessage spy — Plan 04-06 tests assert it was called with the
+// 'destructive save blocked' phrase. The stub returns undefined (no Reconnect button
+// click) by default. Tests can override via swapRespondingShowErrorMessage helper if
+// they need to drive the Reconnect path.
+const showErrorMessageSpy: { calls: unknown[][]; respondWith: string | undefined } = {
+	calls: [],
+	respondWith: undefined,
+};
+
 const vscodeStub = {
 	EventEmitter: EventEmitterStub,
 	TextDocumentSaveReason: { Manual: 1, AfterDelay: 2, FocusOut: 3 },
 	ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 },
+	StatusBarAlignment: { Left: 1, Right: 2 },
+	ThemeColor: ThemeColorStub,
 	window: {
 		showInformationMessage: async (..._args: unknown[]): Promise<string | undefined> => undefined,
-		showErrorMessage: async (..._args: unknown[]): Promise<string | undefined> => undefined,
+		showErrorMessage: async (...args: unknown[]): Promise<string | undefined> => {
+			showErrorMessageSpy.calls.push(args);
+			return showErrorMessageSpy.respondWith;
+		},
 		createWebviewPanel: () => {
 			throw new Error('createWebviewPanel: not stubbed (extension-host only)');
 		},
+		createStatusBarItem: (_alignment?: number, _priority?: number): StatusBarItemStub => new StatusBarItemStub(),
 	},
 	workspace: {
 		onWillSaveTextDocument: (): DisposableLike => ({ dispose: () => undefined }),
@@ -53,9 +87,11 @@ const vscodeStub = {
 		getConfiguration: (_section?: string) => ({
 			get: <T>(_key: string, defaultValue: T): T => defaultValue,
 		}),
+		workspaceFolders: undefined as unknown,
 	},
 	commands: {
 		registerCommand: (..._args: unknown[]): DisposableLike => ({ dispose: () => undefined }),
+		executeCommand: async (..._args: unknown[]): Promise<unknown> => undefined,
 	},
 	Uri: {
 		joinPath: (..._args: unknown[]): unknown => ({ fsPath: '' }),
@@ -64,6 +100,12 @@ const vscodeStub = {
 		constructor(private readonly fn?: () => void) { }
 		dispose(): void { this.fn?.(); }
 	},
+	// Test-only escape hatches for the showErrorMessage spy. These are not part of the
+	// real vscode API but tests can read them via `import * as vscode from 'vscode'` and
+	// then `(vscode as any).__test_showErrorMessageSpy`.
+	__test_showErrorMessageSpy: showErrorMessageSpy,
+	__test_StatusBarItemStub: StatusBarItemStub,
+	__test_ThemeColorStub: ThemeColorStub,
 };
 
 // Node's internal Module._resolveFilename + _cache surface (not in @types/node public API).
