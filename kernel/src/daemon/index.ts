@@ -28,6 +28,8 @@ import { OffsetsDao } from '../harvester/offsets.js';
 import { submitRawObservation, type HarvesterDeps } from '../harvester/index.js';
 import { startClaudeJsonlWatcher, type StopClaudeJsonlWatcher } from '../harvester/watchers/claude-jsonl.js';
 import { enrichGitCommitObservation } from '../harvester/watchers/git.js';
+import { incrementCorroborationAndMaybePromote } from '../harvester/promotion-gate/index.js';
+import { resolveAnthropicApiKey } from '../harvester/promoter/index.js';
 
 export interface StartDaemonArgs {
 	dao: GraphDAO;
@@ -50,6 +52,11 @@ export interface StartDaemonArgs {
 	 * RPC); v1 starts empty (no scope = accept all paths).
 	 */
 	workspaceFolders?: readonly string[];
+	/**
+	 * Plan 05-06 — override Promoter context (test injection only). Production callers
+	 * leave undefined; daemon constructs the live Anthropic SDK + keytar wiring.
+	 */
+	promoterCtx?: HarvesterDeps['promoterCtx'];
 }
 
 export interface DaemonHandle {
@@ -112,8 +119,56 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 		enrichGit: enrichGitCommitObservation,
 		dao: args.dao,
 		workspaceFolders: args.workspaceFolders ?? [],
-		// promoter / liveness / onCorroborationCandidate intentionally undefined here —
-		// Plans 05-06 / 05-07 wire them.
+		// Phase 5 Plan 05-06 PORT-05 (b): net_new-rejection corroboration callback wired
+		// to the real promotion-gate counter. The corroboration counter serializes
+		// per-nodeId via the gate's queue (Pitfall 9).
+		onCorroborationCandidate: async (existingNodeId, observationSource) => {
+			await incrementCorroborationAndMaybePromote({
+				dao: args.dao,
+				nodeId: existingNodeId,
+				observationProvenanceSource: `harvester:${observationSource}`,
+			});
+		},
+		// Phase 5 Plan 05-06 PORT-04: Promoter context wired with keytar API-key resolver
+		// + lazy-loaded Anthropic SDK. Production runs in live mode; if no key is
+		// configured the Promoter returns transport_error and the observation is dropped
+		// (no Inferred seed). Tests inject their own promoterCtx to opt out.
+		promoterCtx: args.promoterCtx ?? {
+			resolveApiKey: resolveAnthropicApiKey,
+			model: 'claude-3-5-sonnet-20241022',
+			sdkCall: async (params) => {
+				const { default: Anthropic } = await import('@anthropic-ai/sdk');
+				const apiKey = await resolveAnthropicApiKey();
+				const client = new Anthropic({ apiKey: apiKey ?? undefined, maxRetries: 0 });
+				const response = await client.messages.create({
+					model: params.model,
+					max_tokens: params.max_tokens,
+					system: params.system,
+					messages: params.messages.map((m) => ({ role: m.role, content: m.content })),
+					tools: params.tools.map((t) => ({
+						name: t.name,
+						description: t.description,
+						input_schema: t.input_schema as { type: 'object'; properties?: unknown },
+					})),
+					tool_choice: params.tool_choice,
+				});
+				// Narrow to the FixtureMessageResponse-compatible shape (only the fields
+				// the Promoter's parser cares about).
+				return {
+					content: response.content as ReadonlyArray<
+						| { type: 'tool_use'; id: string; name: string; input: unknown }
+						| { type: 'text'; text: string }
+					>,
+					model: response.model,
+					role: 'assistant' as const,
+					stop_reason: (response.stop_reason ?? 'end_turn') as 'tool_use' | 'end_turn' | 'max_tokens',
+					usage: {
+						input_tokens: response.usage.input_tokens,
+						output_tokens: response.usage.output_tokens,
+					},
+				};
+			},
+		},
 	};
 
 	// Wire each incoming socket: per-connection auth state map, first-request must be

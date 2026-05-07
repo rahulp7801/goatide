@@ -26,6 +26,7 @@ import { buildReceipt, type ReceiptDAO } from '../receipt/index.js';
 import { validateAuthToken } from '../daemon/auth-token.js';
 import { submitRawObservation, type HarvesterDeps } from '../harvester/index.js';
 import { RawObservationSchema } from '../harvester/observations.js';
+import { flipCiteEligibleOnAcceptedReceipt } from '../harvester/promotion-gate/index.js';
 import {
 	QueryGraphRequest,
 	ProposeEditRequest,
@@ -172,7 +173,7 @@ function bindHandlers(
 		return { open_question_id: openQuestionId };
 	}));
 
-	connection.onRequest(AtomicAcceptRequest, requireAuth((params): AtomicAcceptResult => {
+	connection.onRequest(AtomicAcceptRequest, requireAuth(async (params): Promise<AtomicAcceptResult> => {
 		const receipt = ctx.receiptDao.read(params.receipt_id);
 		const firstCited = receipt?.citations[0] ?? null;
 
@@ -204,6 +205,17 @@ function bindHandlers(
 				src_id: attemptId,
 				dst_id: firstCited.node_id,
 			});
+		}
+
+		// Phase 5 Plan 05-06 PORT-05 (a): Canvas Accept on an Inferred citation flips
+		// cite_eligible via supersession. Synchronous so the RPC response is returned only
+		// after the promotion has landed in the graph — bridge can immediately re-render
+		// with the updated node. No-op when the cited node is not Inferred or already eligible.
+		try {
+			await flipCiteEligibleOnAcceptedReceipt({ dao: ctx.dao, attemptId });
+		} catch {
+			// Promotion-gate failure is non-fatal: the Attempt is already persisted, the
+			// Canvas response should still succeed. Future plan wires a metric.
 		}
 
 		return { attempt_node_id: attemptId };
@@ -326,8 +338,14 @@ export interface BindHandlersForTcpArgs {
  */
 export interface HarvesterDepsForRpc {
 	enrichGit: HarvesterDeps['enrichGit'];
+	dao?: HarvesterDeps['dao'];
+	workspaceFolders?: HarvesterDeps['workspaceFolders'];
+	onCorroborationCandidate?: HarvesterDeps['onCorroborationCandidate'];
+	rejectedLogPath?: HarvesterDeps['rejectedLogPath'];
 	filter?: HarvesterDeps['filter'];
 	promoter?: HarvesterDeps['promoter'];
+	promoterCtx?: HarvesterDeps['promoterCtx'];
+	onPromoterResult?: HarvesterDeps['onPromoterResult'];
 	liveness?: HarvesterDeps['liveness'];
 }
 

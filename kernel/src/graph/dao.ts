@@ -47,6 +47,14 @@ import {
 export interface SeedInput {
 	payload: NodePayload;
 	provenance: ProvenanceInput;
+	/**
+	 * Confidence level for the new row. Defaults to 'Explicit' (Phase 2 default — every
+	 * CLI / Canvas / OpenQuestion / Attempt seed lands as Explicit). Phase 5 Plan 05-06
+	 * Promoter passes 'Inferred' for LLM-classified candidate nodes that must wait for
+	 * cite-eligibility promotion (Canvas accept or N corroborations) before becoming
+	 * a citation source.
+	 */
+	confidence?: Confidence;
 }
 
 /** Input shape for {@link GraphDAO.writeEdge}. */
@@ -111,6 +119,7 @@ export class GraphDAO {
 		const prov = ProvenanceInputSchema.parse(input.provenance);
 		const id = ulid();
 		const ts = nowIso();
+		const confidence: Confidence = input.confidence ?? 'Explicit';
 
 		// drizzle-orm 0.45.2: db.transaction(fn) executes the function synchronously and
 		// returns its return value (NOT a callable to invoke separately — that's the raw
@@ -121,7 +130,7 @@ export class GraphDAO {
 				id,
 				kind: payload.kind,
 				payload,
-				confidence: 'Explicit',          // Phase 2 only writes Explicit (RESEARCH user_constraints)
+				confidence,                        // 'Explicit' (Phase 2 default) | 'Inferred' (Phase 5 Promoter)
 				valid_from: ts,
 				recorded_at: ts,                  // explicit (Pitfall 7)
 			}).run();
@@ -152,13 +161,22 @@ export class GraphDAO {
 	 *                (UPDATE row count !== 1).
 	 * @throws ZodError if `newPayload` is invalid (Ghosting / unknown kind).
 	 */
-	supersede(oldId: string, newPayload: NodePayload): { newId: string } {
+	supersede(oldId: string, newPayload: NodePayload, newProvenance?: ProvenanceInput): { newId: string } {
 		const payload = NodePayloadSchema.parse(newPayload);
+		const prov = newProvenance ? ProvenanceInputSchema.parse(newProvenance) : null;
 		const newId = ulid();
 		const ts = nowIso();
 
 		this.db.transaction((tx) => {
-			// 1. Invalidate the old row, but ONLY if it is currently active.
+			// 1. Read the OLD row's confidence so the new row preserves it. Phase 5
+			//    Plan 05-06 promotion gate flips cite_eligible on Inferred nodes; the new
+			//    superseding row stays Inferred (cite_eligible is what changes — confidence
+			//    only flips on a future explicit promotion, which is out-of-scope for v1).
+			const oldRow = tx.select({ confidence: nodes.confidence })
+				.from(nodes).where(eq(nodes.id, oldId)).get();
+			const oldConfidence: Confidence = (oldRow?.confidence as Confidence | undefined) ?? 'Explicit';
+
+			// 2. Invalidate the old row, but ONLY if it is currently active.
 			//    The `isNull(invalidated_at)` predicate is the idempotency guard:
 			//    re-superseding an already-superseded id touches zero rows and we throw.
 			const updateResult = tx.update(nodes)
@@ -169,17 +187,19 @@ export class GraphDAO {
 				throw new Error(`supersede: node ${oldId} not found or already superseded`);
 			}
 
-			// 2. Insert the new row at the same instant.
+			// 3. Insert the new row at the same instant. Confidence preserves the old
+			//    row's value so Inferred -> Inferred chains stay Inferred (the promotion
+			//    gate flips cite_eligible inside the payload, not the confidence column).
 			tx.insert(nodes).values({
 				id: newId,
 				kind: payload.kind,
 				payload,
-				confidence: 'Explicit',
+				confidence: oldConfidence,
 				valid_from: ts,
 				recorded_at: ts,
 			}).run();
 
-			// 3. Write the supersedes edge atomically.
+			// 4. Write the supersedes edge atomically.
 			tx.insert(edges).values({
 				id: ulid(),
 				kind: 'supersedes' satisfies EdgeKind,
@@ -188,6 +208,21 @@ export class GraphDAO {
 				valid_from: ts,
 				recorded_at: ts,
 			}).run();
+
+			// 5. If newProvenance is supplied, write a provenance row keyed to the new id.
+			//    The promotion gate uses this so the bitemporal audit trail records WHO
+			//    flipped cite_eligible (canvas_decision vs corroboration_counter). Pre-Phase-5
+			//    callers omit newProvenance and the provenance table grows by zero rows on
+			//    supersession (back-compat — supersede.spec.ts expects the existing shape).
+			if (prov) {
+				tx.insert(provenance).values({
+					node_id: newId,
+					source: prov.source,
+					actor: prov.actor,
+					recorded_at: ts,
+					detail: prov.detail ?? null,
+				}).run();
+			}
 		});
 
 		return { newId };
@@ -312,6 +347,21 @@ export class GraphDAO {
 			recorded_at: r.recorded_at,
 			superseded_by: r.superseded_by,
 		}));
+	}
+
+	/**
+	 * Return the dst_ids of all active 'references' edges originating at {@link srcId}.
+	 * Used by Phase 5 Plan 05-06 promotion gate (canvas-decision-listener) to walk an
+	 * Attempt(accepted)'s citation list.
+	 */
+	queryReferencesEdges(srcId: string): readonly string[] {
+		const sqlite = (this.db as unknown as { $client: BetterSqliteHandle }).$client;
+		const rows = sqlite.prepare(`
+			SELECT dst_id FROM edges
+			WHERE src_id = ? AND kind = 'references' AND invalidated_at IS NULL
+			ORDER BY recorded_at ASC
+		`).all(srcId) as Array<{ dst_id: string }>;
+		return rows.map((r) => r.dst_id);
 	}
 
 	/**

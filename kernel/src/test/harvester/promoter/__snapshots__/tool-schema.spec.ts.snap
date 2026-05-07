@@ -33,6 +33,21 @@ exports[`PORT-04: Promoter tool-schema export > zodToJsonSchema(NodePayloadSchem
             "minLength": 1,
             "type": "string",
           },
+          "cite_eligible": {
+            "type": "boolean",
+          },
+          "detail": {
+            "additionalProperties": true,
+            "properties": {
+              "corroborations": {
+                "items": {
+                  "type": "string",
+                },
+                "type": "array",
+              },
+            },
+            "type": "object",
+          },
           "kind": {
             "const": "ConstraintNode",
             "type": "string",
@@ -53,8 +68,14 @@ exports[`PORT-04: Promoter tool-schema export > zodToJsonSchema(NodePayloadSchem
           "body": {
             "$ref": "#/anyOf/0/properties/body",
           },
+          "cite_eligible": {
+            "$ref": "#/anyOf/0/properties/cite_eligible",
+          },
           "derived_under_priority": {
             "type": "string",
+          },
+          "detail": {
+            "$ref": "#/anyOf/0/properties/detail",
           },
           "kind": {
             "const": "DecisionNode",
@@ -76,8 +97,14 @@ exports[`PORT-04: Promoter tool-schema export > zodToJsonSchema(NodePayloadSchem
           "body": {
             "$ref": "#/anyOf/0/properties/body",
           },
+          "cite_eligible": {
+            "$ref": "#/anyOf/0/properties/cite_eligible",
+          },
           "contract_path": {
             "type": "string",
+          },
+          "detail": {
+            "$ref": "#/anyOf/0/properties/detail",
           },
           "kind": {
             "const": "ContractNode",
@@ -98,6 +125,12 @@ exports[`PORT-04: Promoter tool-schema export > zodToJsonSchema(NodePayloadSchem
           },
           "body": {
             "$ref": "#/anyOf/0/properties/body",
+          },
+          "cite_eligible": {
+            "$ref": "#/anyOf/0/properties/cite_eligible",
+          },
+          "detail": {
+            "$ref": "#/anyOf/0/properties/detail",
           },
           "kind": {
             "const": "OpenQuestion",

@@ -33,10 +33,21 @@ const Anchor = z.object({
 	ticket_id: z.string().optional(),  // Phase 3 (Plan 03-02): TRAV-04 ticket-anchor support
 }).optional();
 
-export const ConstraintPayload   = z.object({ kind: z.literal('ConstraintNode'), body: Body, anchor: Anchor });
-export const DecisionPayload     = z.object({ kind: z.literal('DecisionNode'),   body: Body, anchor: Anchor, derived_under_priority: z.string().optional() });
-export const ContractPayload     = z.object({ kind: z.literal('ContractNode'),   body: Body, anchor: Anchor, contract_path: z.string().optional() });
-export const OpenQuestionPayload = z.object({ kind: z.literal('OpenQuestion'),   body: Body, anchor: Anchor });
+// Phase 5 Plan 05-06 PORT-05: cite-eligibility flag flips on the four candidate-kinds via
+// the promotion gate (Canvas Accept on Inferred citation OR ≥N corroborations). Stays
+// optional because Phase 2/3/4-seeded Explicit nodes never set it (cite_eligible is only
+// meaningful for Inferred nodes). Detail field is the bookkeeping bag — the corroboration
+// counter persists corroborations[] there. Attempt payload deliberately does NOT carry
+// either field — Attempts are set by Canvas/Phase-4, not the promotion gate.
+const CiteFlag = z.boolean().optional();
+const PromotionDetail = z.object({
+	corroborations: z.array(z.string()).optional(),
+}).passthrough().optional();
+
+export const ConstraintPayload   = z.object({ kind: z.literal('ConstraintNode'), body: Body, anchor: Anchor, cite_eligible: CiteFlag, detail: PromotionDetail });
+export const DecisionPayload     = z.object({ kind: z.literal('DecisionNode'),   body: Body, anchor: Anchor, derived_under_priority: z.string().optional(), cite_eligible: CiteFlag, detail: PromotionDetail });
+export const ContractPayload     = z.object({ kind: z.literal('ContractNode'),   body: Body, anchor: Anchor, contract_path: z.string().optional(), cite_eligible: CiteFlag, detail: PromotionDetail });
+export const OpenQuestionPayload = z.object({ kind: z.literal('OpenQuestion'),   body: Body, anchor: Anchor, cite_eligible: CiteFlag, detail: PromotionDetail });
 
 // CANV-04/05/09: AttemptPayload extension. The 'tier' enum literal is duplicated here from
 // kernel/src/canvas/types.ts CanvasTierSchema — graph/* cannot import from canvas/* (layering).

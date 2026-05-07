@@ -21,6 +21,8 @@ import type { RawObservation, ObservationSource, GitCommitObservation } from './
 import { runFilter, type FilterContext } from './filter/index.js';
 import { appendRejection } from './filter/rejected-log.js';
 import { resolveRejectedLogPath } from './paths.js';
+import { promote, type PromoterContext, type PromoterResult } from './promoter/index.js';
+import { incrementCorroborationAndMaybePromote } from './promotion-gate/index.js';
 
 export interface SubmitObservationResult {
 	id: string;
@@ -45,6 +47,14 @@ export interface GitEnrichmentResult {
 export interface LivenessRecorder {
 	record(source: ObservationSource): void;
 }
+
+/**
+ * Plan 05-06 — promoter result hook. Optional callback invoked AFTER the Promoter has
+ * classified an observation. Lets metrics-style consumers see the discriminated union
+ * without re-parsing. Plan 05-07 wires harvest_metrics_daily.incrementPromoted /
+ * incrementPromoterFailed via this hook.
+ */
+export type PromoterResultHook = (result: PromoterResult, observation: RawObservation) => void;
 
 /**
  * Dependency bag for the harvester orchestrator. enrichGit is required (callers in
@@ -78,8 +88,22 @@ export interface HarvesterDeps {
 	 * should leave this undefined and the orchestrator runs the real cascade.
 	 */
 	filter?: (obs: RawObservation) => FilterDecision;
-	/** Plan 05-06 wires this — promoter LLM. Plan 05-05 leaves it as a no-op stub. */
+	/**
+	 * Legacy provisional promoter callback (Plan 05-03 back-compat). When provided AND
+	 * promoterCtx is undefined, this runs in place of the real Promoter — the
+	 * orchestrator does not seed any Inferred node. Plan 05-05 filter-integration tests
+	 * use this so they don't need the full Promoter stack. New code should leave this
+	 * undefined and supply promoterCtx instead.
+	 */
 	promoter?: (obs: RawObservation) => Promise<void>;
+	/**
+	 * Phase 5 Plan 05-06 — full Promoter context. When supplied, the orchestrator routes
+	 * filter-survivor observations through promote(), and on PromoterResult.kind ===
+	 * 'classified' seeds a confidence='Inferred' node + corroborates same-anchor siblings.
+	 */
+	promoterCtx?: PromoterContext;
+	/** Plan 05-07 wires this — observability hook for promoter results. */
+	onPromoterResult?: PromoterResultHook;
 	/** Plan 05-07 wires this — liveness recorder. Plan 05-05 leaves it as a no-op stub. */
 	liveness?: LivenessRecorder;
 }
@@ -121,7 +145,42 @@ export async function submitRawObservation(
 		return { id: input.id, accepted: false, reject_reason: decision.predicate };
 	}
 
-	if (deps.promoter) {
+	// Phase 5 Plan 05-06 — run the real Promoter when ctx supplied; otherwise fall back to
+	// the legacy callback (Plan 05-03 back-compat for filter-integration tests).
+	if (deps.promoterCtx) {
+		const result = await promote(enriched, deps.promoterCtx);
+		if (deps.onPromoterResult) {
+			deps.onPromoterResult(result, enriched);
+		}
+		if (result.kind === 'classified' && deps.dao) {
+			// PORT-04: write Inferred node. Mandate B: confidence='Inferred' is what
+			// distinguishes a Promoter candidate from an Explicit (CLI / Canvas) seed.
+			const provenanceSource = `harvester:${enriched.source}`;
+			const { id: newNodeId } = deps.dao.seed({
+				payload: result.payload,
+				confidence: 'Inferred',
+				provenance: {
+					source: provenanceSource,
+					actor: 'promoter',
+					detail: {
+						observation_id: input.id,
+						model: result.model,
+						input_tokens: result.usage.input_tokens,
+						output_tokens: result.usage.output_tokens,
+					},
+				},
+			});
+
+			// PORT-05 (b) post-seed corroboration sweep: if any existing Inferred sibling
+			// shares the new node's anchor.file, increment its corroboration counter.
+			// Defense-in-depth — Plan 05-05's net_new predicate already rejects exact-tuple
+			// duplicates, but a fresh first-of-cluster Inferred write should still
+			// corroborate against same-anchor existing rows that have a DIFFERENT body.
+			// (In v1 we keep it minimal: any same-file existing Inferred counts as a
+			//  corroboration. Phase 7 tightens to symbol-level anchors.)
+			await maybeCorroborateSiblings(deps.dao, newNodeId, result.payload, provenanceSource);
+		}
+	} else if (deps.promoter) {
 		await deps.promoter(enriched);
 	}
 	if (deps.liveness) {
@@ -129,6 +188,39 @@ export async function submitRawObservation(
 	}
 
 	return { id: input.id, accepted: true };
+}
+
+/**
+ * Iterate same-anchor.file Inferred siblings (excluding the just-seeded id) and increment
+ * their corroboration counter under the new node's provenance source. The promotion gate
+ * may fire and supersede those siblings to cite_eligible=true if the threshold is reached.
+ */
+async function maybeCorroborateSiblings(
+	dao: GraphDAO,
+	newNodeId: string,
+	newPayload: { anchor?: { file?: string } },
+	provenanceSource: string,
+): Promise<void> {
+	const file = newPayload.anchor?.file;
+	if (!file) {
+		return;
+	}
+	const asOf = new Date().toISOString();
+	const candidates = dao.queryByAnchor({ jsonPath: '$.anchor.file', value: file }, asOf);
+	for (const candidate of candidates) {
+		if (candidate.id === newNodeId || candidate.confidence !== 'Inferred') {
+			continue;
+		}
+		try {
+			await incrementCorroborationAndMaybePromote({
+				dao,
+				nodeId: candidate.id,
+				observationProvenanceSource: provenanceSource,
+			});
+		} catch {
+			// Best-effort: do not break the orchestrator on promotion-gate hiccups.
+		}
+	}
 }
 
 /**
