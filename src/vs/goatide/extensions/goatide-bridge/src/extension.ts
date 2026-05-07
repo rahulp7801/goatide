@@ -18,6 +18,8 @@ import { registerSaveGate } from './save-gate/on-will-save.js';
 import { scanForOrphanStagingFiles } from './save-gate/recovery-scan.js';
 import { PendingAttemptsQueue } from './save-gate/pending-attempts.js';
 import { KernelDegradedBanner } from './status-bar/kernel-degraded.js';
+import { registerGitEventWatcher } from './harvester/git-events.js';
+import { registerHarvester } from './harvester/index.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	console.log('[goatide-bridge] activate (Phase 4)');
@@ -63,6 +65,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	});
 
 	registerSaveGate(context, kernel, panel, queue);
+
+	// Phase 5 watchers wired:
+	registerGitEventWatcher(context, kernel);     // Plan 05-03 — TELE-04
+	registerHarvester(context, kernel);           // Plan 05-04 — TELE-02 + TELE-03 (+ later TELE-06)
+	// /Phase 5 watchers wired
 
 	// Plan 04-06: real reconnect command (replaces Plan 04-05's stub). Drives
 	// startReconnectAttempts with a 5-attempt cap so a permanently-dead kernel doesn't

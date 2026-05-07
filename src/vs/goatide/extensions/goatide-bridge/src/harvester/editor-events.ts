@@ -47,13 +47,13 @@ export const WORKING_SET_MAX = 50;
 
 interface SubmitObservationArg {
 	id: string;
-	source: string;
-	body?: string;
-	file_path?: string;
-	language?: string;
-	line_count?: number;
+	source: 'editor_save';
+	body: string;
+	file_path: string;
+	language: string;
+	line_count: number;
 	ts: string;
-	detail?: { working_set_size?: number };
+	detail?: { working_set_size: number };
 }
 
 interface KernelClientLike {

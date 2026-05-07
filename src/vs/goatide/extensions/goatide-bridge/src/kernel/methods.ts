@@ -181,3 +181,66 @@ export interface AuthenticateResult {
 }
 
 export const AuthenticateRequest = new RequestType<AuthenticateParams, AuthenticateResult, Error>('harvester.authenticate');
+
+// -------- harvester.submitObservation (Plan 05-03 — RawObservation ingest) --------
+//
+// Mirror of the kernel-side SubmitObservationRequest. The wire shape is the
+// RawObservation discriminated-union (single source of truth in
+// kernel/src/harvester/observations.ts). Bridge cannot statically import the kernel-side
+// Zod schema (CJS<->ESM constraint per Plan 04-05); we redeclare the union structurally.
+//
+// Plan 05-04 makes APPEND-ONLY additive edits inside the terminal_shell branch — no
+// replacement of any existing branch. The schema grows additively across plans.
+
+interface BaseObservationFields {
+	id: string;
+	ts: string;
+	body: string;
+}
+
+export interface ClaudeJsonlObservationInput extends BaseObservationFields {
+	source: 'claude_jsonl';
+	file_path: string;
+	parsed?: unknown;
+}
+
+export interface EditorSaveObservationInput extends BaseObservationFields {
+	source: 'editor_save';
+	file_path: string;
+	language: string;
+	line_count: number;
+	detail?: { working_set_size: number };
+}
+
+export interface TerminalShellObservationInput extends BaseObservationFields {
+	source: 'terminal_shell';
+	output: string;
+	exit_code: number | null;
+	cwd: string | null;
+	detail?: { confidence: number; truncated: boolean };
+}
+
+export interface GitCommitObservationInput extends BaseObservationFields {
+	source: 'git_commit';
+	repo_path: string;
+	head_commit_at_emit: string | null;
+	head_branch_at_emit: string | null;
+	diff?: string;
+	message?: string;
+	author?: string;
+	files_changed?: number;
+}
+
+export type SubmitObservationParams =
+	| ClaudeJsonlObservationInput
+	| EditorSaveObservationInput
+	| TerminalShellObservationInput
+	| GitCommitObservationInput;
+
+export interface SubmitObservationResult {
+	id: string;
+	accepted: boolean;
+	reject_reason?: string;
+}
+
+export const SubmitObservationRequest = new RequestType<SubmitObservationParams, SubmitObservationResult, Error>('harvester.submitObservation');

@@ -33,6 +33,7 @@ import {
 	QueryNodesRequest,
 	HeartbeatRequest,
 	AuthenticateRequest,
+	SubmitObservationRequest,
 	type QueryGraphParams, type QueryGraphResult,
 	type ProposeEditParams, type ProposeEditResult,
 	type RecordRejectionParams, type RecordRejectionResult,
@@ -40,6 +41,7 @@ import {
 	type QueryAttemptByStagingPathParams, type QueryAttemptByStagingPathResult,
 	type QueryNodesParams, type QueryNodesResult,
 	type HeartbeatResult,
+	type SubmitObservationParams, type SubmitObservationResult,
 } from './methods.js';
 import { existsSync } from 'node:fs';
 
@@ -294,6 +296,9 @@ export class KernelClient {
 	}
 	heartbeat(): Promise<HeartbeatResult> {
 		return this.sendWithTimeout(HeartbeatRequest, {});
+	}
+	harvesterSubmitObservation(params: SubmitObservationParams): Promise<SubmitObservationResult> {
+		return this.sendWithTimeout(SubmitObservationRequest, params);
 	}
 
 	/**

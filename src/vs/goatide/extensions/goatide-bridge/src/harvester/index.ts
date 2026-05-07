@@ -17,28 +17,16 @@
 import * as vscode from 'vscode';
 import { registerEditorEventWatcher } from './editor-events.js';
 import { registerTerminalEventWatcher } from './terminal-events.js';
-
-interface SubmitObservationArg {
-	id: string;
-	source: string;
-	body?: string;
-	output?: string;
-	exit_code?: number | null;
-	cwd?: string | null;
-	file_path?: string;
-	language?: string;
-	line_count?: number;
-	ts: string;
-	detail?: { working_set_size?: number; confidence?: number; truncated?: boolean };
-}
+import type { SubmitObservationParams, SubmitObservationResult } from '../kernel/methods.js';
 
 /**
- * Structural shape of the kernel client surface used by Phase-5 bridge watchers. The
- * concrete KernelClient (src/kernel/client.ts) gains harvesterSubmitObservation in a
- * downstream plan; structural typing keeps Plan 05-04 independent of that wiring.
+ * Structural shape of the kernel client surface used by Phase-5 bridge watchers. Now
+ * that Plan 05-03 has landed harvesterSubmitObservation on KernelClient with the strict
+ * RawObservation discriminated-union, this interface mirrors that strict signature so
+ * the editor + terminal watchers below get the same type-safety guarantees.
  */
 export interface HarvesterKernelClient {
-	harvesterSubmitObservation: (obs: SubmitObservationArg) => Promise<unknown>;
+	harvesterSubmitObservation: (obs: SubmitObservationParams) => Promise<SubmitObservationResult>;
 }
 
 /**

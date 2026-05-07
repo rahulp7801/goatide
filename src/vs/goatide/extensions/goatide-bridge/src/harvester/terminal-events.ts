@@ -42,13 +42,13 @@ export const MAX_OUTPUT_PRE_TRUNCATE = 64 * 1024;
 
 interface SubmitObservationArg {
 	id: string;
-	source: string;
-	body?: string;
-	output?: string;
-	exit_code?: number | null;
-	cwd?: string | null;
+	source: 'terminal_shell';
+	body: string;
+	output: string;
+	exit_code: number | null;
+	cwd: string | null;
 	ts: string;
-	detail?: { confidence?: number; truncated?: boolean };
+	detail?: { confidence: number; truncated: boolean };
 }
 
 interface KernelClientLike {

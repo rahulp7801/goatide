@@ -31,6 +31,8 @@ import { RequestType } from 'vscode-jsonrpc';
 import type { AnchorRequest } from '../graph/anchor.js';
 import type { Scope, TraverseRow } from '../graph/traverse.js';
 import type { ReasoningReceipt } from '../receipt/index.js';
+import type { RawObservation } from '../harvester/observations.js';
+import type { SubmitObservationResult } from '../harvester/index.js';
 
 // -------- graph.queryGraph --------
 
@@ -187,3 +189,22 @@ export interface AuthenticateResult {
 }
 
 export const AuthenticateRequest = new RequestType<AuthenticateParams, AuthenticateResult, Error>('harvester.authenticate');
+
+// -------- harvester.submitObservation (Plan 05-03 — RawObservation ingest) --------
+//
+// Accepts a discriminated-union RawObservation (claude_jsonl | editor_save |
+// terminal_shell | git_commit). The handler runs Zod validation at the boundary; on
+// schema failure returns {accepted: false, reject_reason: 'schema_violation: ...'}
+// instead of throwing — deterministic error reporting for the bridge.
+//
+// Per-source enrichment dispatch + provisional filter/promoter scaffold lives in
+// kernel/src/harvester/index.ts submitRawObservation. Plans 05-05 (filter), 05-06
+// (promoter), and 05-07 (liveness) flesh out the placeholders.
+//
+// Auth gate from Plan 05-02 inherited: caller must have authenticated first on the
+// per-socket TCP connection before this RPC is reachable.
+
+export type SubmitObservationParams = RawObservation;
+export type { SubmitObservationResult };
+
+export const SubmitObservationRequest = new RequestType<SubmitObservationParams, SubmitObservationResult, Error>('harvester.submitObservation');

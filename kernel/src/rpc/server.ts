@@ -35,6 +35,7 @@ import {
 	QueryNodesRequest,
 	HeartbeatRequest,
 	AuthenticateRequest,
+	SubmitObservationRequest,
 	type QueryGraphResult,
 	type ProposeEditResult,
 	type RecordRejectionResult,
@@ -43,6 +44,7 @@ import {
 	type QueryNodesResult,
 	type HeartbeatResult,
 	type AuthenticateResult,
+	type SubmitObservationResult,
 } from './methods.js';
 
 export interface CreateRpcServerArgs {
@@ -77,8 +79,18 @@ interface HandlerContext {
  * Bind every kernel RPC handler to the given connection. When authState is provided, the
  * handlers are gated: any request other than harvester.authenticate returns an
  * "Unauthenticated" error until authState.authenticated flips true.
+ *
+ * harvesterDeps is optional: when present, the harvester.submitObservation handler is
+ * registered (parses RawObservation via Zod at boundary, dispatches to
+ * submitRawObservation). Stdio mode (no harvester pipeline running in-process) doesn't
+ * pass deps; daemon mode does.
  */
-function bindHandlers(connection: rpc.MessageConnection, ctx: HandlerContext, authState?: SocketAuthState): void {
+function bindHandlers(
+	connection: rpc.MessageConnection,
+	ctx: HandlerContext,
+	authState?: SocketAuthState,
+	harvesterDeps?: HarvesterDepsForRpc,
+): void {
 	const requireAuth = <P, R>(fn: (params: P) => R): ((params: P) => R) => {
 		if (!authState) {
 			return fn;
@@ -248,6 +260,27 @@ function bindHandlers(connection: rpc.MessageConnection, ctx: HandlerContext, au
 		db_path: ctx.dbPath,
 		uptime_ms: Date.now() - ctx.startMs,
 	})));
+
+	// Phase 5 Plan 05-03 — harvester.submitObservation. Skipped when harvesterDeps is
+	// not provided (stdio mode); daemon mode registers it. The discriminated-union dispatch
+	// over RawObservationSchema branches lives here; Plan 05-04 makes APPEND-ONLY additive
+	// edits inside the terminal_shell branch (no replacement of existing branches).
+	if (harvesterDeps) {
+		connection.onRequest(SubmitObservationRequest, requireAuth(async (params): Promise<SubmitObservationResult> => {
+			const parsed = RawObservationSchema.safeParse(params);
+			if (!parsed.success) {
+				const idAttempt = (params as { id?: unknown } | undefined)?.id;
+				const id = typeof idAttempt === 'string' ? idAttempt : '';
+				const issue = parsed.error.issues[0];
+				return {
+					id,
+					accepted: false,
+					reject_reason: `schema_violation: ${issue?.message ?? 'unknown'}`,
+				};
+			}
+			return await submitRawObservation(parsed.data, harvesterDeps as HarvesterDeps);
+		}));
+	}
 }
 
 /**
@@ -328,5 +361,5 @@ export function bindHandlersForTcp(args: BindHandlersForTcpArgs): void {
 		return { ok: true };
 	});
 
-	bindHandlers(args.connection, ctx, args.authState);
+	bindHandlers(args.connection, ctx, args.authState, args.harvesterDeps);
 }
