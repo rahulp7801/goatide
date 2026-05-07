@@ -3,11 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// src/vs/goatide/extensions/goatide-bridge/src/extension.ts — Phase 4 (Plan 04-05 + 04-06).
+// src/vs/goatide/extensions/goatide-bridge/src/extension.ts — Phase 4 (Plan 04-05 + 04-06)
+// + Phase 5 (Plan 05-02 daemon mode).
 // Activates KernelClient + CanvasPanel + save-gate + HeartbeatPoller +
-// KernelDegradedBanner + PendingAttemptsQueue. Plan 04-06 adds the real reconnect
-// command (replacing Plan 04-05's stub) which drives ConnectionStateMachine.startReconnectAttempts
-// and drains the pending-attempts queue on success.
+// KernelDegradedBanner + PendingAttemptsQueue. Plan 04-06 adds the reconnect command;
+// Plan 05-02 swaps connect()/spawnKernel for ensureKernel reconnect-or-spawn (TELE-05).
 
 import * as vscode from 'vscode';
 import * as path from 'node:path';
@@ -30,7 +30,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const kernel = new KernelClient();
 	context.subscriptions.push({ dispose: () => kernel.dispose() });
 	try {
-		await kernel.connect(kernelPath);
+		// Plan 05-02: ensureKernel reconnect-or-spawn. Reads lockfile; if alive, reuses
+		// existing daemon (Mandate-A: kernel survives IDE close). Otherwise spawns
+		// detached kernel and waits for its lockfile.
+		await kernel.ensureKernel({ kernelPath });
 	} catch (e) {
 		vscode.window.showErrorMessage(`GoatIDE: failed to start kernel sidecar: ${e instanceof Error ? e.message : String(e)}`);
 		// Continue activation in degraded state — Plan 04-06 banner picks up the connection state.
@@ -67,7 +70,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('goatide.kernel.reconnect', async () => {
 			try {
-				await kernel.state.startReconnectAttempts(() => kernel.reconnect(), { maxAttempts: 5 });
+				// Plan 05-02 fast-path: if the lockfile points at a still-alive daemon, just
+				// reconnect TCP without re-spawning. Otherwise fall through to the standard
+				// startReconnectAttempts loop (which will spawn fresh via ensureKernel).
+				const lock = kernel.getDaemonLockfile();
+				if (lock && lock.alive) {
+					await kernel.reconnect();
+				} else {
+					await kernel.state.startReconnectAttempts(() => kernel.reconnect(), { maxAttempts: 5 });
+				}
 				const report = await queue.drainAll(kernel);
 				if (report.total === 0) {
 					vscode.window.showInformationMessage('GoatIDE: kernel reconnected.');

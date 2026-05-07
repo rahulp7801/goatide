@@ -12,11 +12,22 @@
 
 import * as vscode from 'vscode';
 
+/** Plan 05-02 extends DegradedReason with TELE-05 daemon-mode failure modes. */
+export type DegradedReason =
+	| 'crashed'
+	| 'timeout'
+	| 'spawn_failure'
+	| 'heartbeat_miss'
+	| 'lockfile_stale'
+	| 'lockfile_missing'
+	| 'authenticate_failed'
+	| 'spawn_failure_with_lockfile_present';
+
 export type ConnectionState =
 	| { kind: 'connecting' }
 	| { kind: 'connected'; lastHeartbeatMs: number }
-	| { kind: 'degraded'; reason: 'crashed' | 'timeout' | 'spawn_failure' | 'heartbeat_miss'; sinceMs: number }
-	| { kind: 'reconnecting'; attempt: number; nextRetryMs: number };
+	| { kind: 'degraded'; reason: DegradedReason; sinceMs: number }
+	| { kind: 'reconnecting'; attempt: number; nextRetryMs: number; reason?: DegradedReason };
 
 export class ConnectionStateMachine {
 	private state: ConnectionState = { kind: 'connecting' };
