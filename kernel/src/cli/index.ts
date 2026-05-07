@@ -18,17 +18,23 @@ import { Command } from 'commander';
 import { registerSeed } from './commands/seed.js';
 import { registerSupersede } from './commands/supersede.js';
 import { registerQuery } from './commands/query.js';
+import { registerHarvestCommand } from './commands/harvest.js';
 
 const program = new Command();
 program
 	.name('goatide-cli')
-	.description('GoatIDE bitemporal graph CLI (Phase 2 hand-seed harness)')
+	.description('GoatIDE bitemporal graph CLI')
 	.version('0.0.1');
 
 const graph = program.command('graph').description('Hand-seed and inspect the bitemporal graph');
 registerSeed(graph);
 registerSupersede(graph);
 registerQuery(graph);
+
+// Phase 5 Plan 05-07 — `goatide-cli harvest <rejections|metrics>` for PORT-03 + PORT-06
+// dashboard inspection. Registered at the top level (not under `graph`) so the CLI
+// surface mirrors the kernel module structure: `graph` for nodes, `harvest` for telemetry.
+registerHarvestCommand(program);
 
 program.parseAsync(process.argv).catch((err: unknown) => {
 	// Top-level safety net; commander handles parse-time errors itself.
