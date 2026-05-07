@@ -34,6 +34,10 @@ export const DEFAULT_LIVENESS_THRESHOLDS: Record<ObservationSource, number> = {
 	editor_save: 30 * 60 * 1000,
 	terminal_shell: 4 * 60 * 60 * 1000,
 	git_commit: 24 * 60 * 60 * 1000,
+	// Phase 6 Plan 06-05 — mcp_external_signal: 4h default. External MCP writes are bursty
+	// (a developer might query a Slack thread or GitHub issue once per task) so the threshold
+	// matches claude_jsonl + terminal_shell. Override via env GOATIDE_LIVENESS_MCP_EXTERNAL_SIGNAL_MS.
+	mcp_external_signal: 4 * 60 * 60 * 1000,
 };
 
 /**

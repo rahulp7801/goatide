@@ -69,5 +69,6 @@ function describeSource(observation: RawObservation): string {
 		case 'editor_save': return 'Editor save event';
 		case 'terminal_shell': return 'Terminal shell execution';
 		case 'git_commit': return 'Git commit';
+		case 'mcp_external_signal': return `External MCP signal (provider=${observation.provider}, tool=${observation.tool_name})`;
 	}
 }

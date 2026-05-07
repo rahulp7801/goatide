@@ -44,8 +44,8 @@ describe('TELE-06: harvester liveness tracking', () => {
 			advance_stale: false,                       // 1s < 4h default threshold
 			stale_flag: true,
 			justStarted_anyStale: false,                // initial-grace: never recorded -> never stale
-			justStarted_count: 4,                       // claude_jsonl + editor_save + terminal_shell + git_commit
-			thresholdsExportedKeys: ['claude_jsonl', 'editor_save', 'git_commit', 'terminal_shell'],
+			justStarted_count: 5,                       // Phase-5 4 + Phase-6 mcp_external_signal
+			thresholdsExportedKeys: ['claude_jsonl', 'editor_save', 'git_commit', 'mcp_external_signal', 'terminal_shell'],
 		});
 	});
 });

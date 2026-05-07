@@ -231,11 +231,30 @@ export interface GitCommitObservationInput extends BaseObservationFields {
 	files_changed?: number;
 }
 
+/**
+ * Phase 6 Plan 06-05 — MCP-04/05 external-signal observation. Bridge mirror of the
+ * kernel-side McpExternalSignalObservationSchema (kernel/src/harvester/observations.ts).
+ * Routed via kernel/src/mcp/clients/observation-router.ts — the bridge does NOT submit
+ * mcp_external_signal observations directly today (the kernel's MCP consume side wraps
+ * tool-call results internally), but this mirror exists so the bridge type-system stays
+ * structurally aligned with the kernel's RawObservation union.
+ */
+export interface McpExternalSignalObservationInput extends BaseObservationFields {
+	source: 'mcp_external_signal';
+	provider: 'github' | 'slack' | 'linear' | 'jira';
+	tool_name: string;
+	detail?: {
+		candidate_node_kind_hint?: 'ConstraintNode' | 'DecisionNode' | 'ContractNode' | 'OpenQuestion' | null;
+		[k: string]: unknown;
+	};
+}
+
 export type SubmitObservationParams =
 	| ClaudeJsonlObservationInput
 	| EditorSaveObservationInput
 	| TerminalShellObservationInput
-	| GitCommitObservationInput;
+	| GitCommitObservationInput
+	| McpExternalSignalObservationInput;
 
 export interface SubmitObservationResult {
 	id: string;

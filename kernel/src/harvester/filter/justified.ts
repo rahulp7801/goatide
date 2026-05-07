@@ -63,5 +63,15 @@ export function isJustified(obs: RawObservation, _ctx: FilterContext): { ok: boo
 			}
 			return { ok: true };
 		}
+		case 'mcp_external_signal': {
+			// Phase 6 Plan 06-05: external MCP signals carry their own context (provider +
+			// tool_name + body extracted from the tool-call result). Justified iff the body
+			// is non-empty after the schema-mapper extractor runs. Empty bodies (e.g. an
+			// empty Slack thread) reject — there's nothing to classify.
+			if (obs.body.trim().length === 0) {
+				return { ok: false, reason: 'empty MCP external signal body' };
+			}
+			return { ok: true };
+		}
 	}
 }

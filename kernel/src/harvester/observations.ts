@@ -3,15 +3,21 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// kernel/src/harvester/observations.ts — Phase 5 Plan 05-03.
+// kernel/src/harvester/observations.ts — Phase 5 Plan 05-03 + Phase 6 Plan 06-05.
 //
 // RawObservation discriminated-union Zod schema. Single source of truth across the
 // kernel + bridge. The bridge mirror in
 // src/vs/goatide/extensions/goatide-bridge/src/kernel/methods.ts re-declares the SHAPE
 // (CJS<->ESM constraint per Plan 04-05); structural identity is the contract.
 //
-// Four sources today: claude_jsonl, editor_save, terminal_shell, git_commit. Plan 05-04
-// adds APPEND-ONLY enrichment fields to the terminal_shell branch (NOT replacement).
+// Five sources today (after Plan 06-05):
+//   - claude_jsonl, editor_save, terminal_shell, git_commit (Phase 5 — Plan 05-03 + 05-04)
+//   - mcp_external_signal (Phase 6 — Plan 06-05; ADDITIVE, back-compat preserved)
+//
+// Plan 06-05 ADDS the `mcp_external_signal` branch ONLY. Existing 4 branches unchanged so
+// Phase-5 watchers (claude_jsonl, editor_save, terminal_shell, git_commit) keep parsing as
+// before. Zod's discriminatedUnion strict-on-source ensures unknown source values still
+// throw — refuse-fuzzy-fallback.sh + structural pin tests verify.
 
 import { z } from 'zod';
 
@@ -64,13 +70,35 @@ export const GitCommitObservationSchema = Base.extend({
 });
 export type GitCommitObservation = z.infer<typeof GitCommitObservationSchema>;
 
-/** Discriminated-union over all four source variants. Used at the RPC boundary
- *  (kernel/src/rpc/server.ts SubmitObservationRequest handler) for Zod validation. */
+/**
+ * MCP-04/05 (Phase 6 Plan 06-05) — external MCP signal observation.
+ *
+ * Wire shape for tool-call results harvested via the Phase-6 MCP consume side. The provider
+ * + tool_name discriminate on the upstream source; the optional detail.candidate_node_kind_hint
+ * is consumed by the Phase-5 PORT-04 Promoter as a system-prompt bias (NOT an authoritative
+ * override per Open Question 6 of 06-RESEARCH.md). The hint never bypasses the Promoter
+ * (Mandate-A — auditable+replayable classification).
+ */
+export const McpExternalSignalObservationSchema = Base.extend({
+	source: z.literal('mcp_external_signal'),
+	provider: z.enum(['github', 'slack', 'linear', 'jira']),
+	tool_name: z.string(),
+	detail: z.object({
+		candidate_node_kind_hint: z.enum(['ConstraintNode', 'DecisionNode', 'ContractNode', 'OpenQuestion']).nullable().optional(),
+	}).passthrough().optional(),
+});
+export type McpExternalSignalObservation = z.infer<typeof McpExternalSignalObservationSchema>;
+
+/** Discriminated-union over all five source variants. Used at the RPC boundary
+ *  (kernel/src/rpc/server.ts SubmitObservationRequest handler) for Zod validation, and by
+ *  the Phase-6 observation-router for routing MCP tool-call results through the Phase-5
+ *  6-gate cascade unchanged. */
 export const RawObservationSchema = z.discriminatedUnion('source', [
 	ClaudeJsonlObservationSchema,
 	EditorSaveObservationSchema,
 	TerminalShellObservationSchema,
 	GitCommitObservationSchema,
+	McpExternalSignalObservationSchema,
 ]);
 export type RawObservation = z.infer<typeof RawObservationSchema>;
 export type ObservationSource = RawObservation['source'];
