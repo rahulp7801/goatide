@@ -3,22 +3,27 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// kernel/src/rpc/server.ts — Phase 3 (Plan 03-04) + Phase 4 (Plan 04-04) JSON-RPC stdio
-// server.
+// kernel/src/rpc/server.ts — Phase 3 (Plan 03-04) + Phase 4 (Plan 04-04) + Phase 5 (Plan 05-02).
 //
-// Per 03-RESEARCH.md ## Pattern: JSON-RPC Server. vscode-jsonrpc 8.2.1. StreamMessageReader/
-// Writer over process.stdin/stdout (LSP wire format). Pitfall 3 — STDOUT IS RESERVED.
-// All log output MUST go to stderr.
+// Phase-3 surface: queryGraph + proposeEdit. vscode-jsonrpc 8.2.1 (NOT 9.x — see Plan 03-01
+// SUMMARY for the version-pin rationale). StreamMessageReader/Writer over process.stdin/stdout
+// (LSP wire format). Pitfall 3 — STDOUT IS RESERVED for JSON-RPC framing.
 //
-// Phase-3 surface: queryGraph + proposeEdit.
-// Plan 04-04 adds: graph.recordRejection (CANV-03), graph.atomicAccept (CANV-07),
-// graph.queryAttemptByStagingPath (recovery scan), graph.queryNodes (citation hydration).
-// Phase 6 (MCP) extends with graph.cite, graph.proposeNode, graph.subscribe.
+// Plan 04-04 adds: graph.recordRejection, graph.atomicAccept,
+// graph.queryAttemptByStagingPath, graph.queryNodes. Plan 04-06 adds graph.heartbeat.
+//
+// Plan 05-02 generalises createRpcServer into a transport-agnostic factory:
+//   - createRpcServer({ transport: 'stdio', ... })  — existing behavior (back-compat).
+//   - bindHandlersForTcp({ connection, socket, authState, expectedToken, ... })
+//       — wires the handler set per TCP socket; gates everything except harvester.authenticate
+//         until authState.authenticated flips true.
 
+import type * as net from 'node:net';
 import * as rpc from 'vscode-jsonrpc/node.js';
 import type Database from 'better-sqlite3';
 import { resolveAnchor, traverse, type GraphDAO, type NodeKind } from '../graph/index.js';
 import { buildReceipt, type ReceiptDAO } from '../receipt/index.js';
+import { validateAuthToken } from '../daemon/auth-token.js';
 import {
 	QueryGraphRequest,
 	ProposeEditRequest,
@@ -27,6 +32,7 @@ import {
 	QueryAttemptByStagingPathRequest,
 	QueryNodesRequest,
 	HeartbeatRequest,
+	AuthenticateRequest,
 	type QueryGraphResult,
 	type ProposeEditResult,
 	type RecordRejectionResult,
@@ -34,6 +40,7 @@ import {
 	type QueryAttemptByStagingPathResult,
 	type QueryNodesResult,
 	type HeartbeatResult,
+	type AuthenticateResult,
 } from './methods.js';
 
 export interface CreateRpcServerArgs {
@@ -48,82 +55,82 @@ export interface CreateRpcServerArgs {
 }
 
 /**
- * Build a vscode-jsonrpc MessageConnection wired to the given DAOs and the (default)
- * process stdin/stdout streams. Caller invokes `.listen()` to start serving.
- *
- * Both Phase-3 handlers (queryGraph, proposeEdit) run synchronously over the shared
- * GraphDAO + ReceiptDAO + sqlite handle. The four Plan-04-04 handlers do the same.
- * vscode-jsonrpc auto-marshals thrown Errors into JSON-RPC error responses, so a
- * ReceiptRefusalError from buildReceipt — or a "receipt not found" / "note must be
- * >=1 char" / Zod refusal from the new handlers — surfaces to the client as a typed
- * error response (the error.message preserves the violation context).
+ * Per-socket trust state for the TCP transport. The first request on any TCP socket MUST
+ * be harvester.authenticate; until that round-trips with the correct token,
+ * authenticated=false and every other handler returns an "Unauthenticated" error.
  */
-export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnection {
-	const reader = args.reader ?? new rpc.StreamMessageReader(process.stdin);
-	const writer = args.writer ?? new rpc.StreamMessageWriter(process.stdout);
-	const connection = rpc.createMessageConnection(reader, writer);
+export interface SocketAuthState {
+	authenticated: boolean;
+}
 
-	connection.onRequest(QueryGraphRequest, (params): QueryGraphResult => {
+interface HandlerContext {
+	dao: GraphDAO;
+	receiptDao: ReceiptDAO;
+	sqlite: Database.Database;
+	dbPath: string;
+	startMs: number;
+}
+
+/**
+ * Bind every kernel RPC handler to the given connection. When authState is provided, the
+ * handlers are gated: any request other than harvester.authenticate returns an
+ * "Unauthenticated" error until authState.authenticated flips true.
+ */
+function bindHandlers(connection: rpc.MessageConnection, ctx: HandlerContext, authState?: SocketAuthState): void {
+	const requireAuth = <P, R>(fn: (params: P) => R): ((params: P) => R) => {
+		if (!authState) {
+			return fn;
+		}
+		return (params: P): R => {
+			if (!authState.authenticated) {
+				throw new Error('harvester.authenticate must succeed before any other request');
+			}
+			return fn(params);
+		};
+	};
+
+	connection.onRequest(QueryGraphRequest, requireAuth((params): QueryGraphResult => {
 		const at = params.at ?? new Date().toISOString();
-		const seedNodes = resolveAnchor(args.dao, params.anchor, at);
+		const seedNodes = resolveAnchor(ctx.dao, params.anchor, at);
 		if (seedNodes.length === 0) {
-			// TRAV-06: empty result, no fallback.
 			return { nodes: [], paths: [] };
 		}
-		const traversal = traverse(args.sqlite, {
+		const traversal = traverse(ctx.sqlite, {
 			anchorIds: seedNodes.map((n) => n.id),
 			scope: params.scope ?? 'all',
 			max_hops: params.max_hops ?? 4,
 			at,
 		});
 		return { nodes: traversal.nodes, paths: traversal.paths };
-	});
+	}));
 
-	connection.onRequest(ProposeEditRequest, (params): ProposeEditResult => {
+	connection.onRequest(ProposeEditRequest, requireAuth((params): ProposeEditResult => {
 		const asOf = params.asOf ?? new Date().toISOString();
-		// vscode-jsonrpc auto-marshals thrown Errors. ReceiptRefusalError preserves the
-		// REC-04 message ("destructive change cited only by Inferred nodes; promote ...");
-		// the client sees error.message intact.
 		const receipt = buildReceipt(
 			{ diff: params.diff, destructive: params.destructive, asOf },
-			args.dao,
-			args.receiptDao,
-			args.sqlite,
+			ctx.dao,
+			ctx.receiptDao,
+			ctx.sqlite,
 		);
 		return { receipt };
-	});
+	}));
 
-	// -------- graph.recordRejection (CANV-03) --------
-	//
-	// Creates an OpenQuestion node + 'references' edge to the receipt's first cited
-	// node. The receipt's change_id is NOT a node — link OpenQuestion to first cited
-	// node via 'references' edge as v1 proxy + store rejected_change_id on
-	// provenance.detail (RESEARCH ## Pattern: Reject-with-Note + ## Pitfall 10).
-	//
-	// Two-tx pattern (seed-own-tx + writeEdge-own-tx) accepted: a partial state would
-	// just orphan the OpenQuestion (survivable). dao.writeEdge accepts an enclosing tx
-	// if a future plan needs single-tx atomicity here.
-
-	connection.onRequest(RecordRejectionRequest, (params): RecordRejectionResult => {
+	connection.onRequest(RecordRejectionRequest, requireAuth((params): RecordRejectionResult => {
 		if (!params.note || params.note.length < 1) {
 			throw new Error('graph.recordRejection: note must be >=1 char');
 		}
-		const receipt = args.receiptDao.read(params.receipt_id);
+		const receipt = ctx.receiptDao.read(params.receipt_id);
 		if (!receipt) {
 			throw new Error(`graph.recordRejection: receipt not found: ${params.receipt_id}`);
 		}
 		const firstCited = receipt.citations[0];
-
-		// Best-effort anchor: derive from the first citation's cited node if possible.
-		// On absence, fall back to a synthetic anchor — the OpenQuestion still records
-		// the developer's reasoning even when no anchor row remains active.
-		const citedNode = firstCited ? args.dao.queryById(firstCited.node_id) : null;
+		const citedNode = firstCited ? ctx.dao.queryById(firstCited.node_id) : null;
 		const citedAnchor = citedNode?.payload.anchor;
 		const anchor = citedAnchor && Object.keys(citedAnchor).length > 0
 			? citedAnchor
 			: { file: 'unknown' };
 
-		const { id: openQuestionId } = args.dao.seed({
+		const { id: openQuestionId } = ctx.dao.seed({
 			payload: {
 				kind: 'OpenQuestion',
 				body: params.note,
@@ -141,7 +148,7 @@ export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnectio
 		});
 
 		if (firstCited) {
-			args.dao.writeEdge({
+			ctx.dao.writeEdge({
 				kind: 'references',
 				src_id: openQuestionId,
 				dst_id: firstCited.node_id,
@@ -149,25 +156,13 @@ export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnectio
 		}
 
 		return { open_question_id: openQuestionId };
-	});
+	}));
 
-	// -------- graph.atomicAccept (CANV-07) --------
-	//
-	// Persists an Attempt node (kind='Attempt', attempt_kind='accepted',
-	// tier+accept_latency_ms in payload) + a 'references' edge to the receipt's first
-	// cited node. Receipt may be null in degraded paths; we tolerate it (no edge is
-	// written when there's no first citation).
-	//
-	// Atomicity: dao.seed runs its own tx; dao.writeEdge runs another. If seed throws
-	// (Zod / Ghosting / SQLite CHECK), no edge is written. The edge insert is harmless
-	// on its own — the just-seeded Attempt is the FK target, so the foreign-key check
-	// can't trip.
-
-	connection.onRequest(AtomicAcceptRequest, (params): AtomicAcceptResult => {
-		const receipt = args.receiptDao.read(params.receipt_id);
+	connection.onRequest(AtomicAcceptRequest, requireAuth((params): AtomicAcceptResult => {
+		const receipt = ctx.receiptDao.read(params.receipt_id);
 		const firstCited = receipt?.citations[0] ?? null;
 
-		const { id: attemptId } = args.dao.seed({
+		const { id: attemptId } = ctx.dao.seed({
 			payload: {
 				kind: 'Attempt',
 				body: params.body,
@@ -190,7 +185,7 @@ export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnectio
 		});
 
 		if (firstCited) {
-			args.dao.writeEdge({
+			ctx.dao.writeEdge({
 				kind: 'references',
 				src_id: attemptId,
 				dst_id: firstCited.node_id,
@@ -198,19 +193,10 @@ export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnectio
 		}
 
 		return { attempt_node_id: attemptId };
-	});
+	}));
 
-	// -------- graph.queryAttemptByStagingPath (CANV-07 recovery scan support) --------
-	//
-	// Looks up the most-recently-recorded active Attempt whose provenance.detail
-	// references the given staging_path. Returns all-null on miss.
-	//
-	// Plan-04-04 v1 reads target_path from provenance.detail (NOT payload). The 04-04
-	// SUMMARY documents this; if Plan 04-05 / 04-06 prefer target_path on payload, a
-	// post-v1 schema migration in Phase-4-iter is the path.
-
-	connection.onRequest(QueryAttemptByStagingPathRequest, (params): QueryAttemptByStagingPathResult => {
-		const sqlite = args.sqlite;
+	connection.onRequest(QueryAttemptByStagingPathRequest, requireAuth((params): QueryAttemptByStagingPathResult => {
+		const sqlite = ctx.sqlite;
 		const row = sqlite.prepare(`
 			SELECT n.id AS id, json_extract(n.payload, '$.attempt_kind') AS attempt_kind,
 			       json_extract(p.detail, '$.target_path') AS target_path
@@ -231,23 +217,16 @@ export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnectio
 			target_path: row.target_path,
 			attempt_kind: row.attempt_kind,
 		};
-	});
+	}));
 
-	// -------- graph.queryNodes (citation hydration for Plan 04-05 save gate) --------
-	//
-	// Returns the slim shape needed by classifyTier's contractAllowlist signal: kind +
-	// body + contract_path? + invalidated_at + successor_id. Bounded scan (one
-	// queryById per id), no traversal. Plan 04-05 hydrates citationDetails before
-	// invoking classifyTier.
-
-	connection.onRequest(QueryNodesRequest, (params): QueryNodesResult => {
+	connection.onRequest(QueryNodesRequest, requireAuth((params): QueryNodesResult => {
 		const out: QueryNodesResult['nodes'] = [];
 		for (const id of params.node_ids) {
-			const node = args.dao.queryById(id);
+			const node = ctx.dao.queryById(id);
 			if (!node) {
 				continue;
 			}
-			const successor = args.dao.findSuccessor(id);
+			const successor = ctx.dao.findSuccessor(id);
 			const payload = node.payload as { body: string; contract_path?: string };
 			out.push({
 				node_id: node.id,
@@ -259,22 +238,77 @@ export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnectio
 			});
 		}
 		return { nodes: out };
-	});
-
-	// -------- graph.heartbeat (CANV-10) --------
-	//
-	// Lightweight liveness probe — capture startMs at handler-registration time. The
-	// returned db_path is whatever createRpcServer was passed (defaults to '<unknown>'
-	// if not threaded through main.ts). Pid + uptime_ms are derived at-call time so a
-	// stale probe response from a long-restarted kernel can still be detected.
-	const startMs = Date.now();
-	const reportedDbPath = args.dbPath ?? '<unknown>';
-	connection.onRequest(HeartbeatRequest, (): HeartbeatResult => ({
-		ok: true,
-		pid: process.pid,
-		db_path: reportedDbPath,
-		uptime_ms: Date.now() - startMs,
 	}));
 
+	connection.onRequest(HeartbeatRequest, requireAuth((): HeartbeatResult => ({
+		ok: true,
+		pid: process.pid,
+		db_path: ctx.dbPath,
+		uptime_ms: Date.now() - ctx.startMs,
+	})));
+}
+
+/**
+ * Build a vscode-jsonrpc MessageConnection wired to the given DAOs and the (default)
+ * process stdin/stdout streams. Caller invokes `.listen()` to start serving.
+ *
+ * Stdio mode: no auth gate (the kernel's parent owns the pipe).
+ */
+export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnection {
+	const reader = args.reader ?? new rpc.StreamMessageReader(process.stdin);
+	const writer = args.writer ?? new rpc.StreamMessageWriter(process.stdout);
+	const connection = rpc.createMessageConnection(reader, writer);
+
+	const ctx: HandlerContext = {
+		dao: args.dao,
+		receiptDao: args.receiptDao,
+		sqlite: args.sqlite,
+		dbPath: args.dbPath ?? '<unknown>',
+		startMs: Date.now(),
+	};
+	bindHandlers(connection, ctx /* no authState — stdio is implicitly trusted */);
 	return connection;
+}
+
+export interface BindHandlersForTcpArgs {
+	connection: rpc.MessageConnection;
+	socket: net.Socket;
+	authState: SocketAuthState;
+	expectedToken: string;
+	dao: GraphDAO;
+	receiptDao: ReceiptDAO;
+	sqlite: Database.Database;
+	dbPath: string;
+}
+
+/**
+ * TCP transport handler-binding. Adds the per-socket harvester.authenticate gate on top
+ * of the standard kernel handler set. Wrong-token attempts dispose the connection and
+ * destroy the socket so the bridge falls through to its spawn-fresh path.
+ */
+export function bindHandlersForTcp(args: BindHandlersForTcpArgs): void {
+	const ctx: HandlerContext = {
+		dao: args.dao,
+		receiptDao: args.receiptDao,
+		sqlite: args.sqlite,
+		dbPath: args.dbPath,
+		startMs: Date.now(),
+	};
+
+	args.connection.onRequest(AuthenticateRequest, (params): AuthenticateResult => {
+		if (!validateAuthToken(params.token, args.expectedToken)) {
+			// Failed auth: dispose connection + destroy socket on the next tick (after
+			// the error response is flushed). Bridge sees a connection-closed error and
+			// falls through to spawnDetachedKernel.
+			setImmediate(() => {
+				try { args.connection.dispose(); } catch { /* best-effort */ }
+				try { args.socket.destroy(); } catch { /* best-effort */ }
+			});
+			throw new Error('harvester.authenticate: invalid token');
+		}
+		args.authState.authenticated = true;
+		return { ok: true };
+	});
+
+	bindHandlers(args.connection, ctx, args.authState);
 }

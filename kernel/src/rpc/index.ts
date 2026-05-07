@@ -19,6 +19,7 @@ export {
 	QueryAttemptByStagingPathRequest,
 	QueryNodesRequest,
 	HeartbeatRequest,
+	AuthenticateRequest,
 	type QueryGraphParams,
 	type QueryGraphResult,
 	type ProposeEditParams,
@@ -33,4 +34,6 @@ export {
 	type QueryNodesResult,
 	type HeartbeatParams,
 	type HeartbeatResult,
+	type AuthenticateParams,
+	type AuthenticateResult,
 } from './methods.js';

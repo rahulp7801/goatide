@@ -170,3 +170,20 @@ export interface HeartbeatResult {
 }
 
 export const HeartbeatRequest = new RequestType<HeartbeatParams, HeartbeatResult, Error>('graph.heartbeat');
+
+// -------- harvester.authenticate (TELE-05 — daemon TCP per-socket auth gate) --------
+//
+// MUST be the first request issued on every fresh TCP connection. The kernel rejects
+// other request types until this round-trips successfully. Wrong tokens trigger
+// connection.dispose() + socket.destroy() so the bridge falls through to spawnDetachedKernel
+// (lockfile tampering / stale token after a stale-pid kernel was cleared).
+
+export interface AuthenticateParams {
+	token: string;
+}
+
+export interface AuthenticateResult {
+	ok: true;
+}
+
+export const AuthenticateRequest = new RequestType<AuthenticateParams, AuthenticateResult, Error>('harvester.authenticate');
