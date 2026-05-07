@@ -248,3 +248,64 @@ export interface GetDailyMetricsResult {
 
 export const GetDailyMetricsRequest = new RequestType<GetDailyMetricsParams, GetDailyMetricsResult, Error>('harvester.getDailyMetrics');
 export type { HarvestMetricsRow };
+
+// -------- mcp.* (Plan 06-06 — MCP-03 + MCP-06 + MCP-07 RPC surface) --------
+//
+// Four NEW request types backing the bridge UI surfaces:
+//   - mcp.getProviderState(provider)            — banner click target reads the ProviderState string.
+//   - mcp.getSchemaDriftReport()                — SchemaDriftBanner polls every 30s.
+//   - mcp.acceptProviderSchemaDrift(provider)   — "Accept new schema" quickPick action.
+//   - mcp.reconnectProvider(provider)           — goatide.mcp.reconnect command + LivenessBanner action.
+//
+// Snake_case wire-property names (provider, drift_summary, paused, accepted, reconnected)
+// match the rest of the kernel surface.
+
+export type McpProviderNameWire = 'github' | 'slack' | 'linear' | 'jira';
+export type McpProviderStateWire = 'connecting' | 'connected' | 'paused_drift' | 'paused_auth' | 'restarting' | 'closed';
+
+export interface McpGetProviderStateParams {
+	provider: McpProviderNameWire;
+}
+
+export interface McpGetProviderStateResult {
+	provider: McpProviderNameWire;
+	state: McpProviderStateWire;
+}
+
+export const McpGetProviderStateRequest = new RequestType<McpGetProviderStateParams, McpGetProviderStateResult, Error>('mcp.getProviderState');
+
+export interface McpGetSchemaDriftReportParams {
+	/* intentionally empty — getSchemaDriftReport is parameterless */
+}
+
+export interface McpSchemaDriftReportEntry {
+	provider: McpProviderNameWire;
+	paused: boolean;
+	drift_summary?: string;
+}
+
+export interface McpGetSchemaDriftReportResult {
+	providers: McpSchemaDriftReportEntry[];
+}
+
+export const McpGetSchemaDriftReportRequest = new RequestType<McpGetSchemaDriftReportParams, McpGetSchemaDriftReportResult, Error>('mcp.getSchemaDriftReport');
+
+export interface McpAcceptProviderSchemaDriftParams {
+	provider: McpProviderNameWire;
+}
+
+export interface McpAcceptProviderSchemaDriftResult {
+	accepted: boolean;
+}
+
+export const McpAcceptProviderSchemaDriftRequest = new RequestType<McpAcceptProviderSchemaDriftParams, McpAcceptProviderSchemaDriftResult, Error>('mcp.acceptProviderSchemaDrift');
+
+export interface McpReconnectProviderParams {
+	provider: McpProviderNameWire;
+}
+
+export interface McpReconnectProviderResult {
+	reconnected: boolean;
+}
+
+export const McpReconnectProviderRequest = new RequestType<McpReconnectProviderParams, McpReconnectProviderResult, Error>('mcp.reconnectProvider');

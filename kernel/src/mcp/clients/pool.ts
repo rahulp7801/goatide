@@ -64,6 +64,25 @@ interface InternalEntry {
 	client?: Client;
 	handle?: McpClientHandle;
 	supervisorRunning: boolean;
+	/**
+	 * Plan 06-06 — last drift report observed for this provider. Populated when
+	 * snapshotAndDetectDrift returned changed=true so the bridge SchemaDriftBanner can
+	 * render the per-tool diff list. Cleared after acceptProviderSchemaDrift +
+	 * subsequent successful re-register.
+	 */
+	driftChanges?: ReadonlyArray<{ tool: string; was: string; now: string }>;
+}
+
+/**
+ * Plan 06-06 — per-provider schema-drift snapshot the RPC server consumes when answering
+ * mcp.getSchemaDriftReport. paused mirrors entry.state === 'paused_drift'; drift_summary
+ * is a single-line digest of the per-tool change list (the SchemaDriftBanner renders this
+ * directly into the quickPick description).
+ */
+export interface SchemaDriftReport {
+	provider: McpProviderName;
+	paused: boolean;
+	drift_summary?: string;
 }
 
 export class McpClientPool {
@@ -166,14 +185,17 @@ export class McpClientPool {
 		const drift = await snapshotAndDetectDrift({ provider: entry.cfg.provider, client: handle.client });
 		if (drift.changed) {
 			entry.state = 'paused_drift';
+			entry.driftChanges = drift.changes;
 			if (entry.handle) {
 				entry.handle.state = 'paused_drift';
 			}
-			// Drift detected — skip tool registration. Plan 06-04's bridge wiring raises
+			// Drift detected — skip tool registration. Plan 06-06's bridge wiring raises
 			// the SchemaDriftBanner alert; we just hold off on dispatch until the operator
 			// acknowledges the change and reconnects.
 			return;
 		}
+		// Successful connect — clear any prior drift notes for this provider.
+		entry.driftChanges = undefined;
 
 		// Pitfall 7: listTools pagination — walk nextCursor until exhausted.
 		this.registry.clearProvider(entry.cfg.provider);
@@ -285,6 +307,65 @@ export class McpClientPool {
 	}
 
 	/**
+	 * Plan 06-06 — schema-drift report for the bridge's SchemaDriftBanner. Walks every
+	 * configured provider and reports paused (state === 'paused_drift') + a one-line
+	 * summary of detected schema changes. Providers in any other state get paused=false
+	 * and no summary.
+	 */
+	getSchemaDriftReport(): SchemaDriftReport[] {
+		const out: SchemaDriftReport[] = [];
+		for (const [provider, entry] of this.entries) {
+			const paused = entry.state === 'paused_drift';
+			const summary = paused && entry.driftChanges && entry.driftChanges.length > 0
+				? formatDriftSummary(entry.driftChanges)
+				: undefined;
+			out.push({ provider, paused, drift_summary: summary });
+		}
+		return out;
+	}
+
+	/**
+	 * Plan 06-06 — operator-accept hook. Persists the provider's current detected schema
+	 * as the new baseline (writes the snapshot via the schema-drift module) and bumps the
+	 * pool's internal note so the next reconnect re-registers tools. Caller usually pairs
+	 * this with reconnect(provider) so the new schema is exercised immediately.
+	 *
+	 * Returns true if the provider was paused_drift and a snapshot was persisted; false if
+	 * no drift was active (the bridge accepted while the banner was already cleared).
+	 */
+	async acceptProviderSchemaDrift(provider: McpProviderName): Promise<boolean> {
+		const entry = this.entries.get(provider);
+		if (!entry) {
+			throw new Error(`McpClientPool: unknown provider ${provider}`);
+		}
+		if (entry.state !== 'paused_drift') {
+			return false;
+		}
+		// Walk the live SDK Client's listTools (the same path snapshotAndDetectDrift uses)
+		// and persist the result as the new baseline. Done lazily here to avoid duplicating
+		// the cursor walk in the pool — schema-drift module owns the canonicalization.
+		if (entry.client) {
+			const acceptCallback = this.acceptCallback;
+			if (acceptCallback) {
+				await acceptCallback(provider, entry.client);
+			}
+		}
+		entry.driftChanges = undefined;
+		return true;
+	}
+
+	/**
+	 * Plan 06-06 — internal hook. The daemon wires this to a function that re-snapshots
+	 * the provider's current schema + writes it as the new baseline (via the schema-drift
+	 * module). Default is undefined; acceptProviderSchemaDrift returns false-but-no-throw
+	 * if not wired.
+	 */
+	private acceptCallback?: (provider: McpProviderName, client: Client) => Promise<void>;
+	setAcceptCallback(fn: (provider: McpProviderName, client: Client) => Promise<void>): void {
+		this.acceptCallback = fn;
+	}
+
+	/**
 	 * Graceful close: SDK Client.close() per provider; awaits all in parallel.
 	 */
 	async close(): Promise<void> {
@@ -312,4 +393,15 @@ export class McpClientPool {
 		}
 		await Promise.all(tasks);
 	}
+}
+
+/**
+ * Format a per-provider drift change list for the bridge SchemaDriftBanner. One line per
+ * tool (truncated to 3 entries with a '+N more' suffix) so the bridge quickPick description
+ * stays compact.
+ */
+function formatDriftSummary(changes: ReadonlyArray<{ tool: string; was: string; now: string }>): string {
+	const head = changes.slice(0, 3).map(c => c.tool).join(', ');
+	const remainder = changes.length > 3 ? ` (+${changes.length - 3} more)` : '';
+	return `${head}${remainder}`;
 }

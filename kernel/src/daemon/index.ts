@@ -40,6 +40,16 @@ import {
 	type McpServerHandle,
 	startMcpServer,
 } from '../mcp/index.js';
+import { McpClientPool } from '../mcp/clients/pool.js';
+import { ToolRegistry } from '../mcp/registry.js';
+import { buildProviderConfig } from '../mcp/clients/adapters/index.js';
+import { makeLiveKeychainAdapter as makeMcpLiveKeychainAdapter } from '../mcp/auth/keychain.js';
+import { routeMcpObservation } from '../mcp/clients/observation-router.js';
+import { recordMcpObservation } from '../mcp/liveness.js';
+import { acceptProviderSchemaDrift } from '../mcp/schema-drift/detector.js';
+import type { McpControlSurface } from '../rpc/server.js';
+import type { McpProviderName } from '../mcp/clients/types.js';
+import { canonicalHash, type ProviderSnapshot, type ToolSchemaSnapshot } from '../mcp/schema-drift/snapshot.js';
 
 export interface StartDaemonArgs {
 	dao: GraphDAO;
@@ -93,6 +103,8 @@ export interface DaemonHandle {
 	 * started with `mcp: null` (test mode), or when MCP startup failed (logged + non-fatal).
 	 */
 	mcpServer: McpServerHandle | null;
+	/** Plan 06-06 — McpClientPool the daemon supervises. Null when consume-side wasn't wired. */
+	mcpClientPool: McpClientPool | null;
 	close: () => Promise<void>;
 }
 
@@ -207,9 +219,63 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 		},
 	};
 
+	// Plan 06-06 — McpClientPool wired BEFORE the TCP RPC server so the bind path can pass
+	// the pool as the mcpControl surface. Pool startup is deliberately FIRE-AND-FORGET: the
+	// daemon doesn't block on provider connections (they may take seconds to initialize over
+	// stdio) and per-provider failures are isolated by the pool itself. Token-less providers
+	// short-circuit to `paused_auth` via the adapter returning null.
+	const mcpToolRegistry = new ToolRegistry();
+	const mcpClientPool = await maybeBuildMcpClientPool({
+		harvesterDeps,
+		registry: mcpToolRegistry,
+	});
+	if (mcpClientPool) {
+		// Plan 06-06 — operator-accept hook. The pool calls this when the bridge sends
+		// mcp.acceptProviderSchemaDrift; we re-snapshot the provider's current tools and
+		// persist as the new baseline via the schema-drift module.
+		mcpClientPool.setAcceptCallback(async (provider, client) => {
+			const allTools: Array<{ name: string; inputSchema: unknown; outputSchema?: unknown }> = [];
+			let cursor: string | undefined;
+			while (true) {
+				const r = await client.listTools(cursor ? { cursor } : undefined);
+				for (const t of r.tools) {
+					allTools.push({ name: t.name, inputSchema: t.inputSchema, outputSchema: (t as { outputSchema?: unknown }).outputSchema });
+				}
+				if (!r.nextCursor) {
+					break;
+				}
+				cursor = r.nextCursor;
+			}
+			const tools: ToolSchemaSnapshot[] = allTools.map(t => ({
+				name: t.name,
+				input_schema_hash: canonicalHash(t.inputSchema),
+				output_schema_hash: canonicalHash(t.outputSchema ?? null),
+				raw_schema: { input: t.inputSchema, output: t.outputSchema },
+			}));
+			const snapshot: ProviderSnapshot = {
+				provider,
+				recorded_at: new Date().toISOString(),
+				tools,
+			};
+			acceptProviderSchemaDrift(snapshot);
+		});
+		// Kick the pool but don't await — partial startup is the contract.
+		void mcpClientPool.start().catch((e) => {
+			console.error(`[daemon] McpClientPool start failed: ${e instanceof Error ? e.message : String(e)}`);
+		});
+	}
+
 	// Wire each incoming socket: per-connection auth state map, first-request must be
 	// authenticate, subsequent requests gated.
 	const sockets = new Set<net.Socket>();
+	const mcpControl: McpControlSurface | undefined = mcpClientPool
+		? {
+			getProviderState: (p) => mcpClientPool.getProviderState(p),
+			getSchemaDriftReport: () => mcpClientPool.getSchemaDriftReport(),
+			acceptProviderSchemaDrift: (p) => mcpClientPool.acceptProviderSchemaDrift(p),
+			reconnect: (p) => mcpClientPool.reconnect(p),
+		}
+		: undefined;
 	createTcpRpcServer(server, (socket, connection) => {
 		sockets.add(socket);
 		socket.once('close', () => sockets.delete(socket));
@@ -224,6 +290,7 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 			sqlite: args.sqlite,
 			dbPath: args.dbPath,
 			harvesterDeps,
+			mcpControl,
 		});
 		connection.listen();
 	});
@@ -288,6 +355,12 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 		if (stopJsonlWatcher) {
 			try { await stopJsonlWatcher(); } catch { /* best-effort */ }
 		}
+		// Plan 06-06 — close the McpClientPool before the MCP HTTP server. The pool's
+		// stdio children must exit cleanly (close() awaits SDK Client.close() per provider)
+		// before we tear down the TCP RPC layer the bridge uses to observe state.
+		if (mcpClientPool) {
+			try { await mcpClientPool.close(); } catch { /* best-effort */ }
+		}
 		// Plan 06-02 — close the MCP HTTP server before tearing down the TCP RPC socket
 		// chain. Order matters: the MCP server has its own keep-alive connections that
 		// must drain cleanly so external clients see a graceful close, not an RST.
@@ -317,7 +390,101 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 	process.once('SIGINT', cleanup);
 	process.once('beforeExit', cleanup);
 
-	return { port, authToken, lockfilePath, harvesterDeps, mcpServer, close };
+	return { port, authToken, lockfilePath, harvesterDeps, mcpServer, mcpClientPool, close };
+}
+
+/**
+ * Plan 06-06 — construct the McpClientPool from the live keychain + adapter dispatcher.
+ * Returns null on any unrecoverable error (logs to stderr); the daemon proceeds without
+ * MCP consume-side support (the bridge's banners stay hidden — same as if mcpControl were
+ * absent).
+ *
+ * The 4 adapters require a per-provider {command, args} pair (the path to the upstream
+ * provider's MCP stdio binary). Plan 06-06 v1 reads these from environment variables:
+ *   GOATIDE_MCP_<PROVIDER>_COMMAND, GOATIDE_MCP_<PROVIDER>_ARGS (space-separated),
+ *   GOATIDE_MCP_<PROVIDER>_CWD (optional). When the COMMAND env is unset the provider is
+ *   silently skipped. ATLASSIAN_EMAIL must also be set for jira (it's config data + non-secret).
+ *
+ * Per-provider auth gating: providers whose adapter returns null (no credentials configured)
+ * are silently skipped — the pool isn't constructed with their config so they don't appear
+ * in the pool's entry map. The bridge will surface the absence via an empty `getProviderState`
+ * (returns 'closed' for unknown providers).
+ *
+ * End-to-end daemon-boot smoke is exercised by Plan 06-07's SC integration specs.
+ */
+async function maybeBuildMcpClientPool(deps: {
+	harvesterDeps: HarvesterDeps;
+	registry: ToolRegistry;
+}): Promise<McpClientPool | null> {
+	try {
+		const keychain = makeMcpLiveKeychainAdapter();
+		const providers: McpProviderName[] = ['github', 'slack', 'linear', 'jira'];
+		const configs: import('../mcp/clients/types.js').McpProviderConfig[] = [];
+		for (const provider of providers) {
+			const command = process.env[`GOATIDE_MCP_${provider.toUpperCase()}_COMMAND`];
+			if (!command) {
+				continue;
+			}
+			const argsRaw = process.env[`GOATIDE_MCP_${provider.toUpperCase()}_ARGS`] ?? '';
+			const cmdArgs = argsRaw.length > 0 ? argsRaw.split(' ').filter((s) => s.length > 0) : [];
+			const cwd = process.env[`GOATIDE_MCP_${provider.toUpperCase()}_CWD`];
+			if (provider === 'github') {
+				const r = await buildProviderConfig({ provider: 'github', keychain, command, args: cmdArgs, cwd });
+				if (r.provider === 'github' && r.config) {
+					configs.push(r.config);
+				}
+			} else if (provider === 'jira') {
+				const email = process.env.ATLASSIAN_EMAIL;
+				if (!email) {
+					continue;
+				}
+				const r = await buildProviderConfig({ provider: 'jira', keychain, command, args: cmdArgs, cwd, email });
+				if (r.provider === 'jira' && r.config) {
+					configs.push(r.config);
+				}
+			} else if (provider === 'slack') {
+				const r = await buildProviderConfig({ provider: 'slack', keychain, command, args: cmdArgs, cwd });
+				if (r.provider === 'slack' && r.result) {
+					configs.push(r.result.config);
+				}
+			} else if (provider === 'linear') {
+				const r = await buildProviderConfig({ provider: 'linear', keychain, command, args: cmdArgs, cwd });
+				if (r.provider === 'linear' && r.result) {
+					configs.push(r.result.config);
+				}
+			}
+		}
+		if (configs.length === 0) {
+			console.error('[daemon] McpClientPool skipped: no provider configs in env (set GOATIDE_MCP_<PROVIDER>_COMMAND + run `goatide-cli mcp configure --provider <name>`)');
+			return null;
+		}
+		const pool = new McpClientPool({
+			configs,
+			registry: deps.registry,
+			onObservation: async (raw) => {
+				// Plan 06-05 + 06-06: route the tool-call result through the harvester filter
+				// cascade AND tag a per-provider liveness observation so the bridge banner can
+				// see the provider as live.
+				try {
+					await routeMcpObservation({
+						provider: raw.provider,
+						tool_name: raw.tool_name,
+						arguments: raw.arguments,
+						result: raw.result,
+						deps: deps.harvesterDeps,
+					});
+				} finally {
+					if (deps.harvesterDeps.livenessState) {
+						recordMcpObservation(deps.harvesterDeps.livenessState, raw.provider);
+					}
+				}
+			},
+		});
+		return pool;
+	} catch (e) {
+		console.error(`[daemon] McpClientPool construction failed: ${e instanceof Error ? e.message : String(e)}`);
+		return null;
+	}
 }
 
 /**

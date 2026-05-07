@@ -41,6 +41,10 @@ import {
 	SubmitObservationRequest,
 	GetLivenessRequest,
 	GetDailyMetricsRequest,
+	McpGetProviderStateRequest,
+	McpGetSchemaDriftReportRequest,
+	McpAcceptProviderSchemaDriftRequest,
+	McpReconnectProviderRequest,
 	type QueryGraphResult,
 	type ProposeEditResult,
 	type RecordRejectionResult,
@@ -52,7 +56,13 @@ import {
 	type SubmitObservationResult,
 	type GetLivenessResult,
 	type GetDailyMetricsResult,
+	type McpGetProviderStateResult,
+	type McpGetSchemaDriftReportResult,
+	type McpAcceptProviderSchemaDriftResult,
+	type McpReconnectProviderResult,
 } from './methods.js';
+import type { McpProviderName, ProviderState } from '../mcp/clients/types.js';
+import { computeMcpLiveness } from '../mcp/liveness.js';
 
 export interface CreateRpcServerArgs {
 	dao: GraphDAO;
@@ -72,6 +82,18 @@ export interface CreateRpcServerArgs {
  */
 export interface SocketAuthState {
 	authenticated: boolean;
+}
+
+/**
+ * Plan 06-06 — control surface the RPC server uses to answer mcp.* requests. Implemented by
+ * the daemon's McpClientPool; the structural interface keeps the RPC layer ignorant of the
+ * concrete pool class so unit tests can drive the handlers with synthetic mocks.
+ */
+export interface McpControlSurface {
+	getProviderState: (provider: McpProviderName) => ProviderState;
+	getSchemaDriftReport: () => Array<{ provider: McpProviderName; paused: boolean; drift_summary?: string }>;
+	acceptProviderSchemaDrift: (provider: McpProviderName) => Promise<boolean>;
+	reconnect: (provider: McpProviderName) => Promise<void>;
 }
 
 interface HandlerContext {
@@ -97,6 +119,7 @@ function bindHandlers(
 	ctx: HandlerContext,
 	authState?: SocketAuthState,
 	harvesterDeps?: HarvesterDepsForRpc,
+	mcpControl?: McpControlSurface,
 ): void {
 	const requireAuth = <P, R>(fn: (params: P) => R): ((params: P) => R) => {
 		if (!authState) {
@@ -299,17 +322,19 @@ function bindHandlers(
 			return await submitRawObservation(parsed.data, harvesterDeps as HarvesterDeps);
 		}));
 
-		// Plan 05-07 TELE-06 — bridge LivenessBanner polls this every 30s. Returns empty
-		// `sources` array if the daemon never wired livenessState (degenerate but valid —
-		// banner stays hidden).
+		// Plan 05-07 TELE-06 + Plan 06-06 MCP-06 — bridge LivenessBanner polls this every 30s.
+		// Phase-5 sources (claude_jsonl/editor_save/terminal_shell/git_commit/mcp_external_signal)
+		// are reported via livenessState.computeLiveness; Phase-6 mcp.<provider> sources are
+		// merged via computeMcpLiveness so the same banner surface picks them up.
 		connection.onRequest(GetLivenessRequest, requireAuth((): GetLivenessResult => {
 			if (!harvesterDeps.livenessState) {
 				return { sources: [] };
 			}
 			const nowMs = (harvesterDeps.now ?? Date.now)();
-			const sources = harvesterDeps.livenessState.computeLiveness({
+			const sources = computeMcpLiveness({
+				state: harvesterDeps.livenessState,
 				now: nowMs,
-				thresholds: resolveLivenessThresholdsFromEnv(),
+				thresholds: resolveLivenessThresholdsFromEnv() as Record<string, number>,
 			});
 			return { sources };
 		}));
@@ -332,6 +357,47 @@ function bindHandlers(
 				now: nowMs,
 			}) as ObservationSource[];
 			return { rows, sustained_zero_sources: sustained };
+		}));
+	}
+
+	// Plan 06-06 — mcp.* RPC surface backing the bridge UI. Registered when the daemon wires
+	// an McpControlSurface; absent on stdio mode or when MCP startup failed (the bridge falls
+	// back to hidden banners — same shape as livenessState being absent).
+	if (mcpControl) {
+		connection.onRequest(McpGetProviderStateRequest, requireAuth((params): McpGetProviderStateResult => ({
+			provider: params.provider,
+			state: mcpControl.getProviderState(params.provider),
+		})));
+
+		connection.onRequest(McpGetSchemaDriftReportRequest, requireAuth((): McpGetSchemaDriftReportResult => ({
+			providers: mcpControl.getSchemaDriftReport().map(r => ({
+				provider: r.provider,
+				paused: r.paused,
+				drift_summary: r.drift_summary,
+			})),
+		})));
+
+		connection.onRequest(McpAcceptProviderSchemaDriftRequest, requireAuth(async (params): Promise<McpAcceptProviderSchemaDriftResult> => {
+			const accepted = await mcpControl.acceptProviderSchemaDrift(params.provider);
+			// After acceptance, reconnect so the new schema is exercised immediately.
+			if (accepted) {
+				try {
+					await mcpControl.reconnect(params.provider);
+				} catch {
+					// Reconnect failure is non-fatal for the accept op — banner stays cleared,
+					// supervisor will retry per its backoff policy.
+				}
+			}
+			return { accepted };
+		}));
+
+		connection.onRequest(McpReconnectProviderRequest, requireAuth(async (params): Promise<McpReconnectProviderResult> => {
+			try {
+				await mcpControl.reconnect(params.provider);
+				return { reconnected: true };
+			} catch {
+				return { reconnected: false };
+			}
 		}));
 	}
 }
@@ -370,6 +436,9 @@ export interface BindHandlersForTcpArgs {
 	/** Phase 5 Plan 05-03 — harvester orchestrator deps. Optional so Plan 05-02 callers
 	 *  that don't yet wire the watchers can pass an empty bag and still authenticate. */
 	harvesterDeps?: HarvesterDepsForRpc;
+	/** Plan 06-06 — MCP control surface backing the mcp.* RPC handlers. Optional; when
+	 *  absent the four mcp.* methods are NOT registered and the bridge banners stay hidden. */
+	mcpControl?: McpControlSurface;
 }
 
 /**
@@ -423,5 +492,5 @@ export function bindHandlersForTcp(args: BindHandlersForTcpArgs): void {
 		return { ok: true };
 	});
 
-	bindHandlers(args.connection, ctx, args.authState, args.harvesterDeps);
+	bindHandlers(args.connection, ctx, args.authState, args.harvesterDeps, args.mcpControl);
 }
