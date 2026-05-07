@@ -10,7 +10,10 @@
 // This is the strongest possible integration test: real SDK over real stdio against a real
 // fixture process, only the upstream provider boundary is mocked.
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { McpClientPool } from '../../../mcp/clients/pool.js';
 import { ToolRegistry } from '../../../mcp/registry.js';
@@ -29,6 +32,36 @@ function fourProviderConfigs(modes?: Partial<Record<McpProviderName, 'normal' | 
 }
 
 describe('MCP-01: client pool starts and supervises 4 stdio MCP clients', () => {
+	// Plan 06-04 swap: schema-drift detector now persists per-provider snapshots to
+	// $XDG_CONFIG_HOME (POSIX) / %APPDATA% (Windows). Redirect both to a per-test temp dir so
+	// (a) the host's real config is never touched, (b) successive test runs don't see drift
+	// from prior runs' snapshots.
+	let tmpRoot: string;
+	let prevXdg: string | undefined;
+	let prevAppdata: string | undefined;
+
+	beforeEach(() => {
+		tmpRoot = mkdtempSync(join(tmpdir(), 'goatide-mcp-pool-'));
+		prevXdg = process.env.XDG_CONFIG_HOME;
+		prevAppdata = process.env.APPDATA;
+		process.env.XDG_CONFIG_HOME = tmpRoot;
+		process.env.APPDATA = tmpRoot;
+	});
+
+	afterEach(() => {
+		if (prevXdg === undefined) {
+			delete process.env.XDG_CONFIG_HOME;
+		} else {
+			process.env.XDG_CONFIG_HOME = prevXdg;
+		}
+		if (prevAppdata === undefined) {
+			delete process.env.APPDATA;
+		} else {
+			process.env.APPDATA = prevAppdata;
+		}
+		rmSync(tmpRoot, { recursive: true, force: true });
+	});
+
 	it('MCP-01: pool starts 4 stdio Clients via SDK; each connects to its own mock server', async () => {
 		const registry = new ToolRegistry();
 		const observations: unknown[] = [];
