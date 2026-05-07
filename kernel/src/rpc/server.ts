@@ -25,8 +25,10 @@ import { resolveAnchor, traverse, type GraphDAO, type NodeKind } from '../graph/
 import { buildReceipt, type ReceiptDAO } from '../receipt/index.js';
 import { validateAuthToken } from '../daemon/auth-token.js';
 import { submitRawObservation, type HarvesterDeps } from '../harvester/index.js';
-import { RawObservationSchema } from '../harvester/observations.js';
+import { RawObservationSchema, type ObservationSource } from '../harvester/observations.js';
 import { flipCiteEligibleOnAcceptedReceipt } from '../harvester/promotion-gate/index.js';
+import { resolveLivenessThresholdsFromEnv } from '../harvester/liveness.js';
+import { resolvePort06ParamsFromEnv } from '../harvester/metrics.js';
 import {
 	QueryGraphRequest,
 	ProposeEditRequest,
@@ -37,6 +39,8 @@ import {
 	HeartbeatRequest,
 	AuthenticateRequest,
 	SubmitObservationRequest,
+	GetLivenessRequest,
+	GetDailyMetricsRequest,
 	type QueryGraphResult,
 	type ProposeEditResult,
 	type RecordRejectionResult,
@@ -46,6 +50,8 @@ import {
 	type HeartbeatResult,
 	type AuthenticateResult,
 	type SubmitObservationResult,
+	type GetLivenessResult,
+	type GetDailyMetricsResult,
 } from './methods.js';
 
 export interface CreateRpcServerArgs {
@@ -292,6 +298,41 @@ function bindHandlers(
 			}
 			return await submitRawObservation(parsed.data, harvesterDeps as HarvesterDeps);
 		}));
+
+		// Plan 05-07 TELE-06 — bridge LivenessBanner polls this every 30s. Returns empty
+		// `sources` array if the daemon never wired livenessState (degenerate but valid —
+		// banner stays hidden).
+		connection.onRequest(GetLivenessRequest, requireAuth((): GetLivenessResult => {
+			if (!harvesterDeps.livenessState) {
+				return { sources: [] };
+			}
+			const nowMs = (harvesterDeps.now ?? Date.now)();
+			const sources = harvesterDeps.livenessState.computeLiveness({
+				now: nowMs,
+				thresholds: resolveLivenessThresholdsFromEnv(),
+			});
+			return { sources };
+		}));
+
+		// Plan 05-07 PORT-06 — bridge / CLI dashboard. Returns rows for the last `days`
+		// days plus the sustained-zero-source list calibrated against the env-overridable
+		// floor.
+		connection.onRequest(GetDailyMetricsRequest, requireAuth((params): GetDailyMetricsResult => {
+			if (!harvesterDeps.metrics) {
+				return { rows: [], sustained_zero_sources: [] };
+			}
+			const nowMs = (harvesterDeps.now ?? Date.now)();
+			const envParams = resolvePort06ParamsFromEnv();
+			const days = params.days > 0 ? params.days : envParams.days;
+			const minDailyVolumeFloor = params.min_daily_volume_floor ?? envParams.minDailyVolumeFloor;
+			const rows = harvesterDeps.metrics.queryLastDays(days, nowMs);
+			const sustained = harvesterDeps.metrics.sustainedZeroSources({
+				days,
+				minDailyVolumeFloor,
+				now: nowMs,
+			}) as ObservationSource[];
+			return { rows, sustained_zero_sources: sustained };
+		}));
 	}
 }
 
@@ -340,6 +381,7 @@ export interface HarvesterDepsForRpc {
 	enrichGit: HarvesterDeps['enrichGit'];
 	dao?: HarvesterDeps['dao'];
 	workspaceFolders?: HarvesterDeps['workspaceFolders'];
+	now?: HarvesterDeps['now'];
 	onCorroborationCandidate?: HarvesterDeps['onCorroborationCandidate'];
 	rejectedLogPath?: HarvesterDeps['rejectedLogPath'];
 	filter?: HarvesterDeps['filter'];
@@ -347,6 +389,8 @@ export interface HarvesterDepsForRpc {
 	promoterCtx?: HarvesterDeps['promoterCtx'];
 	onPromoterResult?: HarvesterDeps['onPromoterResult'];
 	liveness?: HarvesterDeps['liveness'];
+	livenessState?: HarvesterDeps['livenessState'];
+	metrics?: HarvesterDeps['metrics'];
 }
 
 /**

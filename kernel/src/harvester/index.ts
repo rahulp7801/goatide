@@ -23,6 +23,8 @@ import { appendRejection } from './filter/rejected-log.js';
 import { resolveRejectedLogPath } from './paths.js';
 import { promote, type PromoterContext, type PromoterResult } from './promoter/index.js';
 import { incrementCorroborationAndMaybePromote } from './promotion-gate/index.js';
+import type { LivenessState } from './liveness.js';
+import type { HarvestMetricsDao } from './metrics.js';
 
 export interface SubmitObservationResult {
 	id: string;
@@ -46,6 +48,21 @@ export interface GitEnrichmentResult {
 
 export interface LivenessRecorder {
 	record(source: ObservationSource): void;
+}
+
+/**
+ * Plan 05-07 — TELE-06 liveness watchdog handle. The full LivenessState surface (vs the
+ * Plan-05-03 LivenessRecorder back-compat shape above) lets the orchestrator pass an
+ * explicit `now` into recordObservation for deterministic tests; the harvester.getLiveness
+ * RPC handler calls computeLiveness on every request so the bridge always sees a fresh
+ * report (no cached snapshots, no cron-style timers in the kernel).
+ */
+export interface LivenessTracker {
+	recordObservation(source: ObservationSource, now?: number): void;
+	computeLiveness(opts: {
+		now: number;
+		thresholds?: Partial<Record<ObservationSource, number>>;
+	}): import('./liveness.js').LivenessReport[];
 }
 
 /**
@@ -104,8 +121,21 @@ export interface HarvesterDeps {
 	promoterCtx?: PromoterContext;
 	/** Plan 05-07 wires this — observability hook for promoter results. */
 	onPromoterResult?: PromoterResultHook;
-	/** Plan 05-07 wires this — liveness recorder. Plan 05-05 leaves it as a no-op stub. */
+	/**
+	 * Legacy Plan 05-03 liveness recorder back-compat. New code uses livenessState (below);
+	 * the orchestrator falls back to this callback when livenessState is undefined.
+	 */
 	liveness?: LivenessRecorder;
+	/**
+	 * Plan 05-07 — TELE-06 LivenessState. recordObservation is invoked at submitRawObservation
+	 * entry (BEFORE the filter cascade) so even rejected observations advance the watchdog.
+	 */
+	livenessState?: LivenessTracker;
+	/**
+	 * Plan 05-07 — PORT-06 daily metrics DAO. incrementSubmitted on entry, incrementRejected
+	 * on filter reject, incrementPromoted on Promoter classified-success.
+	 */
+	metrics?: HarvestMetricsDao;
 }
 
 /**
@@ -120,6 +150,22 @@ export async function submitRawObservation(
 	input: RawObservation,
 	deps: HarvesterDeps,
 ): Promise<SubmitObservationResult> {
+	const nowMs = (deps.now ?? Date.now)();
+
+	// Plan 05-07 TELE-06 + PORT-06: liveness + submitted-counter run BEFORE the filter
+	// cascade. A source whose observations are all being rejected by the filter is still
+	// alive (the watchdog tracks watcher health, not filter survival), and the daily
+	// submitted counter feeds the per-source accept-rate the developer reads in `goatide-cli
+	// harvest metrics`.
+	if (deps.livenessState) {
+		deps.livenessState.recordObservation(input.source, nowMs);
+	} else if (deps.liveness) {
+		deps.liveness.record(input.source);
+	}
+	if (deps.metrics) {
+		deps.metrics.incrementSubmitted(input.source, nowMs);
+	}
+
 	let enriched: RawObservation = input;
 	if (input.source === 'git_commit') {
 		const extra = await deps.enrichGit({
@@ -138,10 +184,16 @@ export async function submitRawObservation(
 			predicate: decision.predicate,
 			reason,
 			source: input.source,
-			ts: new Date().toISOString(),
+			ts: new Date(nowMs).toISOString(),
 			body_preview: input.body.slice(0, 200),
 			file_path: getObservationFilePath(input),
 		}, path);
+		// Plan 05-07 PORT-06: roll up the reject into the daily counter. Predicate is not
+		// stored at the daily level (rejected_observations.jsonl carries that); the parameter
+		// is for self-documenting call-sites.
+		if (deps.metrics) {
+			deps.metrics.incrementRejected(input.source, decision.predicate, nowMs);
+		}
 		return { id: input.id, accepted: false, reject_reason: decision.predicate };
 	}
 
@@ -171,6 +223,11 @@ export async function submitRawObservation(
 				},
 			});
 
+			// Plan 05-07 PORT-06: roll up the promotion into the daily counter.
+			if (deps.metrics) {
+				deps.metrics.incrementPromoted(enriched.source, nowMs);
+			}
+
 			// PORT-05 (b) post-seed corroboration sweep: if any existing Inferred sibling
 			// shares the new node's anchor.file, increment its corroboration counter.
 			// Defense-in-depth — Plan 05-05's net_new predicate already rejects exact-tuple
@@ -182,9 +239,6 @@ export async function submitRawObservation(
 		}
 	} else if (deps.promoter) {
 		await deps.promoter(enriched);
-	}
-	if (deps.liveness) {
-		deps.liveness.record(enriched.source);
 	}
 
 	return { id: input.id, accepted: true };

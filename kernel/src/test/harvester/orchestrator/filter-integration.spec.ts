@@ -59,6 +59,10 @@ describe('Plan 05-05: submitRawObservation integrates real Portability Filter', 
 		expect({
 			result,
 			promoterCalls: promoter.mock.calls.length,
+			// Plan 05-07: liveness records BEFORE the filter cascade so even rejected
+			// observations advance the per-source watchdog (the watcher IS alive — only
+			// its content failed the cascade). PORT-02 silent rejection still holds for
+			// the promoter side.
 			livenessCalls: liveness.record.mock.calls.length,
 			loggedCount: logged.length,
 			loggedPredicate: logged[0].predicate,
@@ -66,7 +70,7 @@ describe('Plan 05-05: submitRawObservation integrates real Portability Filter', 
 		}).toEqual({
 			result: { id: 'cred-1', accepted: false, reject_reason: 'credential_scrub' },
 			promoterCalls: 0,
-			livenessCalls: 0,
+			livenessCalls: 1,
 			loggedCount: 1,
 			loggedPredicate: 'credential_scrub',
 			loggedObservationId: 'cred-1',

@@ -30,6 +30,8 @@ import { startClaudeJsonlWatcher, type StopClaudeJsonlWatcher } from '../harvest
 import { enrichGitCommitObservation } from '../harvester/watchers/git.js';
 import { incrementCorroborationAndMaybePromote } from '../harvester/promotion-gate/index.js';
 import { resolveAnthropicApiKey } from '../harvester/promoter/index.js';
+import { LivenessState } from '../harvester/liveness.js';
+import { HarvestMetricsDao } from '../harvester/metrics.js';
 
 export interface StartDaemonArgs {
 	dao: GraphDAO;
@@ -115,10 +117,17 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 	// into deps so the Portability Filter cascade runs against the live graph; promoter /
 	// liveness slots remain Plans 05-06 / 05-07.
 	const offsetsDao = new OffsetsDao(args.sqlite);
+	// Plan 05-07 — TELE-06 in-memory watchdog + PORT-06 daily metrics DAO. One LivenessState
+	// per daemon process; the bridge polls harvester.getLiveness on the bridge side every
+	// 30s. HarvestMetricsDao wraps the harvest_metrics_daily table created by 0005.
+	const livenessState = new LivenessState();
+	const metricsDao = new HarvestMetricsDao(args.sqlite);
 	const harvesterDeps: HarvesterDeps = {
 		enrichGit: enrichGitCommitObservation,
 		dao: args.dao,
 		workspaceFolders: args.workspaceFolders ?? [],
+		livenessState,
+		metrics: metricsDao,
 		// Phase 5 Plan 05-06 PORT-05 (b): net_new-rejection corroboration callback wired
 		// to the real promotion-gate counter. The corroboration counter serializes
 		// per-nodeId via the gate's queue (Pitfall 9).

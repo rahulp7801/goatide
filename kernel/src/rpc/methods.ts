@@ -31,8 +31,10 @@ import { RequestType } from 'vscode-jsonrpc';
 import type { AnchorRequest } from '../graph/anchor.js';
 import type { Scope, TraverseRow } from '../graph/traverse.js';
 import type { ReasoningReceipt } from '../receipt/index.js';
-import type { RawObservation } from '../harvester/observations.js';
+import type { RawObservation, ObservationSource } from '../harvester/observations.js';
 import type { SubmitObservationResult } from '../harvester/index.js';
+import type { LivenessReport } from '../harvester/liveness.js';
+import type { HarvestMetricsRow } from '../harvester/metrics.js';
 
 // -------- graph.queryGraph --------
 
@@ -208,3 +210,41 @@ export type SubmitObservationParams = RawObservation;
 export type { SubmitObservationResult };
 
 export const SubmitObservationRequest = new RequestType<SubmitObservationParams, SubmitObservationResult, Error>('harvester.submitObservation');
+
+// -------- harvester.getLiveness (Plan 05-07 — TELE-06 watchdog) --------
+//
+// Bridge polls every 30s (configurable via env GOATIDE_LIVENESS_POLL_INTERVAL_MS for tests).
+// Kernel reads the in-memory LivenessState; sources never observed return stale=false on
+// first call (initial-grace via boot timestamp).
+
+export interface GetLivenessParams {
+	/* intentionally empty — getLiveness is parameterless */
+}
+
+export interface GetLivenessResult {
+	sources: LivenessReport[];
+}
+
+export const GetLivenessRequest = new RequestType<GetLivenessParams, GetLivenessResult, Error>('harvester.getLiveness');
+export type { LivenessReport };
+
+// -------- harvester.getDailyMetrics (Plan 05-07 — PORT-06 dashboard) --------
+//
+// Returns last <days> rows from harvest_metrics_daily, sorted (date_utc DESC, source ASC).
+// Used by `goatide-cli harvest metrics` for the per-source accept-rate dashboard. The
+// sustained_zero_sources field is the calibration signal — sources with sustained volume
+// but zero promotions are surfaced as a footer warning.
+
+export interface GetDailyMetricsParams {
+	days: number;
+	/** Override the volume floor for sustained-zero detection. Defaults to 10. */
+	min_daily_volume_floor?: number;
+}
+
+export interface GetDailyMetricsResult {
+	rows: HarvestMetricsRow[];
+	sustained_zero_sources: ObservationSource[];
+}
+
+export const GetDailyMetricsRequest = new RequestType<GetDailyMetricsParams, GetDailyMetricsResult, Error>('harvester.getDailyMetrics');
+export type { HarvestMetricsRow };
