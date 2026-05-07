@@ -266,7 +266,7 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 				mcpServer = await startMcpServer({
 					port: mcpConfig.port ?? MCP_DEFAULT_PORT,
 					bearerToken,
-					registerTools: (s) => registerGraphTools(s, { dao: args.dao, sqlite: args.sqlite }),
+					registerTools: (s) => registerGraphTools(s, { dao: args.dao, sqlite: args.sqlite, harvesterDeps }),
 				});
 			}
 		} catch (e) {

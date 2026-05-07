@@ -3,61 +3,91 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// kernel/src/mcp/server/tools/graph-propose-node.ts — Phase 6 (Plan 06-02) graph.proposeNode v1 stub.
+// kernel/src/mcp/server/tools/graph-propose-node.ts — Phase 6 (Plan 06-05) graph.proposeNode REAL ROUTING.
 //
-// v1 STUB: this tool is registered with a real schema but the handler returns
-//   {isError: true, structuredContent: {error: 'mcp_external_signal_routing_pending_06_05', retryable: false}}
-// per Pitfall 11 (distinct permanent vs transient error semantics). Plan 06-05 replaces the
-// stub with a real submitRawObservation routing once the `mcp_external_signal` source is
-// added to the Phase-5 RawObservationSchema discriminated union.
+// Plan 06-02 shipped this as a v1 stub returning isError:true with
+// structuredContent.error=mcp_external_signal_routing_pending_06_05. Plan 06-05 replaces
+// the handler body (NOT the registration site or the schema scope) with real routing through
+// routeMcpObservation -> submitRawObservation. The graph.proposeNode contract:
 //
-// The stub registers the schema NOW so SDK clients can discover the tool via tools/list and
-// see the eventual input contract; the response is permanently-not-retryable so well-behaved
-// clients don't retry on transient assumption.
+//   Input:  { provider, tool_name, result, arguments? }
+//   Output (success-shape — Pitfall 11):
+//     - accepted=true:  observation routed through Phase-5 cascade + Promoter; rejected_by undefined
+//     - accepted=false: filter rejected; rejected_by=<predicate> (e.g. 'credential_scrub')
+//   Output (isError:true) is reserved for transient errors (network, exception) — NEVER
+//   filter rejection. Filter rejection is a CORRECT outcome (Mandate-A: every observation
+//   audited through the same gates as local terminal/git observations).
+//
+// CONSTITUTIONAL SYMMETRY: external MCP writes go through the EXACT SAME 6-gate cascade
+// (credential-scrub -> portable -> net-new -> project-relevant -> verifiable -> justified)
+// that local Phase-5 watchers go through. A Slack thread containing 'sk-ant-fake' rejects
+// at credential-scrub identically to a local terminal command.
 
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { routeMcpObservation } from '../../clients/observation-router.js';
+import type { HarvesterDeps } from '../../../harvester/index.js';
 
+/** Input schema raw shape (SDK's registerTool expects ZodRawShape, not z.object(...)). */
 export const GraphProposeNodeInputShape = {
-	kind: z.string(),
-	body: z.string(),
-	anchor: z.record(z.unknown()).optional(),
-	provenance: z
-		.object({
-			source: z.string().optional(),
-			actor: z.string().optional(),
-			detail: z.record(z.unknown()).optional(),
-		})
-		.optional(),
+	provider: z.enum(['github', 'slack', 'linear', 'jira']),
+	tool_name: z.string(),
+	result: z.unknown(),
+	arguments: z.unknown().optional(),
 } as const;
 
+export interface GraphProposeNodeDeps {
+	harvesterDeps: HarvesterDeps;
+}
+
 /**
- * Register the v1-stub graph.proposeNode tool. Plan 06-05 replaces the body of the handler
- * (NOT the registration site or the schema) once mcp_external_signal lands.
+ * Register graph.proposeNode on the McpServer with REAL routing through the Phase-5
+ * conveyor. The handler:
+ *   1. Calls routeMcpObservation(provider, tool_name, result, arguments, deps).
+ *   2. On accept: returns {accepted:true} success-shape.
+ *   3. On reject: returns {accepted:false, rejected_by:<predicate>} success-shape (Pitfall 11).
  */
-export function registerGraphProposeNodeTool(server: McpServer): void {
+export function registerGraphProposeNodeTool(server: McpServer, deps: GraphProposeNodeDeps): void {
 	server.registerTool(
 		'graph.proposeNode',
 		{
 			title: 'Propose a node from external MCP signal',
 			description:
-				'Routes an external observation through the Phase-5 Portability Filter cascade. ' +
-				'v1 STUB: routing is pending Plan 06-05 — this tool currently returns isError:true with ' +
-				'structuredContent.error=mcp_external_signal_routing_pending_06_05 (retryable:false).',
+				'Routes an external observation through the Phase-5 Portability Filter and Promoter. ' +
+				'Filter rejection returns success-shape with structuredContent.rejected_by=<predicate>; ' +
+				'tool-level transient errors return isError:true (distinct semantics per Pitfall 11).',
 			inputSchema: GraphProposeNodeInputShape,
 		},
-		async () => ({
-			content: [
-				{
-					type: 'text' as const,
-					text: 'graph.proposeNode routing pending Plan 06-05.',
-				},
-			],
-			isError: true,
-			structuredContent: {
-				error: 'mcp_external_signal_routing_pending_06_05',
-				retryable: false,
-			},
-		}),
+		async (args) => {
+			const { provider, tool_name, result, arguments: toolArgs } = args as {
+				provider: 'github' | 'slack' | 'linear' | 'jira';
+				tool_name: string;
+				result: unknown;
+				arguments?: unknown;
+			};
+
+			const out = await routeMcpObservation({
+				provider,
+				tool_name,
+				arguments: toolArgs,
+				result,
+				isError: false,
+				deps: deps.harvesterDeps,
+			});
+
+			const structuredContent: { accepted: boolean; rejected_by?: string } = out.accepted
+				? { accepted: true }
+				: { accepted: false, rejected_by: out.predicate };
+
+			return {
+				content: [
+					{
+						type: 'text' as const,
+						text: JSON.stringify(structuredContent),
+					},
+				],
+				structuredContent,
+			};
+		},
 	);
 }
