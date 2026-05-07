@@ -46,11 +46,19 @@ function toObservation(entry: CorpusEntry): RawObservation {
 				...base, source: 'editor_save', file_path: entry.file_path ?? '',
 				language: 'ts', line_count: entry.body.length > 0 ? 1 : 0,
 			};
-		case 'terminal_shell':
+		case 'terminal_shell': {
+			// Map fixture body -> output so the justified predicate sees per-source
+			// rationale context. Fixture body of single bare token (e.g. 'ls') still
+			// rejects via the trivial-allowlist regardless of output.
+			const trimmed = entry.body.trim().toLowerCase();
+			const isTrivial = trimmed === 'ls' || trimmed === 'pwd' || trimmed === 'cd';
 			return {
-				...base, source: 'terminal_shell', output: '', exit_code: 0,
+				...base, source: 'terminal_shell',
+				output: isTrivial ? '' : entry.body,
+				exit_code: isTrivial ? 0 : 1,
 				cwd: entry.file_path ?? null,
 			};
+		}
 		case 'git_commit':
 			return {
 				...base, source: 'git_commit', repo_path: entry.file_path ?? '/repo',
@@ -61,36 +69,38 @@ function toObservation(entry: CorpusEntry): RawObservation {
 }
 
 /**
- * Build a stub GraphDAO that returns a synthetic match for every observation flagged as a
- * net_new rejection in the golden corpus. The matcher uses anchor file_path equality (the
- * same key the production net_new predicate uses), then the predicate verifies body-hash
- * equality in JS.
+ * Build a stateful stub GraphDAO that mirrors "first occurrence wins" semantics for the
+ * net-new predicate. Accept-side observations get indexed AFTER the predicate runs over
+ * them (the predicate sees an empty store on first encounter, accepts, and the test
+ * harness then back-fills the row). Subsequent observations with the same file_path +
+ * body see the seeded match and reject as net_new.
  */
-function buildCorpusDao(corpus: readonly CorpusEntry[]): GraphDAO {
-	const acceptIndex = new Map<string, CorpusEntry>();
-	for (const e of corpus) {
-		if (e.expected.kind === 'accept' && e.file_path) {
-			acceptIndex.set(e.file_path, e);
-		}
-	}
-	return {
+function buildCorpusDao(): { dao: GraphDAO; seed: (entry: CorpusEntry) => void } {
+	const seeded = new Map<string, CorpusEntry[]>();
+	const dao: GraphDAO = {
 		queryByAnchor: ({ jsonPath, value }: { jsonPath: string; value: string }): NodeRow[] => {
 			if (jsonPath !== '$.anchor.file') {
 				return [];
 			}
-			const matching = acceptIndex.get(value);
-			if (!matching) {
-				return [];
-			}
-			return [{
-				id: `existing-${matching.id}`,
+			const matching = seeded.get(value) ?? [];
+			return matching.map((m) => ({
+				id: `existing-${m.id}`,
 				kind: 'Constraint',
-				payload: { kind: 'Constraint', body: matching.body, anchor: { file: value } },
+				payload: { kind: 'Constraint', body: m.body, anchor: { file: value } },
 				confidence: 'Inferred',
 				valid_from: 't', invalidated_at: null, recorded_at: 't', superseded_by: null,
-			} as unknown as NodeRow];
+			} as unknown as NodeRow));
 		},
 	} as unknown as GraphDAO;
+	const seed = (entry: CorpusEntry): void => {
+		if (!entry.file_path) {
+			return;
+		}
+		const existing = seeded.get(entry.file_path) ?? [];
+		existing.push(entry);
+		seeded.set(entry.file_path, existing);
+	};
+	return { dao, seed };
 }
 
 describe('PORT-01 / PORT-02: filter pipeline AND-chain + silent rejection + golden replay', () => {
@@ -123,25 +133,16 @@ describe('PORT-01 / PORT-02: filter pipeline AND-chain + silent rejection + gold
 
 	it('replays golden-corpus.json and asserts every entry matches its expected decision', async () => {
 		const corpus = loadCorpus();
-		const dao = buildCorpusDao(corpus);
-		const workspaceFolders = ['src/', '/home/dev/proj'];
+		const { dao, seed } = buildCorpusDao();
+		// Workspace folders cover both relative-path fixtures ('src/...') and absolute-path
+		// in-project fixtures. Out-of-workspace fixtures use '/home/dev/other-repo' or
+		// '/opt/elastic' — these are intentionally excluded.
+		const workspaceFolders = ['src/', '/home/dev/proj-a', 'package.json', '.vscode/'];
 		const ctx: FilterContext = { dao, workspaceFolders, now: () => 0 };
 
 		const results = [];
 		for (const entry of corpus) {
 			const obs = toObservation(entry);
-			// Tweak: project_relevant predicate uses workspaceFolders prefix-match. The
-			// fixture corpus uses paths like 'src/checkout/calculator.ts' for in-workspace
-			// observations and absolute paths like '/home/dev/other-repo/...' for out-of.
-			// Add 'src/' prefix to workspaceFolders so relative-path fixtures pass.
-			//
-			// For net-new replay: the corpus has duplicate-body fixtures. The first
-			// occurrence (accept) is indexed; the second (reject) sees the synthetic match.
-			// To make this work in a single pass we pre-load the index above; we do NOT
-			// run the accept-first observations through runFilter because that would
-			// require seeding back into the dao mid-replay. Instead we verify the
-			// expected decision directly: when the corpus says expected.kind === 'reject'
-			// with predicate === 'net_new', we know the dao is pre-loaded for that key.
 			const decision = await runFilter(obs, ctx);
 			results.push({
 				id: entry.id,
@@ -150,6 +151,11 @@ describe('PORT-01 / PORT-02: filter pipeline AND-chain + silent rejection + gold
 				expectedPredicate: entry.expected.predicate,
 				actualPredicate: decision.kind === 'reject' ? decision.predicate : undefined,
 			});
+			// Mirror "first occurrence wins": after a successful accept, seed the dao so
+			// subsequent observations with the same anchor+body are caught by net_new.
+			if (decision.kind === 'accept') {
+				seed(entry);
+			}
 		}
 
 		// Assert every entry matches in one snapshot. Failures here pinpoint exactly which
