@@ -44,6 +44,12 @@ export interface StartDaemonArgs {
 	 * touching real Claude transcripts).
 	 */
 	claudeJsonlWatchPaths?: readonly string[] | null;
+	/**
+	 * Plan 05-05 — workspace folder set passed into the project_relevant predicate.
+	 * Production main.ts populates this from the bridge's workspace state (a future
+	 * RPC); v1 starts empty (no scope = accept all paths).
+	 */
+	workspaceFolders?: readonly string[];
 }
 
 export interface DaemonHandle {
@@ -95,14 +101,19 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 		}
 	}
 
-	// Phase 5 Plan 05-03 — harvester deps + JSONL watcher bootstrap. The deps bag is
-	// shared between in-process watchers (JSONL) and the cross-process RPC handler
-	// (bridge → harvester.submitObservation, registered by bindHandlersForTcp via
-	// args.harvesterDeps closure resolution).
+	// Phase 5 Plan 05-03 + Plan 05-05 — harvester deps + JSONL watcher bootstrap. The
+	// deps bag is shared between in-process watchers (JSONL) and the cross-process RPC
+	// handler (bridge → harvester.submitObservation, registered by bindHandlersForTcp via
+	// args.harvesterDeps closure resolution). Plan 05-05 wires the dao + workspaceFolders
+	// into deps so the Portability Filter cascade runs against the live graph; promoter /
+	// liveness slots remain Plans 05-06 / 05-07.
 	const offsetsDao = new OffsetsDao(args.sqlite);
 	const harvesterDeps: HarvesterDeps = {
 		enrichGit: enrichGitCommitObservation,
-		// filter/promoter/liveness intentionally undefined here — Plans 05-05/06/07 wire them.
+		dao: args.dao,
+		workspaceFolders: args.workspaceFolders ?? [],
+		// promoter / liveness / onCorroborationCandidate intentionally undefined here —
+		// Plans 05-06 / 05-07 wire them.
 	};
 
 	// Wire each incoming socket: per-connection auth state map, first-request must be

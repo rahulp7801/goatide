@@ -11,10 +11,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { isNetNew } from '../../../harvester/filter/net-new.js';
 import { computeAnchorTuple } from '../../../harvester/filter/anchor-tuple.js';
 import type { FilterContext } from '../../../harvester/filter/index.js';
-import type { RawObservation } from '../../../harvester/observations.js';
+import type { ClaudeJsonlObservation } from '../../../harvester/observations.js';
 import type { GraphDAO, NodeRow } from '../../../graph/dao.js';
 
-function makeClaude(body: string, file_path: string): RawObservation {
+function makeClaude(body: string, file_path: string): ClaudeJsonlObservation {
 	return { id: 'a', ts: 't', body, source: 'claude_jsonl', file_path };
 }
 
