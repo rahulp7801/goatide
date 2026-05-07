@@ -39,11 +39,14 @@ export async function enrichGitCommitObservation(input: GitEnrichmentInput): Pro
 		// Fall through to log-based message/author lookup.
 	}
 
-	// Pull commit metadata from git log -1 HEAD. This works for both regular and initial commits.
+	// Pull commit metadata from git log -1 (HEAD only). simple-git's {from, to} semantics
+	// are exclusive of `from`, so for a one-commit repo the {from:HEAD, to:HEAD} form
+	// returns null. Using maxCount:1 returns the HEAD commit unconditionally — works for
+	// both regular and initial commits.
 	let message: string | undefined = undefined;
 	let author: string | undefined = undefined;
 	try {
-		const log = await git.log({ from: 'HEAD', to: 'HEAD', maxCount: 1 });
+		const log = await git.log({ maxCount: 1 });
 		const latest = log.latest;
 		if (latest) {
 			message = latest.message;
