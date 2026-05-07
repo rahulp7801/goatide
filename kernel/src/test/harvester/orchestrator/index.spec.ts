@@ -10,16 +10,18 @@
 // promoter no-ops; provisional liveness records the source name.
 
 import { describe, it, expect, vi } from 'vitest';
-import { submitRawObservation, type HarvesterDeps } from '../../../harvester/index.js';
-import type { RawObservation } from '../../../harvester/observations.js';
+import { submitRawObservation, type HarvesterDeps, type GitEnrichmentInput, type GitEnrichmentResult } from '../../../harvester/index.js';
+import type { RawObservation, ObservationSource } from '../../../harvester/observations.js';
 
 describe('Plan 05-03: submitRawObservation orchestrator', () => {
 	it('dispatches per-source: git_commit triggers enrichment; other sources pass through; provisional accept', async () => {
-		const enrichGit = vi.fn(async () => ({
-			diff: 'diff --git a/x b/x\n+foo', message: 'fix', author: 'me', files_changed: 1,
-		}));
-		const promoter = vi.fn(async (_: RawObservation) => undefined);
-		const liveness = { record: vi.fn() };
+		const enrichGit = vi.fn(
+			async (_input: GitEnrichmentInput): Promise<GitEnrichmentResult> => ({
+				diff: 'diff --git a/x b/x\n+foo', message: 'fix', author: 'me', files_changed: 1,
+			}),
+		);
+		const promoter = vi.fn(async (_obs: RawObservation): Promise<void> => undefined);
+		const liveness = { record: vi.fn((_source: ObservationSource): void => undefined) };
 		const deps: HarvesterDeps = { enrichGit, promoter, liveness };
 
 		const claudeIn: RawObservation = {
