@@ -91,6 +91,37 @@ export function createTerminalShellExecutionMock(input: { command: string; outpu
 const onDidStartTerminalShellExecutionEmitter = new EventEmitterStub<{ execution: MockTerminalShellExecutionLike }>();
 const onDidEndTerminalShellExecutionEmitter = new EventEmitterStub<{ execution: MockTerminalShellExecutionLike; exitCode: number | null }>();
 
+// Phase-5 Plan 04 — TELE-02 editor event watcher substrate. Tests fire mocked
+// onDidSaveTextDocument + onDidChangeTextDocument events through these emitters; the
+// production registerEditorEventWatcher subscribes via vscode.workspace.* exports below.
+// resetEditorEventEmitters drops listeners from all editor emitters so each test starts
+// with a clean dispatch table (Phase-4 Module._cache injection caches the stub once;
+// per-test reset is the right granularity).
+
+export interface MockTextDocument {
+	readonly uri: { toString: () => string; fsPath: string };
+	readonly languageId: string;
+	readonly lineCount: number;
+}
+
+const onDidSaveTextDocumentEmitter = new EventEmitterStub<MockTextDocument>();
+const onDidChangeTextDocumentEmitter = new EventEmitterStub<{ document: MockTextDocument }>();
+
+export function fireDidSaveTextDocument(doc: MockTextDocument): void {
+	onDidSaveTextDocumentEmitter.fire(doc);
+}
+
+export function fireDidChangeTextDocument(doc: MockTextDocument): void {
+	onDidChangeTextDocumentEmitter.fire({ document: doc });
+}
+
+export function resetEditorEventEmitters(): void {
+	onDidSaveTextDocumentEmitter.dispose();
+	onDidChangeTextDocumentEmitter.dispose();
+	onDidStartTerminalShellExecutionEmitter.dispose();
+	onDidEndTerminalShellExecutionEmitter.dispose();
+}
+
 interface MockGitRepository {
 	readonly rootUri: { fsPath: string };
 	readonly state: { HEAD: { commit: string; name: string } | undefined };
@@ -149,7 +180,10 @@ const vscodeStub = {
 	},
 	workspace: {
 		onWillSaveTextDocument: (): DisposableLike => ({ dispose: () => undefined }),
-		onDidSaveTextDocument: (): DisposableLike => ({ dispose: () => undefined }),
+		// Phase-5 TELE-02 — editor save/change emitters. registerEditorEventWatcher subscribes
+		// here; tests fire via fireDidSaveTextDocument/fireDidChangeTextDocument helpers.
+		onDidSaveTextDocument: onDidSaveTextDocumentEmitter.event,
+		onDidChangeTextDocument: onDidChangeTextDocumentEmitter.event,
 		findFiles: async (_pattern: string): Promise<unknown[]> => [],
 		getConfiguration: (_section?: string) => ({
 			get: <T>(_key: string, defaultValue: T): T => defaultValue,
