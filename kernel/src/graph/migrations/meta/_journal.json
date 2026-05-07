@@ -1,5 +1,5 @@
 {
-  "version": "8",
+  "version": "9",
   "dialect": "sqlite",
   "entries": [
     {
@@ -35,6 +35,13 @@
       "version": "6",
       "when": 1778107410000,
       "tag": "0004_traverse_perf_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1778114827312,
+      "tag": "0005_harvest_tables",
       "breakpoints": true
     }
   ]
