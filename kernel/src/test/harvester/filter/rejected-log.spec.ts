@@ -95,7 +95,22 @@ describe('PORT-03: rejected-observation log', () => {
 		expect(existsSync(path + '.3')).toBe(false);
 	});
 
-	it.skip('CLI goatide-cli harvest rejections --since 24h --predicate portable filters log', () => {
-		throw new Error('Plan 05-07 has not yet implemented goatide-cli harvest rejections');
+	it('CLI goatide-cli harvest rejections --since 24h --predicate portable filters log via readRejections', () => {
+		// Plan 05-05 deferred this test to Plan 05-07 (which lands the CLI command). The
+		// CLI delegates to readRejections; this delegated test pins the API contract:
+		// readRejections(filter, path) shape matches what cli/commands/harvest.ts passes.
+		const path = join(scratch, 'rejected.jsonl');
+		const recent = '2026-05-07T12:00:00.000Z';
+		const old = '2026-04-30T12:00:00.000Z';
+		appendRejection(record({ observation_id: 'a', predicate: 'portable', ts: recent }), path);
+		appendRejection(record({ observation_id: 'b', predicate: 'portable', ts: old }), path);
+		appendRejection(record({ observation_id: 'c', predicate: 'verifiable', ts: recent }), path);
+
+		// CLI's resolveSinceArg('24h') against now=2026-05-08T00:00:00Z = ts-cutoff
+		// 2026-05-07T00:00:00Z. ISO string compare suffices because the format is fixed.
+		const sinceIso = '2026-05-07T00:00:00.000Z';
+		const filtered = readRejections({ since: sinceIso, predicate: 'portable' }, path);
+
+		expect(filtered.map((r) => r.observation_id)).toEqual(['a']);
 	});
 });
