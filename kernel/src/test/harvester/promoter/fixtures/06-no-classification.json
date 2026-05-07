@@ -1,0 +1,16 @@
+{
+	"_observation_summary": "Model declines to use the tool and returns plain text instead",
+	"content": [
+		{
+			"type": "text",
+			"text": "This observation does not match any of the typed-node taxonomy categories; declining to classify."
+		}
+	],
+	"model": "claude-3-5-sonnet-20241022",
+	"role": "assistant",
+	"stop_reason": "end_turn",
+	"usage": {
+		"input_tokens": 90,
+		"output_tokens": 25
+	}
+}

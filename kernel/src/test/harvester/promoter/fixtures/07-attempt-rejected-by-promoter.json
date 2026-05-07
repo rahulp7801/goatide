@@ -1,0 +1,16 @@
+{
+	"_observation_summary": "Promoter declines to classify a trivial Hello-world observation; returns end_turn with rationale",
+	"content": [
+		{
+			"type": "text",
+			"text": "This observation lacks substantive engineering context; declining to classify into the typed-node taxonomy."
+		}
+	],
+	"model": "claude-3-5-sonnet-20241022",
+	"role": "assistant",
+	"stop_reason": "end_turn",
+	"usage": {
+		"input_tokens": 60,
+		"output_tokens": 22
+	}
+}

@@ -1,0 +1,24 @@
+{
+	"_observation_summary": "Model emits a tool_use whose input violates NodePayloadSchema (unknown kind)",
+	"content": [
+		{
+			"type": "tool_use",
+			"id": "toolu_fixture_05",
+			"name": "classify_observation",
+			"input": {
+				"kind": "InvalidKind",
+				"body": "I think this codebase is messy and we should refactor.",
+				"anchor": {
+					"file": "src/x.ts"
+				}
+			}
+		}
+	],
+	"model": "claude-3-5-sonnet-20241022",
+	"role": "assistant",
+	"stop_reason": "tool_use",
+	"usage": {
+		"input_tokens": 100,
+		"output_tokens": 40
+	}
+}

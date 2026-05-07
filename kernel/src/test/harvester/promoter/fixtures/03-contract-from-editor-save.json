@@ -1,0 +1,26 @@
+{
+	"_observation_summary": "Editor save renaming a method to enforce a non-null contract",
+	"content": [
+		{
+			"type": "tool_use",
+			"id": "toolu_fixture_03",
+			"name": "classify_observation",
+			"input": {
+				"kind": "ContractNode",
+				"body": "UserService.requireById replaces UserService.findById to enforce a non-null contract; callers can no longer accidentally propagate undefined.",
+				"anchor": {
+					"file": "src/services/user.service.ts",
+					"symbol": "UserService.requireById"
+				},
+				"contract_path": "src/services/user.service.ts#UserService.requireById"
+			}
+		}
+	],
+	"model": "claude-3-5-sonnet-20241022",
+	"role": "assistant",
+	"stop_reason": "tool_use",
+	"usage": {
+		"input_tokens": 180,
+		"output_tokens": 88
+	}
+}

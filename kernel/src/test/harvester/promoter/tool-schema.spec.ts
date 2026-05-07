@@ -3,15 +3,23 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// kernel/src/test/harvester/promoter/tool-schema.spec.ts — Phase 5 Wave-0 refusal stub for
-// PORT-04 (zodToJsonSchema export of NodePayloadSchema for the Anthropic tool-use tool).
+// kernel/src/test/harvester/promoter/tool-schema.spec.ts — Phase 5 Plan 05-06 PORT-04.
 //
-// Plan 05-06 will pin the snapshot via vitest's toMatchSnapshot.
+// Snapshot pin for the JSON-schema export of NodePayloadSchema (kernel/src/graph/payloads.ts).
+// If NodePayloadSchema changes (Phase 6+ adds a new node kind, or a payload field), this
+// snapshot fails loudly so the developer either blesses the new schema (vitest -u) or
+// corrects the divergence.
 
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { promoterToolDefinition } from '../../../harvester/promoter/tool-schema.js';
 
 describe('PORT-04: Promoter tool-schema export', () => {
-	it.skip('zodToJsonSchema(NodePayloadSchema) is structurally equivalent to a snapshotted JSON schema', () => {
-		throw new Error('Plan 05-06 has not yet implemented exportPromoterToolSchema');
+	it('zodToJsonSchema(NodePayloadSchema) is structurally equivalent to the snapshotted JSON schema', () => {
+		expect({
+			name: promoterToolDefinition.name,
+			hasDescription: typeof promoterToolDefinition.description === 'string'
+				&& promoterToolDefinition.description.length > 0,
+			schema: promoterToolDefinition.input_schema,
+		}).toMatchSnapshot();
 	});
 });

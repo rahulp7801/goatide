@@ -1,0 +1,24 @@
+{
+	"_observation_summary": "Edge-case anchor with spaces and unicode characters in the file path",
+	"content": [
+		{
+			"type": "tool_use",
+			"id": "toolu_fixture_10",
+			"name": "classify_observation",
+			"input": {
+				"kind": "ConstraintNode",
+				"body": "File paths containing spaces and unicode characters must round-trip correctly through the anchor resolver and the rejected-log path field.",
+				"anchor": {
+					"file": "src/Edge Case/Café/résumé.tsx"
+				}
+			}
+		}
+	],
+	"model": "claude-3-5-sonnet-20241022",
+	"role": "assistant",
+	"stop_reason": "tool_use",
+	"usage": {
+		"input_tokens": 110,
+		"output_tokens": 55
+	}
+}
