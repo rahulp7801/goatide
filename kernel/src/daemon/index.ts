@@ -68,11 +68,11 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 	let creationResult = atomicCreateLockfile(lockfilePath, content);
 	if (creationResult === 'exists') {
 		const existing = readLockfile(lockfilePath);
-		if (existing && isPidAlive(existing.pid) && existing.pid !== process.pid) {
+		if (existing && isPidAlive(existing.pid)) {
 			await new Promise<void>((r) => server.close(() => r()));
-			throw new Error(`startDaemon: another kernel daemon is serving (pid=${existing.pid}, port=${existing.rpc_port})`);
+			throw new Error(`startDaemon: another kernel daemon is already serving (pid=${existing.pid}, port=${existing.rpc_port})`);
 		}
-		// Stale or self — clear + retry once.
+		// Stale (dead pid or corrupt) — clear + retry once.
 		clearStaleLockfile(lockfilePath);
 		creationResult = atomicCreateLockfile(lockfilePath, content);
 		if (creationResult === 'exists') {

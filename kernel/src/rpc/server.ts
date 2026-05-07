@@ -297,13 +297,14 @@ export function bindHandlersForTcp(args: BindHandlersForTcpArgs): void {
 
 	args.connection.onRequest(AuthenticateRequest, (params): AuthenticateResult => {
 		if (!validateAuthToken(params.token, args.expectedToken)) {
-			// Failed auth: dispose connection + destroy socket on the next tick (after
-			// the error response is flushed). Bridge sees a connection-closed error and
-			// falls through to spawnDetachedKernel.
-			setImmediate(() => {
+			// Failed auth: dispose connection + destroy socket after the error response
+			// is flushed (a few event-loop ticks; setTimeout 0 is sufficient). Bridge
+			// sees a connection-closed error and falls through to spawnDetachedKernel.
+			setTimeout(() => {
 				try { args.connection.dispose(); } catch { /* best-effort */ }
+				try { args.socket.end(); } catch { /* best-effort */ }
 				try { args.socket.destroy(); } catch { /* best-effort */ }
-			});
+			}, 50);
 			throw new Error('harvester.authenticate: invalid token');
 		}
 		args.authState.authenticated = true;
