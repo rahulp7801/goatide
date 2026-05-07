@@ -14,6 +14,8 @@
 
 import * as net from 'node:net';
 import { existsSync, unlinkSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { bindEphemeralPort, createTcpRpcServer } from './port-discovery.js';
 import { generateAuthToken } from './auth-token.js';
 import { atomicCreateLockfile, clearStaleLockfile, isPidAlive, readLockfile, type LockfileContent } from './lockfile.js';
@@ -22,6 +24,10 @@ import type { GraphDAO } from '../graph/index.js';
 import type { ReceiptDAO } from '../receipt/index.js';
 import type Database from 'better-sqlite3';
 import { bindHandlersForTcp, type SocketAuthState } from '../rpc/server.js';
+import { OffsetsDao } from '../harvester/offsets.js';
+import { submitRawObservation, type HarvesterDeps } from '../harvester/index.js';
+import { startClaudeJsonlWatcher, type StopClaudeJsonlWatcher } from '../harvester/watchers/claude-jsonl.js';
+import { enrichGitCommitObservation } from '../harvester/watchers/git.js';
 
 export interface StartDaemonArgs {
 	dao: GraphDAO;
@@ -31,12 +37,20 @@ export interface StartDaemonArgs {
 	version: string;
 	/** Override lockfile path for tests. */
 	lockfilePath?: string;
+	/**
+	 * Override JSONL watch paths for tests. Production defaults to
+	 * `<homedir>/.claude/projects/**\/*.jsonl` per TELE-01. Pass `null` to opt out of
+	 * starting the watcher entirely (tcp-rpc.spec.ts runs against a temp DB without
+	 * touching real Claude transcripts).
+	 */
+	claudeJsonlWatchPaths?: readonly string[] | null;
 }
 
 export interface DaemonHandle {
 	port: number;
 	authToken: string;
 	lockfilePath: string;
+	harvesterDeps: HarvesterDeps;
 	close: () => Promise<void>;
 }
 
@@ -81,6 +95,16 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 		}
 	}
 
+	// Phase 5 Plan 05-03 — harvester deps + JSONL watcher bootstrap. The deps bag is
+	// shared between in-process watchers (JSONL) and the cross-process RPC handler
+	// (bridge → harvester.submitObservation, registered by bindHandlersForTcp via
+	// args.harvesterDeps closure resolution).
+	const offsetsDao = new OffsetsDao(args.sqlite);
+	const harvesterDeps: HarvesterDeps = {
+		enrichGit: enrichGitCommitObservation,
+		// filter/promoter/liveness intentionally undefined here — Plans 05-05/06/07 wire them.
+	};
+
 	// Wire each incoming socket: per-connection auth state map, first-request must be
 	// authenticate, subsequent requests gated.
 	const sockets = new Set<net.Socket>();
@@ -97,9 +121,30 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 			receiptDao: args.receiptDao,
 			sqlite: args.sqlite,
 			dbPath: args.dbPath,
+			harvesterDeps,
 		});
 		connection.listen();
 	});
+
+	// Start the Claude JSONL watcher unless the test harness opts out via null. The
+	// 05-RESEARCH.md ## Pattern: Tail Observer with Persisted Offset says watch
+	// ~/.claude/projects/**\/*.jsonl. Tests pass an explicit temp path.
+	let stopJsonlWatcher: StopClaudeJsonlWatcher | null = null;
+	if (args.claudeJsonlWatchPaths !== null) {
+		const watchPaths = args.claudeJsonlWatchPaths
+			?? [join(homedir(), '.claude', 'projects', '**', '*.jsonl')];
+		try {
+			stopJsonlWatcher = await startClaudeJsonlWatcher({
+				watchPaths,
+				offsets: offsetsDao,
+				submit: (obs) => submitRawObservation(obs, harvesterDeps),
+			});
+		} catch (e) {
+			// Watcher startup failure is non-fatal: the daemon still serves RPC; the
+			// bridge can submit observations directly. Log to stderr (kernel.log).
+			console.error(`[daemon] startClaudeJsonlWatcher failed: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
 
 	let closed = false;
 	const close = async (): Promise<void> => {
@@ -107,6 +152,10 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 			return;
 		}
 		closed = true;
+		// Stop watchers first so they don't try to submit while sockets are tearing down.
+		if (stopJsonlWatcher) {
+			try { await stopJsonlWatcher(); } catch { /* best-effort */ }
+		}
 		// Destroy all open sockets; close server.
 		for (const s of sockets) {
 			try { s.destroy(); } catch { /* best-effort */ }
@@ -130,7 +179,7 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 	process.once('SIGINT', cleanup);
 	process.once('beforeExit', cleanup);
 
-	return { port, authToken, lockfilePath, close };
+	return { port, authToken, lockfilePath, harvesterDeps, close };
 }
 
 export { resolveLockfilePath } from './paths.js';

@@ -43,6 +43,9 @@ async function startTestDaemon(): Promise<DaemonHarness> {
 		dbPath,
 		version: '0.0.1-test',
 		lockfilePath,
+		// Plan 05-03: opt out of the JSONL watcher in unit tests so they don't touch
+		// the developer's real ~/.claude/projects.
+		claudeJsonlWatchPaths: null,
 	});
 	return { handle, dbHandle, tmp, lockfilePath };
 }
@@ -150,6 +153,7 @@ describe('TELE-05: daemon TCP transport + harvester.authenticate gate', () => {
 				dbPath: 'unused',
 				version: '0.0.1-test',
 				lockfilePath: harness.lockfilePath,
+				claudeJsonlWatchPaths: null,
 			});
 		} catch (e) {
 			threw = true;

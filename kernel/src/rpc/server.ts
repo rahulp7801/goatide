@@ -24,6 +24,8 @@ import type Database from 'better-sqlite3';
 import { resolveAnchor, traverse, type GraphDAO, type NodeKind } from '../graph/index.js';
 import { buildReceipt, type ReceiptDAO } from '../receipt/index.js';
 import { validateAuthToken } from '../daemon/auth-token.js';
+import { submitRawObservation, type HarvesterDeps } from '../harvester/index.js';
+import { RawObservationSchema } from '../harvester/observations.js';
 import {
 	QueryGraphRequest,
 	ProposeEditRequest,
@@ -279,6 +281,21 @@ export interface BindHandlersForTcpArgs {
 	receiptDao: ReceiptDAO;
 	sqlite: Database.Database;
 	dbPath: string;
+	/** Phase 5 Plan 05-03 — harvester orchestrator deps. Optional so Plan 05-02 callers
+	 *  that don't yet wire the watchers can pass an empty bag and still authenticate. */
+	harvesterDeps?: HarvesterDepsForRpc;
+}
+
+/**
+ * Subset of HarvesterDeps used by the RPC handler. The daemon constructs a full
+ * HarvesterDeps with enrichGit + (later) filter/promoter/liveness; the RPC server only
+ * needs to be able to invoke submitRawObservation against it.
+ */
+export interface HarvesterDepsForRpc {
+	enrichGit: HarvesterDeps['enrichGit'];
+	filter?: HarvesterDeps['filter'];
+	promoter?: HarvesterDeps['promoter'];
+	liveness?: HarvesterDeps['liveness'];
 }
 
 /**
