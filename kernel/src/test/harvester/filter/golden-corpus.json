@@ -1,0 +1,196 @@
+[
+	{
+		"id": "01HG-ACCEPT-CLAUDE-001",
+		"source": "claude_jsonl",
+		"body": "Discount must use BigDecimal arithmetic to avoid float precision drift in the cart subtotal.",
+		"file_path": "src/checkout/calculator.ts",
+		"expected": { "kind": "accept" }
+	},
+	{
+		"id": "01HG-ACCEPT-EDITOR-002",
+		"source": "editor_save",
+		"body": "Renamed UserService.findById to UserService.requireById to enforce non-null contract; rationale: 14 callers were silently passing through undefined.",
+		"file_path": "src/services/user.service.ts",
+		"expected": { "kind": "accept" }
+	},
+	{
+		"id": "01HG-ACCEPT-TERM-003",
+		"source": "terminal_shell",
+		"body": "npm test failed: HTTP 504 in payment.test.ts after 30s. Increasing JEST_TIMEOUT to 60s resolved; root cause: stripe sandbox cold-start latency.",
+		"file_path": "src/payments/payment.test.ts",
+		"expected": { "kind": "accept" }
+	},
+	{
+		"id": "01HG-ACCEPT-GIT-004",
+		"source": "git_commit",
+		"body": "fix(auth): reject empty Bearer token at middleware\n\nMiddleware previously treated empty token as anonymous; this allowed bypass on routes that gated by `req.user` being truthy. Adds explicit length check.",
+		"file_path": "src/middleware/auth.middleware.ts",
+		"expected": { "kind": "accept" }
+	},
+	{
+		"id": "01HG-ACCEPT-CLAUDE-005",
+		"source": "claude_jsonl",
+		"body": "Database tables in production are immutable: schema migrations may add columns but never DROP COLUMN; downstream consumers depend on column stability.",
+		"file_path": "src/db/schema.sql",
+		"expected": { "kind": "accept" }
+	},
+	{
+		"id": "01HG-ACCEPT-EDITOR-006",
+		"source": "editor_save",
+		"body": "Added retry-with-jitter to outbound webhook calls; existing constant-backoff thundering-herded the destination on cold-start.",
+		"file_path": "src/webhooks/dispatcher.ts",
+		"expected": { "kind": "accept" }
+	},
+
+	{
+		"id": "01HG-REJECT-PORT-001",
+		"source": "claude_jsonl",
+		"body": "Set DATABASE_URL to /Users/alice/dev/myproj/data.db before running tests.",
+		"file_path": "src/db/config.ts",
+		"expected": { "kind": "reject", "predicate": "portable", "reason": "hardcoded /Users/<username>/ path" }
+	},
+	{
+		"id": "01HG-REJECT-PORT-002",
+		"source": "claude_jsonl",
+		"body": "session_id 8f3c2a91-0b1e-4d2a-9c0f-aaaaaaaaaaaa caused the panel to flash white.",
+		"file_path": "src/ui/panel.tsx",
+		"expected": { "kind": "reject", "predicate": "portable", "reason": "ephemeral session ID embedded in claim" }
+	},
+	{
+		"id": "01HG-REJECT-PORT-003",
+		"source": "terminal_shell",
+		"body": "PS C:\\Users\\bob\\projects\\thing> npm install fixed it",
+		"file_path": "package.json",
+		"expected": { "kind": "reject", "predicate": "portable", "reason": "machine-specific Windows shell prompt + path" }
+	},
+	{
+		"id": "01HG-REJECT-PORT-004",
+		"source": "editor_save",
+		"body": "VSCODE_GIT_ASKPASS_NODE='/private/var/folders/xy/T/vscode-git-askpass-node.sh' resolves the git push prompt issue.",
+		"file_path": ".vscode/settings.json",
+		"expected": { "kind": "reject", "predicate": "portable", "reason": "IDE-private temp path" }
+	},
+
+	{
+		"id": "01HG-REJECT-NETNEW-001",
+		"source": "claude_jsonl",
+		"body": "Discount must use BigDecimal arithmetic to avoid float precision drift in the cart subtotal.",
+		"file_path": "src/checkout/calculator.ts",
+		"expected": { "kind": "reject", "predicate": "net_new", "reason": "exact body-hash + anchor tuple already in graph (corroborates 01HG-ACCEPT-CLAUDE-001)" }
+	},
+	{
+		"id": "01HG-REJECT-NETNEW-002",
+		"source": "git_commit",
+		"body": "Database tables in production are immutable: schema migrations may add columns but never DROP COLUMN; downstream consumers depend on column stability.",
+		"file_path": "src/db/schema.sql",
+		"expected": { "kind": "reject", "predicate": "net_new", "reason": "duplicate of 01HG-ACCEPT-CLAUDE-005" }
+	},
+	{
+		"id": "01HG-REJECT-NETNEW-003",
+		"source": "editor_save",
+		"body": "Added retry-with-jitter to outbound webhook calls; existing constant-backoff thundering-herded the destination on cold-start.",
+		"file_path": "src/webhooks/dispatcher.ts",
+		"expected": { "kind": "reject", "predicate": "net_new", "reason": "duplicate of 01HG-ACCEPT-EDITOR-006" }
+	},
+	{
+		"id": "01HG-REJECT-NETNEW-004",
+		"source": "terminal_shell",
+		"body": "npm test failed: HTTP 504 in payment.test.ts after 30s. Increasing JEST_TIMEOUT to 60s resolved; root cause: stripe sandbox cold-start latency.",
+		"file_path": "src/payments/payment.test.ts",
+		"expected": { "kind": "reject", "predicate": "net_new", "reason": "duplicate of 01HG-ACCEPT-TERM-003" }
+	},
+
+	{
+		"id": "01HG-REJECT-PROJ-001",
+		"source": "claude_jsonl",
+		"body": "In the unrelated-other-repo, prefer Tokio over async-std for the actor runtime.",
+		"file_path": "/home/dev/other-repo/src/runtime.rs",
+		"expected": { "kind": "reject", "predicate": "project_relevant", "reason": "file_path outside any active workspace folder" }
+	},
+	{
+		"id": "01HG-REJECT-PROJ-002",
+		"source": "claude_jsonl",
+		"body": "ELK stack ingestion now supports OpenTelemetry traces.",
+		"file_path": "/opt/elastic/config/elasticsearch.yml",
+		"expected": { "kind": "reject", "predicate": "project_relevant", "reason": "system-level config path outside workspace" }
+	},
+	{
+		"id": "01HG-REJECT-PROJ-003",
+		"source": "editor_save",
+		"body": "Updated dotfile to alias gco to git checkout --recurse-submodules.",
+		"file_path": "/home/dev/.zshrc",
+		"expected": { "kind": "reject", "predicate": "project_relevant", "reason": "developer dotfile outside workspace" }
+	},
+	{
+		"id": "01HG-REJECT-PROJ-004",
+		"source": "git_commit",
+		"body": "chore: rotate ssh key on personal-blog.git remote.",
+		"file_path": "/home/dev/personal-blog/.git/config",
+		"expected": { "kind": "reject", "predicate": "project_relevant", "reason": "different repo entirely" }
+	},
+
+	{
+		"id": "01HG-REJECT-VERIF-001",
+		"source": "claude_jsonl",
+		"body": "This codebase has a beautiful aesthetic.",
+		"file_path": "src/index.ts",
+		"expected": { "kind": "reject", "predicate": "verifiable", "reason": "unfalsifiable opinion (no structural anchor)" }
+	},
+	{
+		"id": "01HG-REJECT-VERIF-002",
+		"source": "claude_jsonl",
+		"body": "I think we should refactor this module someday.",
+		"file_path": "src/legacy.ts",
+		"expected": { "kind": "reject", "predicate": "verifiable", "reason": "vague intent without structural commitment" }
+	},
+	{
+		"id": "01HG-REJECT-VERIF-003",
+		"source": "editor_save",
+		"body": "feels cleaner now",
+		"file_path": "src/utils.ts",
+		"expected": { "kind": "reject", "predicate": "verifiable", "reason": "subjective with no testable claim" }
+	},
+	{
+		"id": "01HG-REJECT-VERIF-004",
+		"source": "claude_jsonl",
+		"body": "The team prefers this style.",
+		"file_path": "src/styleguide.md",
+		"expected": { "kind": "reject", "predicate": "verifiable", "reason": "preference statement without falsifiable structure" }
+	},
+
+	{
+		"id": "01HG-REJECT-JUST-001",
+		"source": "editor_save",
+		"body": "saved file",
+		"file_path": "src/empty.ts",
+		"expected": { "kind": "reject", "predicate": "justified", "reason": "editor save with no diff context or rationale" }
+	},
+	{
+		"id": "01HG-REJECT-JUST-002",
+		"source": "terminal_shell",
+		"body": "ls",
+		"file_path": null,
+		"expected": { "kind": "reject", "predicate": "justified", "reason": "terminal command with no error output and no rationale" }
+	},
+	{
+		"id": "01HG-REJECT-JUST-003",
+		"source": "terminal_shell",
+		"body": "pwd",
+		"file_path": null,
+		"expected": { "kind": "reject", "predicate": "justified", "reason": "informational command, no rationale produced" }
+	},
+	{
+		"id": "01HG-REJECT-JUST-004",
+		"source": "editor_save",
+		"body": "",
+		"file_path": "src/notes.md",
+		"expected": { "kind": "reject", "predicate": "justified", "reason": "empty body has no rationale" }
+	},
+	{
+		"id": "01HG-REJECT-JUST-005",
+		"source": "git_commit",
+		"body": "wip",
+		"file_path": "src/feature.ts",
+		"expected": { "kind": "reject", "predicate": "justified", "reason": "wip commit message lacks rationale" }
+	}
+]

@@ -64,6 +64,69 @@ const showErrorMessageSpy: { calls: unknown[][]; respondWith: string | undefined
 	respondWith: undefined,
 };
 
+// Phase-5 additions — TerminalShellExecution mock + git-extension mock.
+//
+// Plan 05-04 (TELE-03 terminal events) drives onDidStart/EndTerminalShellExecution; the
+// mock TerminalShellExecution exposes commandLine and an async iterable read(). Plan 05-03
+// (TELE-04 bridge git-commit trigger) reads vscode.extensions.getExtension('vscode.git')
+// and walks its exported GitAPI to subscribe to Repository.onDidCommit. Tests inject
+// repos via addMockGitRepository.
+
+interface MockTerminalShellExecutionLike {
+	readonly commandLine: { value: string; confidence: number };
+	readonly cwd?: { fsPath: string };
+	read(): AsyncIterable<string>;
+}
+
+export function createTerminalShellExecutionMock(input: { command: string; output: string; cwd?: string; confidence?: number }): MockTerminalShellExecutionLike {
+	return {
+		commandLine: { value: input.command, confidence: input.confidence ?? 2 },
+		cwd: input.cwd ? { fsPath: input.cwd } : undefined,
+		async *read() {
+			yield input.output;
+		},
+	};
+}
+
+const onDidStartTerminalShellExecutionEmitter = new EventEmitterStub<{ execution: MockTerminalShellExecutionLike }>();
+const onDidEndTerminalShellExecutionEmitter = new EventEmitterStub<{ execution: MockTerminalShellExecutionLike; exitCode: number | null }>();
+
+interface MockGitRepository {
+	readonly rootUri: { fsPath: string };
+	readonly state: { HEAD: { commit: string; name: string } | undefined };
+	readonly onDidCommit: (listener: () => void) => DisposableLike;
+}
+
+const onDidOpenRepositoryEmitter = new EventEmitterStub<MockGitRepository>();
+const mockGitRepositories: MockGitRepository[] = [];
+
+const mockGitAPI = {
+	repositories: mockGitRepositories,
+	onDidOpenRepository: onDidOpenRepositoryEmitter.event,
+};
+
+const mockGitExtension = {
+	id: 'vscode.git',
+	isActive: true,
+	activate: async (): Promise<typeof mockGitExtension.exports> => mockGitExtension.exports,
+	exports: {
+		getAPI: (_v: number) => mockGitAPI,
+	},
+};
+
+export function addMockGitRepository(repo: MockGitRepository): void {
+	mockGitRepositories.push(repo);
+	onDidOpenRepositoryEmitter.fire(repo);
+}
+
+export function fireTerminalShellExecutionStart(execution: MockTerminalShellExecutionLike): void {
+	onDidStartTerminalShellExecutionEmitter.fire({ execution });
+}
+
+export function fireTerminalShellExecutionEnd(execution: MockTerminalShellExecutionLike, exitCode: number | null): void {
+	onDidEndTerminalShellExecutionEmitter.fire({ execution, exitCode });
+}
+
 const vscodeStub = {
 	EventEmitter: EventEmitterStub,
 	TextDocumentSaveReason: { Manual: 1, AfterDelay: 2, FocusOut: 3 },
@@ -80,9 +143,13 @@ const vscodeStub = {
 			throw new Error('createWebviewPanel: not stubbed (extension-host only)');
 		},
 		createStatusBarItem: (_alignment?: number, _priority?: number): StatusBarItemStub => new StatusBarItemStub(),
+		// Phase-5 TELE-03 — stable terminal-shell-execution events.
+		onDidStartTerminalShellExecution: onDidStartTerminalShellExecutionEmitter.event,
+		onDidEndTerminalShellExecution: onDidEndTerminalShellExecutionEmitter.event,
 	},
 	workspace: {
 		onWillSaveTextDocument: (): DisposableLike => ({ dispose: () => undefined }),
+		onDidSaveTextDocument: (): DisposableLike => ({ dispose: () => undefined }),
 		findFiles: async (_pattern: string): Promise<unknown[]> => [],
 		getConfiguration: (_section?: string) => ({
 			get: <T>(_key: string, defaultValue: T): T => defaultValue,
@@ -92,6 +159,10 @@ const vscodeStub = {
 	commands: {
 		registerCommand: (..._args: unknown[]): DisposableLike => ({ dispose: () => undefined }),
 		executeCommand: async (..._args: unknown[]): Promise<unknown> => undefined,
+	},
+	// Phase-5 TELE-04 — built-in vscode.git extension surface.
+	extensions: {
+		getExtension: (id: string): typeof mockGitExtension | undefined => id === 'vscode.git' ? mockGitExtension : undefined,
 	},
 	Uri: {
 		joinPath: (..._args: unknown[]): unknown => ({ fsPath: '' }),
