@@ -39,6 +39,7 @@ if (isDaemon) {
 		sqlite: handle.sqlite,
 		dbPath,
 		version: '0.0.1',
+		lockfilePath: process.env.GOATIDE_LOCKFILE_PATH,
 	}).then((daemon) => {
 		console.error(`[kernel] daemon up pid=${process.pid} db=${dbPath} port=${daemon.port}`);
 		const shutdown = (signal: NodeJS.Signals): void => {
