@@ -10,7 +10,7 @@
 // any source is stale and warningBackground for low-severity stale-only states; quick-pick
 // click target reveals the stale source list.
 
-import { describe, it, beforeEach } from 'mocha';
+import { describe, it, beforeEach, afterEach } from 'mocha';
 import { strict as assert } from 'node:assert';
 import * as vscode from 'vscode';
 import { LivenessBanner, type LivenessKernelClient } from '../../../src/harvester/liveness-banner.js';
@@ -66,20 +66,31 @@ describe('TELE-06: LivenessBanner', () => {
 	beforeEach(() => {
 		createdItems = [];
 		quickPickCalls = [];
-		// Wrap vscode.window.createStatusBarItem so we can inspect what the banner constructed.
-		originalCreate = vscode.window.createStatusBarItem;
-		(vscode.window as unknown as { createStatusBarItem: () => VscodeStatusBarItemSpy }).createStatusBarItem = (): VscodeStatusBarItemSpy => {
-			// Reuse the stub from vscode-stub by calling original then capturing.
-			const item = originalCreate.call(vscode.window) as unknown as VscodeStatusBarItemSpy;
+		// Capture every StatusBarItem the banner constructs by wrapping createStatusBarItem.
+		// The capture is a one-shot replacement: we save the previous fn into a local var
+		// (NOT into vscode.window itself) so the wrapper closure calls the ORIGINAL, never
+		// itself.
+		originalCreate = (vscode.window as unknown as { createStatusBarItem: typeof vscode.window.createStatusBarItem }).createStatusBarItem;
+		const capture = (...args: unknown[]): VscodeStatusBarItemSpy => {
+			const item = (originalCreate as (...a: unknown[]) => unknown).apply(vscode.window, args) as VscodeStatusBarItemSpy;
 			createdItems.push(item);
 			return item;
 		};
+		(vscode.window as unknown as { createStatusBarItem: typeof capture }).createStatusBarItem = capture;
 		// Stub showQuickPick.
 		originalShowQuickPick = vscode.window.showQuickPick as typeof vscode.window.showQuickPick;
 		(vscode.window as unknown as { showQuickPick: (items: unknown) => Promise<undefined> }).showQuickPick = async (items: unknown): Promise<undefined> => {
 			quickPickCalls.push(items);
 			return undefined;
 		};
+	});
+
+	afterEach(() => {
+		// Restore originals so other suites aren't affected.
+		(vscode.window as unknown as { createStatusBarItem: typeof originalCreate }).createStatusBarItem = originalCreate;
+		if (originalShowQuickPick !== undefined) {
+			(vscode.window as unknown as { showQuickPick: typeof originalShowQuickPick }).showQuickPick = originalShowQuickPick;
+		}
 	});
 
 	it('polls every poll-interval and transitions to errorBackground when ANY source becomes stale', async () => {
@@ -102,10 +113,10 @@ describe('TELE-06: LivenessBanner', () => {
 			backgroundColor: item.backgroundColor?.id,
 		};
 
-		// Flip a source stale.
+		// Flip TWO sources stale -> errorBackground (>=2 stale -> error per plan must-haves).
 		kernel.__setReports([
 			{ source: 'claude_jsonl', stale: true, silent_for_ms: 99_999_999, threshold_ms: 14_400_000 },
-			{ source: 'editor_save', stale: false, silent_for_ms: 1000, threshold_ms: 1_800_000 },
+			{ source: 'editor_save', stale: true, silent_for_ms: 99_999_999, threshold_ms: 1_800_000 },
 		]);
 		await sleep(50);
 

@@ -244,3 +244,51 @@ export interface SubmitObservationResult {
 }
 
 export const SubmitObservationRequest = new RequestType<SubmitObservationParams, SubmitObservationResult, Error>('harvester.submitObservation');
+
+// -------- harvester.getLiveness (Plan 05-07 TELE-06) --------
+//
+// Bridge-side mirror of the kernel's GetLivenessRequest. LivenessBanner polls every
+// 30s (configurable via env GOATIDE_LIVENESS_POLL_INTERVAL_MS).
+
+export interface LivenessReport {
+	source: string;
+	stale: boolean;
+	silent_for_ms: number;
+	threshold_ms: number;
+	last_observation_iso?: string;
+}
+
+export interface GetLivenessParams {
+	/* intentionally empty — getLiveness is parameterless */
+}
+
+export interface GetLivenessResult {
+	sources: LivenessReport[];
+}
+
+export const GetLivenessRequest = new RequestType<GetLivenessParams, GetLivenessResult, Error>('harvester.getLiveness');
+
+// -------- harvester.getDailyMetrics (Plan 05-07 PORT-06) --------
+//
+// Bridge-side mirror. The CLI consumer talks DB-direct; this binding exists for any
+// future bridge-resident dashboard surface (Phase-6 MCP / metrics UI).
+
+export interface HarvestMetricsRow {
+	date_utc: string;
+	source: string;
+	submitted: number;
+	rejected_by_filter: number;
+	promoted_to_node: number;
+}
+
+export interface GetDailyMetricsParams {
+	days: number;
+	min_daily_volume_floor?: number;
+}
+
+export interface GetDailyMetricsResult {
+	rows: HarvestMetricsRow[];
+	sustained_zero_sources: string[];
+}
+
+export const GetDailyMetricsRequest = new RequestType<GetDailyMetricsParams, GetDailyMetricsResult, Error>('harvester.getDailyMetrics');

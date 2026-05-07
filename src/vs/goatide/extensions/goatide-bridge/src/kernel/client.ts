@@ -34,6 +34,8 @@ import {
 	HeartbeatRequest,
 	AuthenticateRequest,
 	SubmitObservationRequest,
+	GetLivenessRequest,
+	GetDailyMetricsRequest,
 	type QueryGraphParams, type QueryGraphResult,
 	type ProposeEditParams, type ProposeEditResult,
 	type RecordRejectionParams, type RecordRejectionResult,
@@ -42,6 +44,8 @@ import {
 	type QueryNodesParams, type QueryNodesResult,
 	type HeartbeatResult,
 	type SubmitObservationParams, type SubmitObservationResult,
+	type GetLivenessResult,
+	type GetDailyMetricsParams, type GetDailyMetricsResult,
 } from './methods.js';
 import { existsSync } from 'node:fs';
 
@@ -299,6 +303,12 @@ export class KernelClient {
 	}
 	harvesterSubmitObservation(params: SubmitObservationParams): Promise<SubmitObservationResult> {
 		return this.sendWithTimeout(SubmitObservationRequest, params);
+	}
+	harvesterGetLiveness(): Promise<GetLivenessResult> {
+		return this.sendWithTimeout(GetLivenessRequest, {});
+	}
+	harvesterGetDailyMetrics(params: GetDailyMetricsParams): Promise<GetDailyMetricsResult> {
+		return this.sendWithTimeout(GetDailyMetricsRequest, params);
 	}
 
 	/**
