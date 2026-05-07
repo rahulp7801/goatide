@@ -3,23 +3,34 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// kernel/src/test/harvester/filter/portable.spec.ts — Phase 5 Wave-0 refusal stub for PORT-01
-// (predicate 1 of 5: portability — observation generalizes beyond the developer's machine).
-//
-// Plan 05-05 will flip the it.skip blocks into real assertions against isPortable.
+// kernel/src/test/harvester/filter/portable.spec.ts — Phase 5 Plan 05-05 PORT-01 predicate 1
+// (portability — observation generalizes beyond the developer's machine).
 
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { isPortable } from '../../../harvester/filter/portable.js';
+import type { FilterContext } from '../../../harvester/filter/index.js';
+import type { RawObservation } from '../../../harvester/observations.js';
+
+const ctx = {} as FilterContext;
+
+function makeClaude(body: string, file_path = 'src/x.ts'): RawObservation {
+	return { id: 'a', ts: 't', body, source: 'claude_jsonl', file_path };
+}
 
 describe('PORT-01: portable predicate', () => {
-	it.skip('accept: language-level rule (no machine-specific paths or ephemeral IDs)', () => {
-		throw new Error('Plan 05-05 has not yet implemented isPortable');
-	});
+	it('classifies portable vs non-portable bodies (3-branch snapshot)', () => {
+		const accept = isPortable(makeClaude('Discount must use BigDecimal arithmetic to avoid float precision drift.'), ctx);
+		const rejectUsersPath = isPortable(makeClaude('Set DATABASE_URL to /Users/alice/dev/myproj/data.db'), ctx);
+		const rejectEphemeralUuid = isPortable(makeClaude('8f3c2a91-0b1e-4d2a-9c0f-aaaaaaaaaaaa'), ctx);
 
-	it.skip('reject: hardcoded /Users/<username>/ path in body', () => {
-		throw new Error('Plan 05-05 has not yet implemented isPortable (machine-path detection)');
-	});
-
-	it.skip('reject: ephemeral session ID in body', () => {
-		throw new Error('Plan 05-05 has not yet implemented isPortable (ephemeral-ID detection)');
+		expect({
+			acceptOk: accept.ok,
+			rejectUsers: rejectUsersPath.ok,
+			rejectUuid: rejectEphemeralUuid.ok,
+		}).toEqual({
+			acceptOk: true,
+			rejectUsers: false,
+			rejectUuid: false,
+		});
 	});
 });
