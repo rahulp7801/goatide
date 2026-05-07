@@ -1,0 +1,151 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`PORT-04: Promoter tool-schema export > zodToJsonSchema(NodePayloadSchema) is structurally equivalent to the snapshotted JSON schema 1`] = `
+{
+  "hasDescription": true,
+  "name": "classify_observation",
+  "schema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "anyOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "anchor": {
+            "additionalProperties": false,
+            "properties": {
+              "file": {
+                "type": "string",
+              },
+              "line": {
+                "minimum": 0,
+                "type": "integer",
+              },
+              "symbol": {
+                "type": "string",
+              },
+              "ticket_id": {
+                "type": "string",
+              },
+            },
+            "type": "object",
+          },
+          "body": {
+            "minLength": 1,
+            "type": "string",
+          },
+          "kind": {
+            "const": "ConstraintNode",
+            "type": "string",
+          },
+        },
+        "required": [
+          "kind",
+          "body",
+        ],
+        "type": "object",
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "anchor": {
+            "$ref": "#/anyOf/0/properties/anchor",
+          },
+          "body": {
+            "$ref": "#/anyOf/0/properties/body",
+          },
+          "derived_under_priority": {
+            "type": "string",
+          },
+          "kind": {
+            "const": "DecisionNode",
+            "type": "string",
+          },
+        },
+        "required": [
+          "kind",
+          "body",
+        ],
+        "type": "object",
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "anchor": {
+            "$ref": "#/anyOf/0/properties/anchor",
+          },
+          "body": {
+            "$ref": "#/anyOf/0/properties/body",
+          },
+          "contract_path": {
+            "type": "string",
+          },
+          "kind": {
+            "const": "ContractNode",
+            "type": "string",
+          },
+        },
+        "required": [
+          "kind",
+          "body",
+        ],
+        "type": "object",
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "anchor": {
+            "$ref": "#/anyOf/0/properties/anchor",
+          },
+          "body": {
+            "$ref": "#/anyOf/0/properties/body",
+          },
+          "kind": {
+            "const": "OpenQuestion",
+            "type": "string",
+          },
+        },
+        "required": [
+          "kind",
+          "body",
+        ],
+        "type": "object",
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "accept_latency_ms": {
+            "minimum": 0,
+            "type": "number",
+          },
+          "anchor": {
+            "$ref": "#/anyOf/0/properties/anchor",
+          },
+          "attempt_kind": {
+            "type": "string",
+          },
+          "body": {
+            "$ref": "#/anyOf/0/properties/body",
+          },
+          "kind": {
+            "const": "Attempt",
+            "type": "string",
+          },
+          "tier": {
+            "enum": [
+              "silent",
+              "inline",
+              "modal",
+            ],
+            "type": "string",
+          },
+        },
+        "required": [
+          "kind",
+          "body",
+        ],
+        "type": "object",
+      },
+    ],
+  },
+}
+`;
