@@ -32,6 +32,14 @@ import { incrementCorroborationAndMaybePromote } from '../harvester/promotion-ga
 import { resolveAnthropicApiKey } from '../harvester/promoter/index.js';
 import { LivenessState } from '../harvester/liveness.js';
 import { HarvestMetricsDao } from '../harvester/metrics.js';
+import {
+	MCP_DEFAULT_PORT,
+	resolveBearerToken,
+	registerGraphTools,
+	type KeychainAdapter,
+	type McpServerHandle,
+	startMcpServer,
+} from '../mcp/index.js';
 
 export interface StartDaemonArgs {
 	dao: GraphDAO;
@@ -59,6 +67,20 @@ export interface StartDaemonArgs {
 	 * leave undefined; daemon constructs the live Anthropic SDK + keytar wiring.
 	 */
 	promoterCtx?: HarvesterDeps['promoterCtx'];
+	/**
+	 * Plan 06-02 — override MCP server config (test injection only). Production passes
+	 * `undefined` to start the live HTTP listener on 127.0.0.1:7345; tests pass `null`
+	 * to opt out entirely (rpc-only mode) or a partial object to override port/keychain
+	 * (e.g. allocateLoopbackPort + makeKeychainMock for parallel tests).
+	 */
+	mcp?: null | {
+		/** Port override (defaults to MCP_DEFAULT_PORT). */
+		port?: number;
+		/** Keychain adapter override (defaults to live keytar). */
+		keychain?: KeychainAdapter;
+		/** Bearer token override (skip keychain resolution entirely). */
+		bearerToken?: string;
+	};
 }
 
 export interface DaemonHandle {
@@ -66,6 +88,11 @@ export interface DaemonHandle {
 	authToken: string;
 	lockfilePath: string;
 	harvesterDeps: HarvesterDeps;
+	/**
+	 * Plan 06-02 — handle for the MCP HTTP server when started. Null when the daemon was
+	 * started with `mcp: null` (test mode), or when MCP startup failed (logged + non-fatal).
+	 */
+	mcpServer: McpServerHandle | null;
 	close: () => Promise<void>;
 }
 
@@ -221,6 +248,36 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 		}
 	}
 
+	// Plan 06-02 — start the MCP HTTP server alongside the TCP RPC server. The MCP server
+	// is a SECOND listener on the same daemon process: same lifetime, same shutdown chain,
+	// distinct socket (127.0.0.1:7345), distinct auth gate (bearer token in keychain). MCP
+	// startup failure (port in use, keychain unreachable) is non-fatal: the daemon continues
+	// serving TCP RPC so the in-IDE bridge keeps working even when external MCP is degraded.
+	let mcpServer: McpServerHandle | null = null;
+	if (args.mcp !== null) {
+		const mcpConfig = args.mcp ?? {};
+		try {
+			const keychain: KeychainAdapter = mcpConfig.keychain ?? (await loadLiveKeytarAdapter());
+			const bearerToken = mcpConfig.bearerToken
+				?? await resolveBearerToken({ keychain, generate: true });
+			if (!bearerToken) {
+				console.error(`[daemon] MCP server skipped: bearer token unavailable (keychain returned null)`);
+			} else {
+				mcpServer = await startMcpServer({
+					port: mcpConfig.port ?? MCP_DEFAULT_PORT,
+					bearerToken,
+					registerTools: (s) => registerGraphTools(s, { dao: args.dao, sqlite: args.sqlite }),
+				});
+			}
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			// EADDRINUSE on the constitutional port is the most common production failure;
+			// surface it as a structured event so logs are grep-able for support.
+			const isPortInUse = msg.includes('EADDRINUSE');
+			console.error(`[daemon] MCP server start failed${isPortInUse ? ' (mcp_port_in_use)' : ''}: ${msg}`);
+		}
+	}
+
 	let closed = false;
 	const close = async (): Promise<void> => {
 		if (closed) {
@@ -230,6 +287,12 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 		// Stop watchers first so they don't try to submit while sockets are tearing down.
 		if (stopJsonlWatcher) {
 			try { await stopJsonlWatcher(); } catch { /* best-effort */ }
+		}
+		// Plan 06-02 — close the MCP HTTP server before tearing down the TCP RPC socket
+		// chain. Order matters: the MCP server has its own keep-alive connections that
+		// must drain cleanly so external clients see a graceful close, not an RST.
+		if (mcpServer) {
+			try { await mcpServer.close(); } catch { /* best-effort */ }
 		}
 		// Destroy all open sockets; close server.
 		for (const s of sockets) {
@@ -254,7 +317,24 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 	process.once('SIGINT', cleanup);
 	process.once('beforeExit', cleanup);
 
-	return { port, authToken, lockfilePath, harvesterDeps, close };
+	return { port, authToken, lockfilePath, harvesterDeps, mcpServer, close };
+}
+
+/**
+ * Lazy-load the live keytar binding and adapt it to KeychainAdapter. Mirrors the lazy-
+ * import pattern in kernel/src/harvester/promoter/keytar-resolver.ts so the native binding
+ * is only loaded on the production path — unit tests inject a mock via mcp.keychain.
+ */
+async function loadLiveKeytarAdapter(): Promise<KeychainAdapter> {
+	const keytar = await import('keytar');
+	return {
+		async getPassword(service, account) {
+			return keytar.getPassword(service, account);
+		},
+		async setPassword(service, account, password) {
+			await keytar.setPassword(service, account, password);
+		},
+	};
 }
 
 export { resolveLockfilePath } from './paths.js';
