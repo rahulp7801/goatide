@@ -1,0 +1,23 @@
+{
+  "_comment": "Phase 6 (Plan 06-01) schema-drift before-fixture. Snapshot of Slack thread_fetch tool with 2 input params (channel, thread_ts). Pair with slack-after.json to exercise detector.spec.ts changed=true with per-tool diff. The input_schema_hash and output_schema_hash fields are placeholders — Plan 06-04's snapshot.spec.ts computes them at test time via canonicalHash() and the fixtures are used as raw_schema sources.",
+  "provider": "slack",
+  "recorded_at": "2026-05-01T00:00:00Z",
+  "tools": [
+    {
+      "name": "thread_fetch",
+      "input_schema_hash": "<computed-at-test-time>",
+      "output_schema_hash": "<computed-at-test-time>",
+      "raw_schema": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "channel": { "type": "string" },
+            "thread_ts": { "type": "string" }
+          },
+          "required": ["channel", "thread_ts"]
+        },
+        "output": null
+      }
+    }
+  ]
+}

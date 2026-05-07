@@ -1,0 +1,38 @@
+{
+  "_comment": "Phase 6 (Plan 06-01) OAuth revocation fixtures. Used by kernel/src/test/mcp/auth/revocation.spec.ts and kernel/src/test/mcp/clients/adapters/*.spec.ts (Plan 06-04 flips). Each provider key maps to one or more concrete revocation error response payloads matching the provider's documented revocation taxonomy. Slack alone has 3 distinct shapes (per the Pitfall: invalid_auth, account_inactive, token_revoked) which the SlackAdapter must all detect.",
+  "slack": {
+    "invalid_auth": { "ok": false, "error": "invalid_auth" },
+    "account_inactive": { "ok": false, "error": "account_inactive" },
+    "token_revoked": { "ok": false, "error": "token_revoked" }
+  },
+  "github": {
+    "401_with_www_authenticate": {
+      "status": 401,
+      "headers": { "WWW-Authenticate": "Bearer realm=\"GitHub\"" },
+      "body": { "message": "Bad credentials", "documentation_url": "https://docs.github.com/rest" }
+    }
+  },
+  "linear": {
+    "401_authentication_error": {
+      "status": 401,
+      "body": {
+        "errors": [
+          {
+            "message": "Authentication required",
+            "extensions": { "code": "AUTHENTICATION_ERROR" }
+          }
+        ]
+      }
+    }
+  },
+  "jira": {
+    "401_unauthorized": {
+      "status": 401,
+      "body": { "errorMessages": ["Login required"], "errors": {} }
+    },
+    "403_forbidden": {
+      "status": 403,
+      "body": { "errorMessages": ["Access denied"], "errors": {} }
+    }
+  }
+}

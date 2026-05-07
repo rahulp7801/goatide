@@ -1,0 +1,24 @@
+{
+  "_comment": "Phase 6 (Plan 06-01) schema-drift after-fixture. Snapshot of Slack thread_fetch tool AFTER addition of a 'cursor' input parameter (new pagination param). detector.spec.ts asserts changed=true with per-tool diff naming thread_fetch. The input_schema_hash differs from slack-before.json by exactly the cursor property addition.",
+  "provider": "slack",
+  "recorded_at": "2026-05-07T00:00:00Z",
+  "tools": [
+    {
+      "name": "thread_fetch",
+      "input_schema_hash": "<computed-at-test-time>",
+      "output_schema_hash": "<computed-at-test-time>",
+      "raw_schema": {
+        "input": {
+          "type": "object",
+          "properties": {
+            "channel": { "type": "string" },
+            "thread_ts": { "type": "string" },
+            "cursor": { "type": "string" }
+          },
+          "required": ["channel", "thread_ts"]
+        },
+        "output": null
+      }
+    }
+  ]
+}
