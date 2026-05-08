@@ -107,3 +107,194 @@ body {
 	padding: 8px;
 	border: 1px dashed var(--vscode-statusBarItem-errorBackground, #5a1d1d);
 }
+
+/* ===========================================================================================
+ * Phase 7 Plan 07-07 — DRIFT-01 / DRIFT-04 / DRIFT-06 surfaces.
+ *
+ * All colors use vscode-elements ThemeColor variables (--vscode-*) per the Plan 04-03 / 07-07
+ * styling convention. No hardcoded hex values outside fallback defaults (defensive only —
+ * the host theme is always the source of truth in production).
+ * =========================================================================================== */
+
+.drift-findings {
+	border: 1px solid var(--vscode-editorWarning-foreground, #ffb454);
+	background-color: var(--vscode-editorWarning-background, #5a4a1d);
+	padding: 8px 12px;
+	border-radius: 3px;
+	margin-bottom: 8px;
+}
+
+.drift-findings-title {
+	margin: 0 0 8px 0;
+	font-size: 13px;
+	color: var(--vscode-editorWarning-foreground, #ffb454);
+}
+
+.drift-findings-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.drift-findings-row {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	gap: 8px;
+	padding: 4px 0;
+	border-bottom: 1px dotted var(--vscode-panel-border, #2b2b2b);
+	align-items: baseline;
+}
+
+.drift-findings-jump {
+	font-family: monospace;
+	background: none;
+	border: none;
+	color: var(--vscode-textLink-foreground, #3794ff);
+	cursor: pointer;
+	padding: 0;
+	text-decoration: underline;
+	font-size: 12px;
+}
+
+.drift-findings-jump:hover {
+	color: var(--vscode-textLink-activeForeground, #3794ff);
+}
+
+.drift-findings-pattern-kind {
+	font-family: monospace;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground, #999);
+}
+
+.compliance-report {
+	border: 2px solid var(--vscode-statusBarItem-errorBackground, #5a1d1d);
+	background-color: var(--vscode-editor-background, #1e1e1e);
+	padding: 12px;
+	border-radius: 3px;
+	margin-bottom: 12px;
+}
+
+.compliance-report-title {
+	margin: 0 0 12px 0;
+	font-size: 14px;
+	color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+}
+
+.compliance-report-bucket {
+	margin-bottom: 12px;
+	padding: 8px;
+	border-radius: 3px;
+}
+
+.compliance-report-bucket-title {
+	margin: 0 0 6px 0;
+	font-size: 12px;
+}
+
+.compliance-report-definitely,
+.compliance-bucket-definitely {
+	background-color: var(--vscode-statusBarItem-errorBackground, #5a1d1d);
+	color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+}
+
+.compliance-report-potentially,
+.compliance-bucket-potentially {
+	background-color: var(--vscode-editorWarning-background, #5a4a1d);
+	color: var(--vscode-editorWarning-foreground, #ffb454);
+}
+
+.compliance-report-rows {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.compliance-report-row {
+	display: grid;
+	grid-template-columns: 100px 1fr 2fr auto;
+	gap: 8px;
+	padding: 3px 0;
+	font-size: 12px;
+	transition: opacity 200ms ease-in;
+}
+
+.compliance-report-empty {
+	color: var(--vscode-descriptionForeground, #999);
+	font-style: italic;
+	font-size: 12px;
+}
+
+.compliance-report-loading {
+	padding: 8px;
+	color: var(--vscode-descriptionForeground, #999);
+	font-style: italic;
+	font-size: 12px;
+}
+
+.compliance-report-truncated {
+	padding: 6px 8px;
+	color: var(--vscode-editorWarning-foreground, #ffb454);
+	font-size: 11px;
+	font-style: italic;
+}
+
+.compliance-report-footer {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--vscode-panel-border, #2b2b2b);
+}
+
+.override-button-container {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.override-textarea-label {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground, #999);
+}
+
+.override-textarea {
+	font-family: monospace;
+	font-size: 12px;
+	padding: 6px;
+	min-height: 60px;
+	background-color: var(--vscode-input-background, #3c3c3c);
+	color: var(--vscode-input-foreground, #cccccc);
+	border: 1px solid var(--vscode-input-border, #5a1d1d);
+}
+
+.override-button-row {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+}
+
+.override-button {
+	padding: 6px 16px;
+	background-color: var(--vscode-statusBarItem-errorBackground, #5a1d1d);
+	color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+	border: none;
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.override-button:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.override-error {
+	color: var(--vscode-errorForeground, #f48771);
+	font-size: 12px;
+}
+
+.intent-drift-badge {
+	font-size: 10px;
+	padding: 2px 6px;
+	border-radius: 3px;
+	background-color: var(--vscode-editorWarning-background, #5a4a1d);
+	color: var(--vscode-editorWarning-foreground, #ffb454);
+	cursor: help;
+}

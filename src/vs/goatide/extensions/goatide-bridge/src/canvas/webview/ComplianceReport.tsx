@@ -5,63 +5,101 @@
 
 // src/vs/goatide/extensions/goatide-bridge/src/canvas/webview/ComplianceReport.tsx
 //
-// Phase 7 Plan 07-01 Wave-0 shell. Plan 07-07 fills full progressive-disclosure UI +
-// override button + DRIFT-04 / DRIFT-05 SC-#3 + SC-#5 integration.
+// Phase 7 Plan 07-07 — DRIFT-04 + DRIFT-05 modal-tier compliance report. Plan 07-01 shipped
+// a stub; Plan 07-07 fills the full progressive-disclosure UI.
 //
-// Wave-0 contract:
-//   - Returns null if report is null (Canvas hides the section when no contract lock fires).
-//   - Otherwise renders three labeled buckets (definitely_affected / potentially_affected /
-//     loading). Plan 07-07 will: add the override button + note input; wire progressive
-//     disclosure (first paint = definitely_affected only; potentially_affected streams in
-//     after); wire CSS variables for host theme integration.
+// Behavior:
+//   - First paint: receives `report` prop (initial first-degree partial OR null when the
+//     50ms Promise.race timed out). When null, renders the loading spinner only.
+//   - Listens for compliance_report.partial and compliance_report.full webview messages
+//     and merges deeper hops into the report state via setState. CSS transition fades the
+//     new rows in (styles.css owns the animation; this component owns the data flow).
+//   - Three labeled buckets: Definitely Affected (count), Potentially Affected (count),
+//     Loading deeper hops (spinner if loadingDeeperHops). Truncated banner appears when
+//     the kernel-side nodeCap fired.
+//
+// Returns null on `null` report AND loadingDeeperHops=false (Canvas hides the section).
 
 import * as React from 'react';
-
-/**
- * ComplianceReport shape — locally inlined at Wave-0. Plan 07-07 replaces this with a
- * shared import from canvas/messages.ts once kernel/src/drift/ripple.ts (Plan 07-04)
- * defines the wire shape.
- */
-export interface ComplianceReport {
-	contract_node_id: string;
-	contract_path: string;
-	definitely_affected: ReadonlyArray<{ node_id: string; label: string; path?: string }>;
-	potentially_affected: ReadonlyArray<{ node_id: string; label: string; path?: string }>;
-	truncated?: boolean;
-	truncated_at?: number;
-}
+import { useEffect, useState } from 'react';
+import type { ComplianceReportForCanvas, ComplianceRowForCanvas } from '../messages.js';
+import { OverrideButton, type OverrideButtonProps } from './OverrideButton.js';
 
 export interface ComplianceReportProps {
-	report: ComplianceReport | null;
-	loadingDeeperHops?: boolean;
+	report: ComplianceReportForCanvas | null;
+	overrideProps?: OverrideButtonProps;
 }
 
-export function ComplianceReportView({ report, loadingDeeperHops }: ComplianceReportProps): React.ReactElement | null {
-	if (report === null) {
+export function ComplianceReportView({ report: initialReport, overrideProps }: ComplianceReportProps): React.ReactElement | null {
+	const [report, setReport] = useState<ComplianceReportForCanvas | null>(initialReport);
+	const [loadingDeeperHops, setLoadingDeeperHops] = useState<boolean>(initialReport === null || initialReport.max_hops < 3);
+
+	useEffect(() => {
+		// When parent's initialReport prop changes, re-sync local state. This handles the
+		// canvas.show → first paint transition where the parent's payload changes.
+		setReport(initialReport);
+		setLoadingDeeperHops(initialReport === null || initialReport.max_hops < 3);
+	}, [initialReport]);
+
+	useEffect(() => {
+		const handler = (event: MessageEvent): void => {
+			const data = event.data as { type?: string; payload?: { report?: ComplianceReportForCanvas } };
+			if (data?.type === 'compliance_report.partial' && data.payload?.report !== undefined) {
+				// Partial — only update if we don't have a final yet (max_hops < 3).
+				const incoming = data.payload.report;
+				setReport((prev) => {
+					if (prev !== null && prev.max_hops === 3) {
+						return prev;
+					}
+					return incoming;
+				});
+				setLoadingDeeperHops(true);
+			} else if (data?.type === 'compliance_report.full' && data.payload?.report !== undefined) {
+				setReport(data.payload.report);
+				setLoadingDeeperHops(false);
+			}
+		};
+		window.addEventListener('message', handler);
+		return () => window.removeEventListener('message', handler);
+	}, []);
+
+	if (report === null && !loadingDeeperHops) {
 		return null;
 	}
+
 	return (
 		<section className="compliance-report" data-testid="compliance-report">
-			<h3 className="compliance-report-title">Compliance Report — {report.contract_path}</h3>
-			<Bucket
-				title="Definitely Affected"
-				rows={report.definitely_affected}
-				variant="definitely"
-			/>
-			<Bucket
-				title="Potentially Affected"
-				rows={report.potentially_affected}
-				variant="potentially"
-			/>
+			<h3 className="compliance-report-title">
+				Compliance Report{report !== null ? ` — ${report.contract_node_id.slice(-6)}` : ''}
+			</h3>
+			{report !== null ? (
+				<>
+					<Bucket
+						title="Definitely Affected"
+						rows={report.definitely_affected}
+						variant="definitely"
+					/>
+					<Bucket
+						title="Potentially Affected"
+						rows={report.potentially_affected}
+						variant="potentially"
+					/>
+					{report.truncated ? (
+						<div className="compliance-report-truncated" data-testid="compliance-report-truncated">
+							Showing first {report.definitely_affected.length + report.potentially_affected.length} affected nodes — refine the contract or raise GOATIDE_DRIFT_NODE_CAP.
+						</div>
+					) : null}
+				</>
+			) : null}
 			{loadingDeeperHops ? (
 				<div className="compliance-report-loading" data-testid="compliance-report-loading">
-					Loading deeper hops…
+					{report === null ? 'Computing first-degree blast radius…' : 'Loading deeper hops…'}
 				</div>
 			) : null}
-			{report.truncated ? (
-				<div className="compliance-report-truncated" data-testid="compliance-report-truncated">
-					Showing {report.truncated_at ?? '?'} of N — refine the contract or raise node_cap.
-				</div>
+			{overrideProps !== undefined ? (
+				<footer className="compliance-report-footer">
+					<OverrideButton {...overrideProps} />
+				</footer>
 			) : null}
 		</section>
 	);
@@ -69,22 +107,29 @@ export function ComplianceReportView({ report, loadingDeeperHops }: ComplianceRe
 
 interface BucketProps {
 	title: string;
-	rows: ReadonlyArray<{ node_id: string; label: string; path?: string }>;
+	rows: ReadonlyArray<ComplianceRowForCanvas>;
 	variant: 'definitely' | 'potentially';
 }
 
 function Bucket({ title, rows, variant }: BucketProps): React.ReactElement {
 	return (
-		<div className={`compliance-report-bucket compliance-report-${variant}`} data-testid={`bucket-${variant}`}>
-			<h4 className="compliance-report-bucket-title">{title}</h4>
+		<div
+			className={`compliance-report-bucket compliance-report-${variant} compliance-bucket-${variant === 'definitely' ? 'definitely' : 'potentially'}`}
+			data-testid={`bucket-${variant}`}
+		>
+			<h4 className="compliance-report-bucket-title">{title} ({rows.length})</h4>
 			{rows.length === 0 ? (
 				<div className="compliance-report-empty">None.</div>
 			) : (
 				<ul className="compliance-report-rows">
 					{rows.map((r) => (
 						<li key={r.node_id} className="compliance-report-row" data-testid="compliance-report-row">
-							<span className="compliance-report-label">{r.label}</span>
-							{r.path ? <span className="compliance-report-path" title={r.path}>{r.path}</span> : null}
+							<span className="compliance-report-kind">{r.kind}</span>
+							<span className="compliance-report-edge-path" title={r.edge_path}>{r.edge_path}</span>
+							<span className="compliance-report-body">{r.body_preview}</span>
+							{r.anchor_file ? (
+								<span className="compliance-report-path" title={r.anchor_file}>{r.anchor_file}</span>
+							) : null}
 						</li>
 					))}
 				</ul>

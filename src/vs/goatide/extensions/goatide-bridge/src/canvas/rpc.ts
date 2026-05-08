@@ -124,4 +124,14 @@ export class WebviewRpc {
 		const msg: WebviewToHost = { type: 'citation.explain', payload: { citation_node_id } };
 		this.vscode.postMessage(msg);
 	}
+
+	// Phase 7 Plan 07-07 — record_override + reveal_line message senders.
+	postRecordOverride(payload: { change_id: string; contract_node_id: string; section_name: string; note: string }): void {
+		const msg: WebviewToHost = { type: 'record_override', payload };
+		this.vscode.postMessage(msg);
+	}
+	postRevealLine(payload: { file: string; line: number }): void {
+		const msg: WebviewToHost = { type: 'reveal_line', payload };
+		this.vscode.postMessage(msg);
+	}
 }

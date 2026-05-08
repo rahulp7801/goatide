@@ -57,6 +57,15 @@ function CitationSection({ title, citations, onExplain, variant }: CitationSecti
 								superseded by
 							</span>
 						) : null}
+						{c.intent_drift_badge ? (
+							<span
+								className="intent-drift-badge"
+								title={c.intent_drift_badge.explanation}
+								data-testid="intent-drift-badge"
+							>
+								IntentDrift
+							</span>
+						) : null}
 						<button
 							className="goatide-citation-explain"
 							onClick={() => onExplain(c.node_id)}

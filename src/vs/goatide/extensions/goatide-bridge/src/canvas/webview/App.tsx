@@ -16,6 +16,8 @@ import type { CanvasShowPayload } from '../messages.js';
 import { DiffPane as DefaultDiffPane, type DiffPaneProps } from './DiffPane.js';
 import { CitationList } from './CitationList.js';
 import { ConfirmationPhrase } from './ConfirmationPhrase.js';
+import { DriftFindings } from './DriftFindings.js';
+import { ComplianceReportView } from './ComplianceReport.js';
 
 export interface AppProps {
 	rpc: WebviewRpc;
@@ -97,6 +99,21 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 				<span className="goatide-canvas-title">Verification Canvas - {payload.tier}</span>
 				<span className="goatide-canvas-file">{payload.file_uri}</span>
 			</header>
+			{/* Phase 7 Plan 07-07 — DriftFindings rendered above diff pane when present. */}
+			{payload.drift_findings && payload.drift_findings.length > 0 ? (
+				<DriftFindings findings={payload.drift_findings} rpc={rpc} />
+			) : null}
+			{/* Phase 7 Plan 07-07 — ComplianceReport above diff pane when lock_trigger fires. */}
+			{payload.lock_trigger ? (
+				<ComplianceReportView
+					report={payload.compliance_report ?? null}
+					overrideProps={{
+						rpc,
+						changeId: payload.change_id,
+						lockTrigger: payload.lock_trigger,
+					}}
+				/>
+			) : null}
 			<section className="goatide-canvas-diff">
 				<Diff
 					original={payload.original_content}
