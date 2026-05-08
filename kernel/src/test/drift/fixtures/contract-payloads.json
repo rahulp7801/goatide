@@ -1,0 +1,54 @@
+[
+  {
+    "name": "api-security",
+    "contract_path": "/contracts/api_security.md",
+    "body_file": "api-security.md",
+    "patterns": [
+      {
+        "kind": "regex",
+        "pattern": "requireAuth\\(",
+        "required": true,
+        "scope": "src/app/api/**/*.ts"
+      }
+    ],
+    "enforcing_sections": ["Authentication", "OAuth Scopes"]
+  },
+  {
+    "name": "design-tokens",
+    "contract_path": "/contracts/design_tokens.md",
+    "body_file": "design-tokens.md",
+    "patterns": [
+      {
+        "kind": "jsonpath",
+        "path": "$.color.*.light",
+        "op": "exists"
+      },
+      {
+        "kind": "jsonpath",
+        "path": "$.color.*.dark",
+        "op": "exists"
+      },
+      {
+        "kind": "jsonpath",
+        "path": "$.spacing[*]",
+        "op": "in",
+        "value": [4, 8, 12, 16, 24, 32, 48, 64]
+      }
+    ],
+    "enforcing_sections": ["Color Tokens", "Spacing"]
+  },
+  {
+    "name": "dependency-rules",
+    "contract_path": "/contracts/dependency_rules.md",
+    "body_file": "dependency-rules.md",
+    "patterns": [
+      { "kind": "forbidden_import", "module": "string-similarity" },
+      { "kind": "forbidden_import", "module": "levenshtein" },
+      { "kind": "forbidden_import", "module": "fuse.js" },
+      { "kind": "forbidden_import", "module": "fuzzysort" },
+      { "kind": "forbidden_import", "module": "match-sorter" },
+      { "kind": "forbidden_import", "module": "@openai/api" }
+    ],
+    "enforcing_sections": ["Forbidden Modules"]
+  }
+]
