@@ -19,6 +19,7 @@ import { registerSeed } from './commands/seed.js';
 import { registerSupersede } from './commands/supersede.js';
 import { registerQuery } from './commands/query.js';
 import { registerHarvestCommand } from './commands/harvest.js';
+import { registerMcpCommands } from './commands/mcp.js';
 
 const program = new Command();
 program
@@ -35,6 +36,10 @@ registerQuery(graph);
 // dashboard inspection. Registered at the top level (not under `graph`) so the CLI
 // surface mirrors the kernel module structure: `graph` for nodes, `harvest` for telemetry.
 registerHarvestCommand(program);
+
+// Phase 6 Plan 06-06 — `goatide-cli mcp <configure|status|doctor>` for MCP-03 token
+// management + MCP-06 per-provider state inspection + MCP-09 bearer-fingerprint surface.
+registerMcpCommands(program);
 
 program.parseAsync(process.argv).catch((err: unknown) => {
 	// Top-level safety net; commander handles parse-time errors itself.
