@@ -53,11 +53,25 @@ export interface QueryGraphResult {
 export const QueryGraphRequest = new RequestType<QueryGraphParams, QueryGraphResult, Error>('graph.queryGraph');
 
 // -------- graph.proposeEdit --------
+//
+// Plan 07-05 (DRIFT-02) extends ProposeEditParams additively with an optional
+// session_priority field. When supplied, the kernel handler runs renderReceipt against the
+// freshly-built receipt and decorates each cited DecisionNode whose
+// derived_under_priority mismatches the session priority with an intent_drift_badge.
+// When omitted, the response shape is identical to the Phase 4 / pre-Plan-07-05 surface.
+// Backward compatible: pre-Plan-07-05 bridge callers omit the field; new bridge callers
+// (Plan 07-05 tier-dispatch.ts) read goatide.session.priority from VS Code config and pass it.
 
 export interface ProposeEditParams {
 	diff: string;
 	destructive: boolean;
 	asOf?: string;
+	/**
+	 * Phase 7 Plan 07-05 (DRIFT-02): when set, the kernel runs evaluateIntentDrift over
+	 * the rendered receipt and decorates matching citations with intent_drift_badge.
+	 * Mandate-C exact-equality (Pitfall 5: 'Quality' !== 'Quality-First').
+	 */
+	session_priority?: string;
 }
 
 export interface ProposeEditResult {
@@ -85,6 +99,35 @@ export interface RecordRejectionResult {
 }
 
 export const RecordRejectionRequest = new RequestType<RecordRejectionParams, RecordRejectionResult, Error>('graph.recordRejection');
+
+// -------- graph.recordContractOverride (Plan 07-06 — DRIFT-06) --------
+//
+// Phase 7 audit-trail RPC. Every contract-lock override path (Plan 07-07 bridge save-gate
+// override flow) MUST funnel through this method — it is the constitutional pin against
+// silent escape hatches. The handler:
+//   1. Validates note.length >= 1 (CANV-03 precedent: no empty escape-hatch notes).
+//   2. Resolves contract_node_id via dao.queryById; rejects if missing or not a ContractNode.
+//   3. Seeds an Attempt(attempt_kind='contract_override') whose body is the developer's note.
+//   4. Writes a 'references' edge from the Attempt to the ContractNode (two-tx pattern,
+//      mirroring atomicAccept; recovery-scan deferred to Phase-7-iter).
+//   5. Increments harvest_metrics_daily.contract_overrides via the optional metrics DAO.
+//
+// Pitfall-9 shame-loop defense: the per-day count surfaces ONLY in `goatide-cli harvest
+// metrics` (opt-in CLI), NOT in the bridge status bar. Plan 07-06 deliberately does not add
+// a status-bar badge.
+
+export interface RecordContractOverrideParams {
+	change_id: string;
+	contract_node_id: string;
+	section_name: string;
+	note: string;        // >=1 char required (CANV-03 precedent)
+}
+
+export interface RecordContractOverrideResult {
+	attempt_node_id: string;
+}
+
+export const RecordContractOverrideRequest = new RequestType<RecordContractOverrideParams, RecordContractOverrideResult, Error>('graph.recordContractOverride');
 
 // -------- graph.atomicAccept (CANV-07) --------
 //

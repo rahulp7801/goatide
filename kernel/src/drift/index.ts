@@ -29,3 +29,7 @@ export type { AddedLine } from './patterns.js';
 export type { DriftFinding, PatternEntry } from './types.js';
 export { DriftPattern } from '../graph/payloads.js';
 export type { DriftPatternT } from '../graph/payloads.js';
+
+// Plan 07-05 (DRIFT-02) — IntentDrift evaluator public surface.
+export { evaluateIntentDrift, type EvaluateIntentDriftInput } from './intent.js';
+export type { IntentDriftBadge } from './types.js';

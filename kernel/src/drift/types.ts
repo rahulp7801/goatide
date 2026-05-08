@@ -13,7 +13,7 @@
 // 07-02 lands first, its richer ContractRegistry interface (with allPatterns: PatternEntry[])
 // is compatible with Plan 07-03's consumer (which only reads byPath).
 
-import type { z } from 'zod';
+import { z } from 'zod';
 import type { ContractPayload } from '../graph/payloads.js';
 
 type ContractPayloadT = z.infer<typeof ContractPayload>;
@@ -92,4 +92,92 @@ export interface LockTrigger {
 	readonly section_name: string;
 	readonly edited_line_range: readonly [number, number];
 	readonly hunk_index: number;
+}
+
+// =============================================================================================
+// Plan 07-04 (DRIFT-04 + DRIFT-05) — ComplianceReport tri-bucket ripple analysis surface.
+// =============================================================================================
+//
+// runRippleAnalysis (kernel/src/drift/ripple.ts) returns a ComplianceReport classifying
+// downstream-reachable nodes into a constitutional tri-bucket per the FIRST edge kind in
+// each node's edge_path:
+//   - 'protects' → definitely_affected
+//   - 'references' / 'parent_of' → potentially_affected
+//   - 'derived_from' / 'supersedes' / 'unknown' → OMITTED (audit-trail edges; UI shows
+//     'no other reachable nodes' rather than enumerating)
+//
+// The 3-hop cap is a constitutional pin (Pitfall 4 + DRIFT-05): max_hops is a TypeScript
+// literal-union (1 | 2 | 3) so callers cannot widen at compile time, AND the
+// refuse-unbounded-ripple-walk.sh CI gate static-greps the ripple*.ts source for
+// `max_hops:` literals exceeding 3. Both layers must agree.
+//
+// ComplianceReportSchema is exported as a real Zod schema so Plan 07-07 (bridge save-gate)
+// can re-validate the response shape at the IPC boundary.
+
+/**
+ * One classified row in a ComplianceReport. The `hops` value is bounded by the literal-union
+ * max_hops (so .min(1).max(3) on the Zod schema matches the constitutional cap).
+ */
+export const ComplianceRowSchema = z.object({
+	node_id: z.string(),
+	kind: z.enum(['ConstraintNode', 'DecisionNode', 'ContractNode', 'OpenQuestion', 'Attempt']),
+	anchor_file: z.string().optional(),
+	edge_path: z.string(),
+	hops: z.number().int().min(1).max(3),
+	body_preview: z.string(),
+});
+
+/**
+ * Tri-bucket compliance report for a ContractNode's downstream blast radius.
+ *
+ * @property contract_node_id      Source ContractNode ULID (the seed of the BFS walk).
+ * @property max_hops              Literal cap used for this report (1 | 2 | 3).
+ * @property definitely_affected   Rows reached via a 'protects' first edge.
+ * @property potentially_affected  Rows reached via a 'references' or 'parent_of' first edge.
+ * @property truncated             True when the BFS yielded > nodeCap rows and we capped.
+ * @property generated_at          ISO timestamp when the report was generated.
+ *
+ * The unaffected bucket is OMITTED by design — the bridge UI shows
+ * 'no other reachable nodes' rather than enumerating audit-trail edges.
+ */
+export const ComplianceReportSchema = z.object({
+	contract_node_id: z.string(),
+	max_hops: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+	definitely_affected: z.array(ComplianceRowSchema),
+	potentially_affected: z.array(ComplianceRowSchema),
+	truncated: z.boolean(),
+	generated_at: z.string(),
+});
+
+export type ComplianceRow = z.infer<typeof ComplianceRowSchema>;
+export type ComplianceReport = z.infer<typeof ComplianceReportSchema>;
+
+// =============================================================================================
+// Plan 07-05 (DRIFT-02) — IntentDrift badge surface.
+// =============================================================================================
+//
+// evaluateIntentDrift (kernel/src/drift/intent.ts) compares each cited DecisionNode's
+// derived_under_priority against the active session priority. A mismatch produces an
+// IntentDriftBadge that decorates the matching RenderedCitation. Plan 07-07 renders the
+// badge via CitationList.tsx (icon + click-to-modal explanation).
+//
+// Mandate-C exact-equality (Pitfall 5): 'Quality' !== 'Quality-First'. The constitutional
+// pin is enforced at the unit-test level — a refactor that introduces prefix-match silently
+// is rejected by the failing test in kernel/src/test/drift/intent.spec.ts.
+
+/**
+ * IntentDrift badge — emitted when a cited DecisionNode's derived_under_priority does NOT
+ * exact-match the active session priority. Decorates RenderedCitation.intent_drift_badge.
+ *
+ * @property citation_node_id The cited node's ULID (== RenderedCitation.node_id).
+ * @property session_priority The active session priority at evaluation time.
+ * @property cited_priority   The DecisionNode's derived_under_priority (the rule-author's
+ *                            stated optimization context at the time the rule was authored).
+ * @property explanation      Templated human-readable string for tooltip / modal display.
+ */
+export interface IntentDriftBadge {
+	readonly citation_node_id: string;
+	readonly session_priority: string;
+	readonly cited_priority: string;
+	readonly explanation: string;
 }

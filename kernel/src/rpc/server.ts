@@ -22,17 +22,18 @@ import type * as net from 'node:net';
 import * as rpc from 'vscode-jsonrpc/node.js';
 import type Database from 'better-sqlite3';
 import { resolveAnchor, traverse, type GraphDAO, type NodeKind } from '../graph/index.js';
-import { buildReceipt, type ReceiptDAO } from '../receipt/index.js';
+import { buildReceipt, renderReceipt, type ReceiptDAO } from '../receipt/index.js';
 import { validateAuthToken } from '../daemon/auth-token.js';
 import { submitRawObservation, type HarvesterDeps } from '../harvester/index.js';
 import { RawObservationSchema, type ObservationSource } from '../harvester/observations.js';
 import { flipCiteEligibleOnAcceptedReceipt } from '../harvester/promotion-gate/index.js';
 import { resolveLivenessThresholdsFromEnv } from '../harvester/liveness.js';
-import { resolvePort06ParamsFromEnv } from '../harvester/metrics.js';
+import { resolvePort06ParamsFromEnv, type HarvestMetricsDao } from '../harvester/metrics.js';
 import {
 	QueryGraphRequest,
 	ProposeEditRequest,
 	RecordRejectionRequest,
+	RecordContractOverrideRequest,
 	AtomicAcceptRequest,
 	QueryAttemptByStagingPathRequest,
 	QueryNodesRequest,
@@ -48,6 +49,7 @@ import {
 	type QueryGraphResult,
 	type ProposeEditResult,
 	type RecordRejectionResult,
+	type RecordContractOverrideResult,
 	type AtomicAcceptResult,
 	type QueryAttemptByStagingPathResult,
 	type QueryNodesResult,
@@ -70,6 +72,13 @@ export interface CreateRpcServerArgs {
 	sqlite: Database.Database;
 	/** DB path for heartbeat reporting (Plan 04-06). Defaults to '<unknown>' if not provided. */
 	dbPath?: string;
+	/**
+	 * Phase 7 Plan 07-06 (DRIFT-06): optional HarvestMetricsDao for the contract-override
+	 * counter. When present, graph.recordContractOverride bumps the daily counter (source=
+	 * 'canvas'). Stdio mode in production runs without metrics (the daemon owns the metrics
+	 * lifecycle); tests inject a harness-owned DAO so the increment-side assertion lands.
+	 */
+	metrics?: HarvestMetricsDao;
 	/** Override stdin/stdout for tests (defaults to process.stdin/process.stdout). */
 	reader?: rpc.MessageReader;
 	writer?: rpc.MessageWriter;
@@ -102,6 +111,13 @@ interface HandlerContext {
 	sqlite: Database.Database;
 	dbPath: string;
 	startMs: number;
+	/**
+	 * Plan 07-06 (DRIFT-06): optional metrics DAO for contract-override counter.
+	 * graph.recordContractOverride calls metrics?.incrementContractOverride('canvas', now)
+	 * after the Attempt seed + edge land. Absent in stdio mode, present in daemon mode AND
+	 * test harnesses that wire harness.metrics.
+	 */
+	metrics?: HarvestMetricsDao;
 }
 
 /**
@@ -156,6 +172,16 @@ function bindHandlers(
 			ctx.receiptDao,
 			ctx.sqlite,
 		);
+		// Plan 07-05 (DRIFT-02): when session_priority is provided, run renderReceipt with
+		// IntentDrift evaluation. The rendered receipt is structurally a superset of the
+		// raw ReasoningReceipt (additional cited_payload + intent_drift_badge fields per
+		// citation), so the JSON wire shape stays compatible with pre-Plan-07-05 callers.
+		// When session_priority is omitted the raw receipt is returned unchanged — this
+		// preserves the exact Phase 4 / pre-Plan-07-05 wire shape for legacy callers.
+		if (params.session_priority !== undefined) {
+			const rendered = renderReceipt(receipt, ctx.dao, { sessionPriority: params.session_priority });
+			return { receipt: rendered };
+		}
 		return { receipt };
 	}));
 
@@ -200,6 +226,80 @@ function bindHandlers(
 		}
 
 		return { open_question_id: openQuestionId };
+	}));
+
+	// Phase 7 Plan 07-06 — graph.recordContractOverride (DRIFT-06).
+	//
+	// Constitutional pin against silent escape hatches: every override of a Contract lock MUST
+	// funnel through this handler so the audit trail (Attempt + 'references' edge + metric
+	// counter) is always populated. The bridge save-gate override flow (Plan 07-07) is the
+	// sole production caller; refuse-silent-override.sh ensures no parallel path bypasses it.
+	//
+	// Two-tx pattern (inherits Plan 04-04 atomicAccept precedent):
+	//   1. dao.seed runs its own tx for the Attempt + provenance rows.
+	//   2. dao.writeEdge runs a separate tx for the 'references' edge.
+	//
+	// Recovery-scan deferral: a partial state where seed succeeded but writeEdge failed leaves
+	// the Attempt orphaned (no edge to the ContractNode). This is survivable because the
+	// Attempt is still queryable via queryByKind('Attempt')+attempt_kind='contract_override'
+	// filter; a future Phase-7-iter recovery scan will assert no orphan exists. Coalescing
+	// the two writes into a single tx is a future optimization (would require an
+	// atomicSeedAndWriteEdge DAO surface; out-of-scope for Plan 07-06).
+	//
+	// Pitfall-9 shame-loop defense: the metric counter is read by `goatide-cli harvest
+	// metrics` (opt-in CLI surface) ONLY. The bridge status bar / LivenessBanner do NOT
+	// surface override frequency.
+	connection.onRequest(RecordContractOverrideRequest, requireAuth((params): RecordContractOverrideResult => {
+		if (!params.note || params.note.length < 1) {
+			throw new Error('graph.recordContractOverride: note must be >=1 char');
+		}
+		const contractNode = ctx.dao.queryById(params.contract_node_id);
+		if (!contractNode || contractNode.kind !== 'ContractNode') {
+			throw new Error(`graph.recordContractOverride: invalid contract_node_id: ${params.contract_node_id}`);
+		}
+		const contractAnchor = contractNode.payload.anchor;
+		const anchor = contractAnchor && Object.keys(contractAnchor).length > 0
+			? contractAnchor
+			: { file: 'unknown' };
+
+		const { id: attemptId } = ctx.dao.seed({
+			payload: {
+				kind: 'Attempt',
+				body: params.note,
+				anchor,
+				attempt_kind: 'contract_override',
+			},
+			provenance: {
+				source: 'canvas',
+				actor: 'developer',
+				detail: {
+					change_id: params.change_id,
+					contract_node_id: params.contract_node_id,
+					section_name: params.section_name,
+					action: 'contract_override',
+				},
+			},
+		});
+
+		ctx.dao.writeEdge({
+			kind: 'references',
+			src_id: attemptId,
+			dst_id: params.contract_node_id,
+		});
+
+		// Bump the daily metric AFTER the durable writes land. A failure here would leave the
+		// audit trail intact but the counter under-reported by one — survivable for a calibration
+		// signal (Pitfall 1 false-positive density indicator). Best-effort try/catch keeps the
+		// RPC response from failing on a metric-side anomaly.
+		if (ctx.metrics) {
+			try {
+				ctx.metrics.incrementContractOverride('canvas', Date.now());
+			} catch {
+				// Metric increment is non-fatal: the override is already persisted.
+			}
+		}
+
+		return { attempt_node_id: attemptId };
 	}));
 
 	connection.onRequest(AtomicAcceptRequest, requireAuth(async (params): Promise<AtomicAcceptResult> => {
@@ -419,6 +519,7 @@ export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnectio
 		sqlite: args.sqlite,
 		dbPath: args.dbPath ?? '<unknown>',
 		startMs: Date.now(),
+		metrics: args.metrics,
 	};
 	bindHandlers(connection, ctx /* no authState — stdio is implicitly trusted */);
 	return connection;
@@ -474,6 +575,9 @@ export function bindHandlersForTcp(args: BindHandlersForTcpArgs): void {
 		sqlite: args.sqlite,
 		dbPath: args.dbPath,
 		startMs: Date.now(),
+		// Plan 07-06: metrics for graph.recordContractOverride. The daemon's harvesterDeps.metrics
+		// flows through to ctx.metrics so the override handler can bump the daily counter.
+		metrics: args.harvesterDeps?.metrics,
 	};
 
 	args.connection.onRequest(AuthenticateRequest, (params): AuthenticateResult => {
