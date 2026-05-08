@@ -33,3 +33,11 @@ export type { DriftPatternT } from '../graph/payloads.js';
 // Plan 07-05 (DRIFT-02) — IntentDrift evaluator public surface.
 export { evaluateIntentDrift, type EvaluateIntentDriftInput } from './intent.js';
 export type { IntentDriftBadge } from './types.js';
+
+// Plan 07-04 (DRIFT-04 + DRIFT-05) — ripple analyzer + progressive-disclosure public surface.
+export { runRippleAnalysis } from './ripple.js';
+export type { RunRippleAnalysisInput } from './ripple.js';
+export { runRippleProgressive } from './ripple-progressive.js';
+export type { RunRippleProgressiveInput } from './ripple-progressive.js';
+export type { ComplianceReport, ComplianceRow } from './types.js';
+export { ComplianceReportSchema, ComplianceRowSchema } from './types.js';

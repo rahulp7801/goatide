@@ -127,6 +127,7 @@ describe('PORT-06: harvester daily metrics', () => {
 			submitted: 2,
 			rejected_by_filter: 3,
 			promoted_to_node: 1,
+			contract_overrides: 0,         // Plan 07-06 — additive column on HarvestMetricsRow
 		});
 	});
 });

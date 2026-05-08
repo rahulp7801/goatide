@@ -27,13 +27,21 @@ import type { ObservationSource } from './observations.js';
 export const DEFAULT_PORT06_DAYS = 7;
 export const DEFAULT_PORT06_MIN_VOLUME = 10;
 
-/** One row of harvest_metrics_daily — the (date_utc, source) primary key + three counters. */
+/**
+ * One row of harvest_metrics_daily — the (date_utc, source) primary key + four counters.
+ *
+ * Phase 7 Plan 07-06 (DRIFT-06): contract_overrides counts contract-lock overrides keyed by
+ * source='canvas' (the literal source for override Attempts — distinct from the Phase-5
+ * harvester sources like 'editor_save', 'terminal_shell', 'git_commit', 'claude_jsonl').
+ * Migration 0007 added the column with NOT NULL DEFAULT 0 so Phase-2..6 rows backfill cleanly.
+ */
 export interface HarvestMetricsRow {
 	date_utc: string;            // YYYY-MM-DD UTC
-	source: string;              // ObservationSource string (loose at this layer for bridge mirroring)
+	source: string;              // ObservationSource string OR 'canvas' (Plan 07-06 contract_override source)
 	submitted: number;
 	rejected_by_filter: number;
 	promoted_to_node: number;
+	contract_overrides: number;  // Plan 07-06 — DRIFT-06 frequency counter (source='canvas')
 }
 
 interface SustainedZeroOpts {
@@ -59,29 +67,39 @@ export class HarvestMetricsDao {
 	private readonly upsertSubmittedStmt: Database.Statement;
 	private readonly upsertRejectedStmt: Database.Statement;
 	private readonly upsertPromotedStmt: Database.Statement;
+	private readonly upsertContractOverrideStmt: Database.Statement;
 	private readonly queryRangeStmt: Database.Statement;
 
 	constructor(sqlite: Database.Database) {
 		// One UPSERT per counter so the +1 is applied to the correct column. ON CONFLICT
 		// targets the (date_utc, source) primary key; the WHERE-less DO UPDATE applies to
 		// the matched row exclusively (better-sqlite3 + SQLite semantics).
+		//
+		// Phase 7 Plan 07-06 — every INSERT supplies the contract_overrides column as 0
+		// (zero) so the Phase-5 counters and the Phase-7 counter co-exist on the same row
+		// shape. Only incrementContractOverride seeds it as 1 / increments by +1.
 		this.upsertSubmittedStmt = sqlite.prepare(`
-			INSERT INTO harvest_metrics_daily (date_utc, source, submitted, rejected_by_filter, promoted_to_node)
-			VALUES (?, ?, 1, 0, 0)
+			INSERT INTO harvest_metrics_daily (date_utc, source, submitted, rejected_by_filter, promoted_to_node, contract_overrides)
+			VALUES (?, ?, 1, 0, 0, 0)
 			ON CONFLICT(date_utc, source) DO UPDATE SET submitted = submitted + 1
 		`);
 		this.upsertRejectedStmt = sqlite.prepare(`
-			INSERT INTO harvest_metrics_daily (date_utc, source, submitted, rejected_by_filter, promoted_to_node)
-			VALUES (?, ?, 0, 1, 0)
+			INSERT INTO harvest_metrics_daily (date_utc, source, submitted, rejected_by_filter, promoted_to_node, contract_overrides)
+			VALUES (?, ?, 0, 1, 0, 0)
 			ON CONFLICT(date_utc, source) DO UPDATE SET rejected_by_filter = rejected_by_filter + 1
 		`);
 		this.upsertPromotedStmt = sqlite.prepare(`
-			INSERT INTO harvest_metrics_daily (date_utc, source, submitted, rejected_by_filter, promoted_to_node)
-			VALUES (?, ?, 0, 0, 1)
+			INSERT INTO harvest_metrics_daily (date_utc, source, submitted, rejected_by_filter, promoted_to_node, contract_overrides)
+			VALUES (?, ?, 0, 0, 1, 0)
 			ON CONFLICT(date_utc, source) DO UPDATE SET promoted_to_node = promoted_to_node + 1
 		`);
+		this.upsertContractOverrideStmt = sqlite.prepare(`
+			INSERT INTO harvest_metrics_daily (date_utc, source, submitted, rejected_by_filter, promoted_to_node, contract_overrides)
+			VALUES (?, ?, 0, 0, 0, 1)
+			ON CONFLICT(date_utc, source) DO UPDATE SET contract_overrides = contract_overrides + 1
+		`);
 		this.queryRangeStmt = sqlite.prepare(`
-			SELECT date_utc, source, submitted, rejected_by_filter, promoted_to_node
+			SELECT date_utc, source, submitted, rejected_by_filter, promoted_to_node, contract_overrides
 			FROM harvest_metrics_daily
 			WHERE date_utc >= ?
 			ORDER BY date_utc DESC, source ASC
@@ -105,6 +123,22 @@ export class HarvestMetricsDao {
 
 	incrementPromoted(source: ObservationSource, now: number = Date.now()): void {
 		this.upsertPromotedStmt.run(dateUtcFromMs(now), source);
+	}
+
+	/**
+	 * Phase 7 Plan 07-06 (DRIFT-06): bump the daily contract_overrides counter for the given
+	 * source. Source is restricted to the literal 'canvas' because contract_override Attempts
+	 * originate from the Canvas modal — there is no other path that writes them. (The type
+	 * keeps the surface narrow; future surfaces, e.g. an MCP-driven override flow, would add
+	 * a new literal here AND extend the refusal-gate sentinel set.)
+	 *
+	 * Pitfall-9 shame-loop defense: this counter is read by `goatide-cli harvest metrics`
+	 * (opt-in CLI surface) ONLY. The bridge LivenessBanner / SchemaDriftBanner do NOT
+	 * subscribe to this counter — silent surfacing would create a self-defeating shame loop
+	 * (developers avoid overrides to dodge the badge, not because the contract is sound).
+	 */
+	incrementContractOverride(source: 'canvas', now: number = Date.now()): void {
+		this.upsertContractOverrideStmt.run(dateUtcFromMs(now), source);
 	}
 
 	/**
