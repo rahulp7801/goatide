@@ -151,4 +151,64 @@ describe('PORT-03 / PORT-06: goatide-cli harvest subcommand', () => {
 			hasNoStrayBlankLineCount: true,
 		});
 	});
+
+	it('Plan 07-06: harvest metrics shows contract_overrides column + 7-day rollup + footer threshold warning', () => {
+		const dbPath = join(scratch, 'graph.db');
+		const handle = openDatabase(dbPath);
+		try {
+			const dao = new HarvestMetricsDao(handle.sqlite);
+			// Seed canvas-source contract overrides spread over the 7-day window: 8 total
+			// (5 today + 3 two days ago). With default threshold 5, 8 >= 5 triggers the
+			// warning. Also seed an editor_save row so the table has a non-canvas baseline.
+			const refNow = Date.UTC(2026, 4, 8, 12, 0, 0);                // 2026-05-08T12:00:00Z
+			const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+			for (let i = 0; i < 5; i++) {
+				dao.incrementContractOverride('canvas', refNow);
+			}
+			for (let i = 0; i < 3; i++) {
+				dao.incrementContractOverride('canvas', refNow - 2 * ONE_DAY_MS);
+			}
+			for (let i = 0; i < 4; i++) {
+				dao.incrementSubmitted('editor_save', refNow);
+				dao.incrementPromoted('editor_save', refNow);
+			}
+		} finally {
+			handle.close();
+		}
+
+		const outDefault = runCli(
+			['harvest', 'metrics', '--days', '7'],
+			{ GOATIDE_DB: dbPath, GOATIDE_NOW_OVERRIDE_ISO: '2026-05-08T12:00:00.000Z' },
+		);
+
+		// Same data, but raise threshold so 8 < 10 → warning suppressed.
+		const outRaised = runCli(
+			['harvest', 'metrics', '--days', '7'],
+			{
+				GOATIDE_DB: dbPath,
+				GOATIDE_NOW_OVERRIDE_ISO: '2026-05-08T12:00:00.000Z',
+				GOATIDE_DRIFT_OVERRIDE_THRESHOLD: '10',
+			},
+		);
+
+		expect({
+			defaultCode: outDefault.code,
+			defaultHasOverridesHeader: /overrides/i.test(outDefault.stdout),
+			defaultHasCanvasRow: /canvas/.test(outDefault.stdout),
+			defaultHas7dRollup: /canvas overrides.*8/.test(outDefault.stdout),
+			defaultHasWarning: /WARNING.*contract overrides/i.test(outDefault.stdout),
+			raisedCode: outRaised.code,
+			raisedSuppressesWarning: !/WARNING.*contract overrides/i.test(outRaised.stdout),
+			raisedStillShowsRollup: /canvas overrides.*8/.test(outRaised.stdout),
+		}).toEqual({
+			defaultCode: 0,
+			defaultHasOverridesHeader: true,
+			defaultHasCanvasRow: true,
+			defaultHas7dRollup: true,
+			defaultHasWarning: true,
+			raisedCode: 0,
+			raisedSuppressesWarning: true,
+			raisedStillShowsRollup: true,
+		});
+	});
 });
