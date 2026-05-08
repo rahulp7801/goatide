@@ -95,23 +95,26 @@ describe('drift/section-parser — Plan 07-03 (DRIFT-03)', () => {
 	});
 
 	it('accepts trailing closing #s (`## Heading ##`)', () => {
+		// Trailing `\n` produces a final empty line at index 2; lines.length is 3, so the
+		// section's endLine extends to include that empty trailing line. The lock-detector
+		// trivially never overlaps an empty line because no diff hunk produces one.
 		const sections = parseSections('## Heading ##\nbody\n');
 		assertSectionsEqual(sections, {
-			Heading: { startLine: 2, endLine: 2, headingLevel: 2 },
+			Heading: { startLine: 2, endLine: 3, headingLevel: 2 },
 		});
 	});
 
 	it('normalizes CRLF line endings', () => {
 		const sections = parseSections('## Heading\r\nbody\r\n');
 		assertSectionsEqual(sections, {
-			Heading: { startLine: 2, endLine: 2, headingLevel: 2 },
+			Heading: { startLine: 2, endLine: 3, headingLevel: 2 },
 		});
 	});
 
 	it('tolerates Unicode heading text', () => {
 		const sections = parseSections('## 認証\nbody\n');
 		assertSectionsEqual(sections, {
-			'認証': { startLine: 2, endLine: 2, headingLevel: 2 },
+			'認証': { startLine: 2, endLine: 3, headingLevel: 2 },
 		});
 	});
 
