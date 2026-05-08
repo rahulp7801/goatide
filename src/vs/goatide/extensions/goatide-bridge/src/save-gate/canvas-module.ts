@@ -21,6 +21,130 @@ export interface CitationDetail {
 	contract_path?: string;
 }
 
+// Phase 7 Plan 07-07 — Bridge mirrors of the kernel-side drift surface types. Established
+// per the Plan 04-05 CJS↔ESM contract pattern: bridge cannot statically import from
+// kernel/dist/drift without bundling, so we redeclare the structural shapes here. They
+// MUST stay byte-identical to kernel/src/drift/types.ts (the wire shape is the contract;
+// any drift is caught by the bridge integration tests at the IPC boundary).
+
+export interface DriftFinding {
+	contract_node_id: string;
+	contract_anchor_file: string;
+	pattern_index: number;
+	pattern_kind: 'regex' | 'jsonpath' | 'forbidden_import';
+	file: string;
+	hunk_line: number;
+	message: string;
+}
+
+export interface LockTrigger {
+	contract_node_id: string;
+	contract_anchor_file: string;
+	section_name: string;
+	edited_line_range: readonly [number, number];
+	hunk_index: number;
+}
+
+export interface IntentDriftBadge {
+	citation_node_id: string;
+	session_priority: string;
+	cited_priority: string;
+	explanation: string;
+}
+
+export interface ComplianceRow {
+	node_id: string;
+	kind: 'ConstraintNode' | 'DecisionNode' | 'ContractNode' | 'OpenQuestion' | 'Attempt';
+	anchor_file?: string;
+	edge_path: string;
+	hops: 1 | 2 | 3;
+	body_preview: string;
+}
+
+export interface ComplianceReport {
+	contract_node_id: string;
+	max_hops: 1 | 2 | 3;
+	definitely_affected: ComplianceRow[];
+	potentially_affected: ComplianceRow[];
+	truncated: boolean;
+	generated_at: string;
+}
+
+// Phase 7 Plan 07-07 — Drift-surface registry-cache mirror of Plan 04-08's
+// AnchorResultCache pattern. Bridge save-gate runDriftAndLock invocation paths can use this
+// 60s TTL cache keyed on `${dbPath}|${asOf}` to avoid re-loading the contract registry on
+// every save when the asOf hasn't advanced. Eventual consistency at 60s is acceptable per
+// ROADMAP SC #5 latency budget; supersede/seed events advance asOf so the cache key
+// invalidates naturally.
+//
+// Today the kernel side runs loadContractRegistry() once per RPC call (per-save fresh).
+// This bridge-side cache wraps the RPC response shape (drift_findings + lock_trigger pair)
+// and is reserved for future optimization paths (Plan 07-07-iter could use it to short-
+// circuit identical-asOf bursts). Plan 07-07's primary save-gate flow does NOT consult this
+// cache — it always issues a fresh runDriftAndLock RPC call so the kernel-side authoritative
+// drift snapshot is the source of truth.
+
+export interface DriftLockResult {
+	drift_findings: DriftFinding[];
+	lock_trigger: LockTrigger | null;
+}
+
+interface CacheEntry {
+	value: DriftLockResult;
+	expiresMs: number;
+}
+
+const DRIFT_CACHE_TTL_MS = 60_000;
+
+class DriftLockCache {
+	private readonly entries = new Map<string, CacheEntry>();
+	private readonly ttlMs: number;
+	private readonly nowFn: () => number;
+
+	constructor(opts?: { ttlMs?: number; now?: () => number }) {
+		this.ttlMs = opts?.ttlMs ?? DRIFT_CACHE_TTL_MS;
+		this.nowFn = opts?.now ?? Date.now;
+	}
+
+	get(key: string): DriftLockResult | undefined {
+		const entry = this.entries.get(key);
+		if (entry === undefined) {
+			return undefined;
+		}
+		if (entry.expiresMs <= this.nowFn()) {
+			this.entries.delete(key);
+			return undefined;
+		}
+		return entry.value;
+	}
+
+	set(key: string, value: DriftLockResult): void {
+		this.entries.set(key, { value, expiresMs: this.nowFn() + this.ttlMs });
+	}
+
+	clear(): void {
+		this.entries.clear();
+	}
+
+	size(): number {
+		return this.entries.size;
+	}
+}
+
+let driftCacheInstance: DriftLockCache | undefined;
+
+export function getDriftLockCache(): DriftLockCache {
+	if (driftCacheInstance === undefined) {
+		driftCacheInstance = new DriftLockCache();
+	}
+	return driftCacheInstance;
+}
+
+/** Test-only: reset the cache so each test starts clean. Not re-exported via index. */
+export function __resetDriftLockCacheForTests(): void {
+	driftCacheInstance = undefined;
+}
+
 export interface TierClassifierInputs {
 	receipt: import('../kernel/methods.js').ReasoningReceipt;
 	diff: string;

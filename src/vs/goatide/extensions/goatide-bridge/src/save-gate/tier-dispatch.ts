@@ -26,8 +26,8 @@ import * as vscode from 'vscode';
 // check under degraded state.
 import type { KernelClient } from '../kernel/client.js';
 import type { CanvasPanel, CanvasDecision } from '../canvas/panel.js';
-import type { Citation, ReasoningReceipt } from '../kernel/methods.js';
-import type { CanvasShowPayload } from '../canvas/messages.js';
+import type { Citation, ReasoningReceipt, DriftFinding, LockTrigger, ComplianceReport } from '../kernel/methods.js';
+import type { CanvasShowPayload, ComplianceReportForCanvas, DriftFindingForCanvas, LockTriggerForCanvas } from '../canvas/messages.js';
 import { applyEditAtomically } from './apply-edit.js';
 import { getCanvasModule, type CanvasTier, type CitationDetail, type AnchorResultCacheLike } from './canvas-module.js';
 
@@ -59,6 +59,117 @@ export interface DispatchInputs {
 	diff: string;
 	receipt: ReasoningReceipt;
 	startMs: number;
+	// Phase 7 Plan 07-07 — drift surface from kernel.runDriftAndLock. Both fields default
+	// to empty/null when on-will-save's call failed; classifyTier escalation rules apply
+	// only when populated.
+	driftFindings?: DriftFinding[];
+	lockTrigger?: LockTrigger | null;
+}
+
+/**
+ * Phase 7 Plan 07-07 — Apply the additive escalation rules on top of the kernel-side
+ * classifier:
+ *   - lock_trigger !== null → force tier='modal' (parallel pin to detectDestructive).
+ *   - drift_findings.length > 0 AND tier === 'silent' → escalate to 'inline' (don't demote
+ *     a modal to inline; only escalate from silent).
+ */
+function applyDriftEscalation(
+	tier: CanvasTier,
+	driftFindings: readonly DriftFinding[] | undefined,
+	lockTrigger: LockTrigger | null | undefined,
+): CanvasTier {
+	if (lockTrigger !== null && lockTrigger !== undefined) {
+		return 'modal';
+	}
+	if (driftFindings !== undefined && driftFindings.length > 0 && tier === 'silent') {
+		return 'inline';
+	}
+	return tier;
+}
+
+function toCanvasComplianceReport(report: ComplianceReport): ComplianceReportForCanvas {
+	return {
+		contract_node_id: report.contract_node_id,
+		max_hops: report.max_hops,
+		definitely_affected: report.definitely_affected.map((r) => ({
+			node_id: r.node_id,
+			kind: r.kind,
+			anchor_file: r.anchor_file,
+			edge_path: r.edge_path,
+			hops: r.hops,
+			body_preview: r.body_preview,
+		})),
+		potentially_affected: report.potentially_affected.map((r) => ({
+			node_id: r.node_id,
+			kind: r.kind,
+			anchor_file: r.anchor_file,
+			edge_path: r.edge_path,
+			hops: r.hops,
+			body_preview: r.body_preview,
+		})),
+		truncated: report.truncated,
+		generated_at: report.generated_at,
+	};
+}
+
+function toCanvasDriftFinding(finding: DriftFinding): DriftFindingForCanvas {
+	return {
+		contract_node_id: finding.contract_node_id,
+		contract_anchor_file: finding.contract_anchor_file,
+		pattern_index: finding.pattern_index,
+		pattern_kind: finding.pattern_kind,
+		file: finding.file,
+		hunk_line: finding.hunk_line,
+		message: finding.message,
+	};
+}
+
+function toCanvasLockTrigger(lock: LockTrigger): LockTriggerForCanvas {
+	return {
+		contract_node_id: lock.contract_node_id,
+		contract_anchor_file: lock.contract_anchor_file,
+		section_name: lock.section_name,
+		edited_line_range: [lock.edited_line_range[0], lock.edited_line_range[1]],
+		hunk_index: lock.hunk_index,
+	};
+}
+
+/**
+ * Phase 7 Plan 07-07 — Promise.race against a 50ms timeout for the first
+ * graph.driftProgress notification. Returns the partial report on receipt OR null on
+ * timeout. tier-dispatch uses this to avoid blocking dispatch on slow notifications:
+ * the webview shows a spinner during Phase A; when the notification finally arrives the
+ * partial is forwarded via panel.postComplianceReportPartial.
+ */
+const FIRST_NOTIFICATION_TIMEOUT_MS = 50;
+
+async function awaitFirstDriftProgressOrTimeout(
+	kernel: KernelClient,
+	panel: CanvasPanel,
+): Promise<{ partial: ComplianceReport | null; disposeListener: () => void }> {
+	let resolved = false;
+	let resolver: (partial: ComplianceReport | null) => void = () => undefined;
+	const partialPromise = new Promise<ComplianceReport | null>((resolve) => {
+		resolver = resolve;
+	});
+	const disposeListener = kernel.onDriftProgress((n) => {
+		// Forward EVERY partial to the webview (panel posts compliance_report.partial).
+		void panel.postComplianceReportPartial(toCanvasComplianceReport(n.partial));
+		if (!resolved) {
+			resolved = true;
+			resolver(n.partial);
+		}
+	});
+	const timeoutPromise = new Promise<null>((resolve) => {
+		setTimeout(() => {
+			if (!resolved) {
+				resolved = true;
+				resolve(null);
+			}
+		}, FIRST_NOTIFICATION_TIMEOUT_MS);
+	});
+	const partial = await Promise.race([partialPromise, timeoutPromise]);
+	return { partial, disposeListener };
 }
 
 export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
@@ -76,16 +187,53 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 	const contractAllowlist = vscode.workspace
 		.getConfiguration('goatide')
 		.get<readonly string[]>('contracts.highImpactAllowlist', canvasMod.DEFAULT_HIGH_IMPACT_CONTRACT_PREFIXES);
-	const tier: CanvasTier = canvasMod.classifyTier({
+	const baseTier: CanvasTier = canvasMod.classifyTier({
 		receipt: inputs.receipt,
 		diff: inputs.diff,
 		anchorPath: inputs.doc.uri.fsPath,
 		citationDetails,
 		contractAllowlist,
 	});
+	// Phase 7 Plan 07-07 — Drift escalation rules. Lock forces modal; findings escalate
+	// silent → inline. Modal stays modal regardless (no demotion).
+	const tier: CanvasTier = applyDriftEscalation(baseTier, inputs.driftFindings, inputs.lockTrigger);
 
 	const isDestructive = canvasMod.detectDestructive(inputs.diff, inputs.doc.uri.fsPath);
 	const confirmationPhrase = isDestructive ? canvasMod.destructiveVerbForConfirmation(inputs.diff) : null;
+
+	// Phase 7 Plan 07-07 — Register the override handler with the panel BEFORE we show.
+	// This callback is the SOLE path to kernel.recordContractOverride from the bridge
+	// (Option A: save-gate-owned override path). refuse-silent-override.sh allowlists this
+	// file (bridge/src/save-gate/) so the gate enforces the call site.
+	inputs.panel.registerOverrideHandler(async (payload) => {
+		if (!payload.note || payload.note.length < 1) {
+			return { ok: false, error: 'note must be >=1 char' };
+		}
+		try {
+			const { attempt_node_id } = await inputs.kernel.recordContractOverride({
+				change_id: payload.change_id,
+				contract_node_id: payload.contract_node_id,
+				section_name: payload.section_name,
+				note: payload.note,
+			});
+			// Apply the file write atomically (Plan 04-05 path) so the override is the
+			// "accept this save" outcome — the developer chose to bypass the lock with a
+			// written reason; the file should land on disk just like a modal-tier accept.
+			await applyEditAtomically(inputs.kernel, {
+				target_path: inputs.doc.uri.fsPath,
+				new_content: inputs.modified,
+				change_id: inputs.receipt.change_id,
+				receipt_id: inputs.receipt.id,
+				tier: 'modal',
+				accept_latency_ms: Date.now() - inputs.startMs,
+				body: `contract_override: ${payload.note}`,
+				anchor: { file: inputs.doc.uri.fsPath },
+			});
+			return { ok: true, attempt_node_id };
+		} catch (e) {
+			return { ok: false, error: String((e as Error)?.message ?? e) };
+		}
+	});
 
 	if (tier === 'silent') {
 		// CANV-05: even silent emits a receipt. atomicAccept persists the Attempt.
@@ -154,6 +302,36 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 	// so Plan 07-07's CitationList.tsx can render an icon + click-to-modal explanation.
 	// Citations without the field (pre-Plan-07-05 receipts, or matching DecisionNodes)
 	// pass through as undefined/null.
+
+	// Phase 7 Plan 07-07 — When lock fires, kick off runRippleProgressive in the background
+	// + subscribe to graph.driftProgress notifications BEFORE showing the modal. The
+	// Promise.race(notification, 50ms) pattern lets us either include the first-degree
+	// partial in the initial CanvasShowPayload OR fall back to a loading-only initial
+	// dispatch (the webview shows a spinner; the partial arrives via panel.postComplianceReportPartial).
+	let initialComplianceReport: ComplianceReport | null = null;
+	let progressiveDispose: (() => void) | undefined;
+	if (inputs.lockTrigger !== null && inputs.lockTrigger !== undefined) {
+		const lockTriggerNonNull = inputs.lockTrigger;
+		const { partial, disposeListener } = await awaitFirstDriftProgressOrTimeout(inputs.kernel, inputs.panel);
+		initialComplianceReport = partial;
+		progressiveDispose = disposeListener;
+		// Kick off the full runRippleProgressive call in the background. When it returns the
+		// final report, post it as compliance_report.full so the webview merges deeper hops.
+		void (async () => {
+			try {
+				const result = await inputs.kernel.runRippleProgressive({
+					contract_node_id: lockTriggerNonNull.contract_node_id,
+					asOf: inputs.receipt.graph_snapshot_tx_time ?? new Date().toISOString(),
+				});
+				await inputs.panel.postComplianceReportFull(toCanvasComplianceReport(result.report));
+			} catch (e) {
+				console.error('[goatide-bridge] runRippleProgressive failed', e);
+			} finally {
+				try { progressiveDispose?.(); } catch { /* ignore */ }
+			}
+		})();
+	}
+
 	const showPayload: CanvasShowPayload = {
 		change_id: inputs.receipt.change_id,
 		tier,
@@ -174,6 +352,12 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 			intent_drift_badge: (c as { intent_drift_badge?: { citation_node_id: string; session_priority: string; cited_priority: string; explanation: string } | null }).intent_drift_badge ?? null,
 		})),
 		drill_chain: inputs.receipt.drill_chain,
+		// Phase 7 Plan 07-07 — drift fields. drift_findings always populated (may be empty);
+		// compliance_report only populated when lock fires AND first-degree partial arrived
+		// in the 50ms window; lock_trigger forwarded as-is.
+		drift_findings: (inputs.driftFindings ?? []).map(toCanvasDriftFinding),
+		compliance_report: initialComplianceReport !== null ? toCanvasComplianceReport(initialComplianceReport) : null,
+		lock_trigger: inputs.lockTrigger ? toCanvasLockTrigger(inputs.lockTrigger) : null,
 	};
 
 	let decision: CanvasDecision;

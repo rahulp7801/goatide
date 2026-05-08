@@ -62,6 +62,16 @@ export class HostRpc {
 		return this.panel.webview.postMessage(msg);
 	}
 
+	/**
+	 * Phase 7 Plan 07-07 — Post a raw HostToWebview message. Used by tier-dispatch.ts via
+	 * panel.postComplianceReportPartial / postComplianceReportFull / record_override.response.
+	 * Caller is responsible for constructing a discriminated-union-valid message; the
+	 * webview side validates via Zod.
+	 */
+	postRaw(msg: HostToWebview): Thenable<boolean> {
+		return this.panel.webview.postMessage(msg);
+	}
+
 	dispose(): void {
 		for (const d of this.disposables) {
 			try { d.dispose(); } catch { /* best-effort */ }

@@ -28,6 +28,7 @@ import {
 	QueryGraphRequest,
 	ProposeEditRequest,
 	RecordRejectionRequest,
+	RecordContractOverrideRequest,
 	AtomicAcceptRequest,
 	QueryAttemptByStagingPathRequest,
 	QueryNodesRequest,
@@ -40,9 +41,13 @@ import {
 	McpGetSchemaDriftReportRequest,
 	McpAcceptProviderSchemaDriftRequest,
 	McpReconnectProviderRequest,
+	RunDriftAndLockRequest,
+	RunRippleProgressiveRequest,
+	DriftProgressNotificationType,
 	type QueryGraphParams, type QueryGraphResult,
 	type ProposeEditParams, type ProposeEditResult,
 	type RecordRejectionParams, type RecordRejectionResult,
+	type RecordContractOverrideParams, type RecordContractOverrideResult,
 	type AtomicAcceptParams, type AtomicAcceptResult,
 	type QueryAttemptByStagingPathParams, type QueryAttemptByStagingPathResult,
 	type QueryNodesParams, type QueryNodesResult,
@@ -54,6 +59,9 @@ import {
 	type McpGetSchemaDriftReportResult,
 	type McpAcceptProviderSchemaDriftParams, type McpAcceptProviderSchemaDriftResult,
 	type McpReconnectProviderParams, type McpReconnectProviderResult,
+	type RunDriftAndLockParams, type RunDriftAndLockResult,
+	type RunRippleProgressiveParams, type RunRippleProgressiveResult,
+	type DriftProgressNotification,
 } from './methods.js';
 import { existsSync } from 'node:fs';
 
@@ -329,6 +337,39 @@ export class KernelClient {
 	}
 	mcpReconnectProvider(params: McpReconnectProviderParams): Promise<McpReconnectProviderResult> {
 		return this.sendWithTimeout(McpReconnectProviderRequest, params);
+	}
+
+	// Phase 7 Plan 07-07 — DRIFT-06 + DRIFT-01 + DRIFT-03 + DRIFT-04 + DRIFT-05 surfaces.
+	recordContractOverride(params: RecordContractOverrideParams): Promise<RecordContractOverrideResult> {
+		return this.sendWithTimeout(RecordContractOverrideRequest, params);
+	}
+	runDriftAndLock(params: RunDriftAndLockParams): Promise<RunDriftAndLockResult> {
+		return this.sendWithTimeout(RunDriftAndLockRequest, params);
+	}
+	runRippleProgressive(params: RunRippleProgressiveParams): Promise<RunRippleProgressiveResult> {
+		return this.sendWithTimeout(RunRippleProgressiveRequest, params);
+	}
+
+	/**
+	 * Subscribe to graph.driftProgress notifications. tier-dispatch.ts wires this when a
+	 * lock_trigger fires so the bridge can post first-degree partial reports to the webview
+	 * BEFORE the runRippleProgressive RPC final response arrives.
+	 *
+	 * Returns a disposer that detaches the listener. When disposed, the listener is removed
+	 * by reassigning to a no-op (vscode-jsonrpc 8.x lacks an off-handle from onNotification —
+	 * the typical pattern is to keep a handler reference + check a 'disposed' flag).
+	 */
+	onDriftProgress(handler: (n: DriftProgressNotification) => void): () => void {
+		if (!this.connection) {
+			return () => undefined;
+		}
+		let active = true;
+		this.connection.onNotification(DriftProgressNotificationType, (n) => {
+			if (active) {
+				handler(n);
+			}
+		});
+		return () => { active = false; };
 	}
 
 	/**

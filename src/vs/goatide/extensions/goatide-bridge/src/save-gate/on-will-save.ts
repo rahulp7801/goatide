@@ -119,6 +119,28 @@ async function handleProposedSave(
 	}
 
 	const receipt = proposeResult.receipt;
+
+	// Phase 7 Plan 07-07 — Run the drift detector + lock detector against the proposed diff
+	// between proposeEdit and tier-dispatch. The result feeds CanvasShowPayload + classifyTier:
+	//   - drift_findings.length > 0 → escalate from silent to inline (don't demote modal).
+	//   - lock_trigger !== null → force modal tier.
+	//
+	// Best-effort: a failure here logs and falls through with empty drift / null lock so the
+	// receipt-only flow still proceeds. The calibration intent (DRIFT-01 + DRIFT-03 are
+	// surfacing layers, not gates) is honored.
+	let driftFindings: import('../kernel/methods.js').DriftFinding[] = [];
+	let lockTrigger: import('../kernel/methods.js').LockTrigger | null = null;
+	try {
+		const driftLockResult = await kernel.runDriftAndLock({
+			diff,
+			asOf: receipt.graph_snapshot_tx_time ?? new Date().toISOString(),
+		});
+		driftFindings = driftLockResult.drift_findings;
+		lockTrigger = driftLockResult.lock_trigger;
+	} catch (e) {
+		console.error('[goatide-bridge] runDriftAndLock failed (continuing with empty findings)', e);
+	}
+
 	const startMs = Date.now();
 	await dispatchTier({
 		kernel,
@@ -129,6 +151,8 @@ async function handleProposedSave(
 		diff,
 		receipt,
 		startMs,
+		driftFindings,
+		lockTrigger,
 	});
 }
 

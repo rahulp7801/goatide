@@ -268,11 +268,16 @@ describe('CANV-06 + CANV-07 — save gate apply-edit + recovery scan integration
 			const { dispatchTier } = await import('../../src/save-gate/tier-dispatch.js');
 
 			// Stub panel + doc — the inline-tier branch never touches panel.showAndAwait.
+			// Plan 07-07: tier-dispatch.ts now registers an override handler on the panel
+			// before classifying tier; the stub absorbs the call as a no-op.
 			const stubPanel = {
 				showAndAwait: () => {
 					throw new Error('panel.showAndAwait must NOT be called for inline tier');
 				},
 				hide: async () => { /* no-op */ },
+				registerOverrideHandler: () => { /* no-op for inline-tier test */ },
+				postComplianceReportPartial: async () => true,
+				postComplianceReportFull: async () => true,
 			};
 			const stubDoc = {
 				uri: { fsPath: inlineTarget },

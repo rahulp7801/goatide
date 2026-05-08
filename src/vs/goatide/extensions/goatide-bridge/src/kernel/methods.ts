@@ -17,7 +17,7 @@
 // CLAUDE.md ## Naming Conventions camelCase rule, mirroring the kernel side per
 // STATE.md ## Decisions [Phase 04] entry.
 
-import { RequestType } from 'vscode-jsonrpc';
+import { RequestType, NotificationType } from 'vscode-jsonrpc';
 
 // -------- graph.queryGraph --------
 
@@ -392,3 +392,99 @@ export interface McpReconnectProviderResult {
 }
 
 export const McpReconnectProviderRequest = new RequestType<McpReconnectProviderParams, McpReconnectProviderResult, Error>('mcp.reconnectProvider');
+
+// -------- graph.recordContractOverride (Plan 07-06 — DRIFT-06 audit-trail RPC) --------
+//
+// Bridge-side mirror of the kernel's RecordContractOverrideRequest. tier-dispatch.ts is the
+// SOLE caller (Option A: save-gate-owned override path). refuse-silent-override.sh
+// allowlists kernel/src/drift/ + bridge/src/save-gate/, ensuring no parallel path bypasses
+// the audit trail.
+
+export interface RecordContractOverrideParams {
+	change_id: string;
+	contract_node_id: string;
+	section_name: string;
+	note: string;
+}
+
+export interface RecordContractOverrideResult {
+	attempt_node_id: string;
+}
+
+export const RecordContractOverrideRequest = new RequestType<RecordContractOverrideParams, RecordContractOverrideResult, Error>('graph.recordContractOverride');
+
+// -------- graph.runDriftAndLock (Plan 07-07 — DRIFT-01 + DRIFT-03 bridge integration) --------
+//
+// Bridge-side mirror of the kernel's RunDriftAndLockRequest. on-will-save.ts calls this
+// between proposeEdit and tier-dispatch; the result feeds CanvasShowPayload + classifyTier.
+
+export interface DriftFinding {
+	contract_node_id: string;
+	contract_anchor_file: string;
+	pattern_index: number;
+	pattern_kind: 'regex' | 'jsonpath' | 'forbidden_import';
+	file: string;
+	hunk_line: number;
+	message: string;
+}
+
+export interface LockTrigger {
+	contract_node_id: string;
+	contract_anchor_file: string;
+	section_name: string;
+	edited_line_range: readonly [number, number];
+	hunk_index: number;
+}
+
+export interface RunDriftAndLockParams {
+	diff: string;
+	asOf: string;
+}
+
+export interface RunDriftAndLockResult {
+	drift_findings: DriftFinding[];
+	lock_trigger: LockTrigger | null;
+}
+
+export const RunDriftAndLockRequest = new RequestType<RunDriftAndLockParams, RunDriftAndLockResult, Error>('graph.runDriftAndLock');
+
+// -------- graph.runRippleProgressive (Plan 07-07 — DRIFT-04 + DRIFT-05 bridge integration) --------
+//
+// Bridge-side mirror of the kernel's RunRippleProgressiveRequest + DriftProgressNotificationType.
+// tier-dispatch.ts subscribes to graph.driftProgress notifications via connection.onNotification
+// and uses Promise.race against a 50ms timeout to avoid blocking dispatch on slow notifications.
+
+export interface ComplianceRow {
+	node_id: string;
+	kind: 'ConstraintNode' | 'DecisionNode' | 'ContractNode' | 'OpenQuestion' | 'Attempt';
+	anchor_file?: string;
+	edge_path: string;
+	hops: 1 | 2 | 3;
+	body_preview: string;
+}
+
+export interface ComplianceReport {
+	contract_node_id: string;
+	max_hops: 1 | 2 | 3;
+	definitely_affected: ComplianceRow[];
+	potentially_affected: ComplianceRow[];
+	truncated: boolean;
+	generated_at: string;
+}
+
+export interface RunRippleProgressiveParams {
+	contract_node_id: string;
+	asOf: string;
+}
+
+export interface RunRippleProgressiveResult {
+	report: ComplianceReport;
+}
+
+export interface DriftProgressNotification {
+	hops_complete: 1 | 3;
+	partial: ComplianceReport;
+}
+
+export const RunRippleProgressiveRequest = new RequestType<RunRippleProgressiveParams, RunRippleProgressiveResult, Error>('graph.runRippleProgressive');
+export const DriftProgressNotificationType = new NotificationType<DriftProgressNotification>('graph.driftProgress');

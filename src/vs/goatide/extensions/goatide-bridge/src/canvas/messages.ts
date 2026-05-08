@@ -39,6 +39,57 @@ const RenderedCitationSchema = z.object({
 });
 export type RenderedCitationForCanvas = z.infer<typeof RenderedCitationSchema>;
 
+// -------- Phase 7 Plan 07-07 — Drift surface schemas --------
+//
+// CanvasShowPayload extends additively with three optional drift fields:
+//   - drift_findings   (DRIFT-01): pattern violations from runDriftAndLock
+//   - compliance_report (DRIFT-04): tri-bucket ripple report from runRippleProgressive
+//   - lock_trigger     (DRIFT-03): non-null when an enforcing-section edit fires
+//
+// Backward-compatible: pre-Plan-07-07 callers (Phase 4 receipt-only flow) omit these
+// fields and the webview ignores them gracefully (DriftFindings + ComplianceReport
+// components return null on empty/null props).
+
+const DriftFindingSchema = z.object({
+	contract_node_id: z.string(),
+	contract_anchor_file: z.string(),
+	pattern_index: z.number().int().nonnegative(),
+	pattern_kind: z.enum(['regex', 'jsonpath', 'forbidden_import']),
+	file: z.string(),
+	hunk_line: z.number().int().nonnegative(),
+	message: z.string(),
+});
+export type DriftFindingForCanvas = z.infer<typeof DriftFindingSchema>;
+
+const LockTriggerSchema = z.object({
+	contract_node_id: z.string(),
+	contract_anchor_file: z.string(),
+	section_name: z.string(),
+	edited_line_range: z.tuple([z.number().int(), z.number().int()]),
+	hunk_index: z.number().int().nonnegative(),
+});
+export type LockTriggerForCanvas = z.infer<typeof LockTriggerSchema>;
+
+const ComplianceRowSchema = z.object({
+	node_id: z.string(),
+	kind: z.enum(['ConstraintNode', 'DecisionNode', 'ContractNode', 'OpenQuestion', 'Attempt']),
+	anchor_file: z.string().optional(),
+	edge_path: z.string(),
+	hops: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+	body_preview: z.string(),
+});
+export type ComplianceRowForCanvas = z.infer<typeof ComplianceRowSchema>;
+
+const ComplianceReportSchema = z.object({
+	contract_node_id: z.string(),
+	max_hops: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+	definitely_affected: z.array(ComplianceRowSchema),
+	potentially_affected: z.array(ComplianceRowSchema),
+	truncated: z.boolean(),
+	generated_at: z.string(),
+});
+export type ComplianceReportForCanvas = z.infer<typeof ComplianceReportSchema>;
+
 // -------- canvas.show payload --------
 
 const CanvasShowPayloadSchema = z.object({
@@ -52,6 +103,10 @@ const CanvasShowPayloadSchema = z.object({
 	modified_content: z.string(),
 	citations: z.array(RenderedCitationSchema),
 	drill_chain: z.array(z.string()),
+	// Phase 7 Plan 07-07 additions — all optional for backward compatibility.
+	drift_findings: z.array(DriftFindingSchema).optional(),
+	compliance_report: ComplianceReportSchema.nullable().optional(),
+	lock_trigger: LockTriggerSchema.nullable().optional(),
 });
 export type CanvasShowPayload = z.infer<typeof CanvasShowPayloadSchema>;
 
@@ -61,6 +116,20 @@ export const HostToWebviewSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('canvas.show'), payload: CanvasShowPayloadSchema }),
 	z.object({ type: z.literal('canvas.hide') }),
 	z.object({ type: z.literal('kernel.degraded'), payload: z.object({ reason: z.string() }) }),
+	// Phase 7 Plan 07-07 — progressive-disclosure compliance report messages.
+	z.object({ type: z.literal('compliance_report.partial'), payload: z.object({ report: ComplianceReportSchema }) }),
+	z.object({ type: z.literal('compliance_report.full'), payload: z.object({ report: ComplianceReportSchema }) }),
+	// Phase 7 Plan 07-07 — record_override response. tier-dispatch.ts validates the note,
+	// invokes kernel.recordContractOverride, and forwards the result through panel.ts so the
+	// OverrideButton webview component can react to ok/error.
+	z.object({
+		type: z.literal('record_override.response'),
+		payload: z.object({
+			ok: z.boolean(),
+			attempt_node_id: z.string().optional(),
+			error: z.string().optional(),
+		}),
+	}),
 ]);
 export type HostToWebview = z.infer<typeof HostToWebviewSchema>;
 
@@ -88,6 +157,29 @@ export const WebviewToHostSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('citation.explain'),
 		payload: z.object({ citation_node_id: z.string().length(26) }),
+	}),
+	// Phase 7 Plan 07-07 — record_override webview message. The OverrideButton webview
+	// component posts this when the developer submits a note >=1 char. panel.ts forwards
+	// to tier-dispatch.ts (Option A: save-gate-owned override path); tier-dispatch invokes
+	// kernel.recordContractOverride and posts back record_override.response.
+	z.object({
+		type: z.literal('record_override'),
+		payload: z.object({
+			change_id: z.string().length(26),
+			contract_node_id: z.string(),
+			section_name: z.string(),
+			note: z.string().min(1),
+		}),
+	}),
+	// Phase 7 Plan 07-07 — reveal-line message. DriftFindings click handler posts this so
+	// the extension host can open the file at the corresponding line. Implementation lives
+	// in panel.ts handleMessage.
+	z.object({
+		type: z.literal('reveal_line'),
+		payload: z.object({
+			file: z.string(),
+			line: z.number().int().nonnegative(),
+		}),
 	}),
 ]);
 export type WebviewToHost = z.infer<typeof WebviewToHostSchema>;
