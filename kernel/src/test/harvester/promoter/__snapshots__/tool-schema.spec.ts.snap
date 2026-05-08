@@ -106,9 +106,90 @@ exports[`PORT-04: Promoter tool-schema export > zodToJsonSchema(NodePayloadSchem
           "detail": {
             "$ref": "#/anyOf/0/properties/detail",
           },
+          "enforcing_sections": {
+            "items": {
+              "type": "string",
+            },
+            "type": "array",
+          },
           "kind": {
             "const": "ContractNode",
             "type": "string",
+          },
+          "patterns": {
+            "items": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "regex",
+                      "type": "string",
+                    },
+                    "pattern": {
+                      "type": "string",
+                    },
+                    "required": {
+                      "type": "boolean",
+                    },
+                    "scope": {
+                      "type": "string",
+                    },
+                  },
+                  "required": [
+                    "kind",
+                    "pattern",
+                    "required",
+                  ],
+                  "type": "object",
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "jsonpath",
+                      "type": "string",
+                    },
+                    "op": {
+                      "enum": [
+                        "exists",
+                        "eq",
+                        "in",
+                      ],
+                      "type": "string",
+                    },
+                    "path": {
+                      "type": "string",
+                    },
+                    "value": {},
+                  },
+                  "required": [
+                    "kind",
+                    "path",
+                    "op",
+                  ],
+                  "type": "object",
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "kind": {
+                      "const": "forbidden_import",
+                      "type": "string",
+                    },
+                    "module": {
+                      "type": "string",
+                    },
+                  },
+                  "required": [
+                    "kind",
+                    "module",
+                  ],
+                  "type": "object",
+                },
+              ],
+            },
+            "type": "array",
           },
         },
         "required": [

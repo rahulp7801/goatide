@@ -9,6 +9,9 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type Database from 'better-sqlite3';
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 
 export interface TempDb {
 	/** Absolute path to the SQLite file. Pass to better-sqlite3 / drizzle-kit migrate. */
@@ -30,6 +33,26 @@ export interface TempDb {
  * The returned dbPath does NOT exist on disk yet — better-sqlite3 creates it on
  * `new Database(dbPath)`.
  */
+/**
+ * Run drizzle-kit migrate() with better-sqlite3's unsafeMode flag flipped on.
+ *
+ * Phase 7 Plan 07-01 (Pitfall 3): migration 0006_protects_edge_kind.sql uses
+ * `PRAGMA writable_schema = 1` + `UPDATE sqlite_master SET sql = replace(...)` to extend
+ * the edges_kind_allowlist CHECK constraint with 'protects'. better-sqlite3 guards
+ * UPDATE on sqlite_master behind an unsafeMode flag; flip it before migrate() and back
+ * after, scoped to the migration window. See kernel/src/graph/db.ts for the production
+ * code path; specs that bypass openDatabase (raw migrate() callsites) must use this helper
+ * to avoid the "table sqlite_master may not be modified" error.
+ */
+export function migrateInUnsafeMode(sqlite: Database.Database, db: BetterSQLite3Database, migrationsFolder: string): void {
+	sqlite.unsafeMode(true);
+	try {
+		migrate(db, { migrationsFolder });
+	} finally {
+		sqlite.unsafeMode(false);
+	}
+}
+
 export function mkTempDb(): TempDb {
 	const dir = mkdtempSync(join(tmpdir(), 'goatide-graph-'));
 	const dbPath = join(dir, 'graph.db');

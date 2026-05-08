@@ -59,7 +59,21 @@ export function openDatabase(dbPath: string): OpenDatabaseHandle {
 	// works today; Wave 3 picks up the dist-side fix.
 	const here = path.dirname(fileURLToPath(import.meta.url));
 	const migrationsFolder = path.join(here, 'migrations');
-	migrate(db, { migrationsFolder });
+
+	// Phase 7 Plan 07-01 (Pitfall 3 from 07-RESEARCH.md): migration 0006_protects_edge_kind.sql
+	// uses `PRAGMA writable_schema = 1` + `UPDATE sqlite_master SET sql = replace(...)` to
+	// extend the edges_kind_allowlist CHECK constraint with 'protects'. SQLite forbids
+	// ALTER TABLE ADD/DROP CHECK; Mandate B forbids DROP+RECREATE on the canonical edges
+	// table. better-sqlite3 guards UPDATE on sqlite_master behind an unsafeMode flag — we
+	// flip it before migrate() and back after, scoped to the bootstrap window (no app code
+	// runs against an unsafe-mode connection). This is the standard SQLite recipe for a
+	// CHECK-constraint change that touches metadata only, not row data.
+	sqlite.unsafeMode(true);
+	try {
+		migrate(db, { migrationsFolder });
+	} finally {
+		sqlite.unsafeMode(false);
+	}
 
 	return {
 		db,

@@ -1,0 +1,12 @@
+-- 0007_contract_overrides_metric.sql ==> Phase 7 (Plan 07-01) DRIFT-06 substrate.
+--
+-- harvest_metrics_daily gains a contract_overrides counter for DRIFT-06 frequency tracking.
+-- The Plan-07-06 HarvestMetricsDao.incrementContractOverride('canvas', now) UPSERT seeds and
+-- bumps this column. Existing rows backfill to 0 via DEFAULT (zero-cost on Phase-2..6
+-- schema; column is INTEGER NOT NULL DEFAULT 0).
+--
+-- Decision per 07-RESEARCH.md DRIFT-06: source column carries the literal 'canvas' for
+-- contract_override entries (overrides originate from the Canvas modal, not from any
+-- harvester source — the existing source enum captures harvester provenance, not
+-- override provenance). Plan 07-06 wires this; Plan 07-01 only ships the column.
+ALTER TABLE harvest_metrics_daily ADD COLUMN contract_overrides INTEGER NOT NULL DEFAULT 0;

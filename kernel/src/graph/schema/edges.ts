@@ -12,7 +12,14 @@ import { sql } from 'drizzle-orm';
 import { sqliteTable, text, check, foreignKey, index } from 'drizzle-orm/sqlite-core';
 import { nodes } from './nodes.js';
 
-export const EDGE_KINDS = ['parent_of', 'references', 'supersedes', 'derived_from'] as const;
+// Phase 7 Plan 07-01: 'protects' edge kind for ContractNode → downstream-affected node ripple
+// analysis (DRIFT-04). Pitfall 3 in 07-RESEARCH.md: SQLite forbids ALTER TABLE ... ADD CHECK
+// and Mandate B forbids DROP+RECREATE on the canonical edges table. Migration
+// 0006_protects_edge_kind.sql installs a TRIGGER that re-enforces this 5-member allowlist
+// (the schema-defined CHECK below stays at 4 because Drizzle reads schema/edges.ts only at
+// fresh-init time; the trigger covers existing DBs and the schema CHECK below covers DBs
+// that drop and recreate edges from this declaration).
+export const EDGE_KINDS = ['parent_of', 'references', 'supersedes', 'derived_from', 'protects'] as const;
 export type EdgeKind = typeof EDGE_KINDS[number];
 
 export const edges = sqliteTable('edges', {
@@ -27,7 +34,7 @@ export const edges = sqliteTable('edges', {
 	superseded_by: text('superseded_by'),
 }, (t) => [
 	check('edges_kind_allowlist',
-		sql`${t.kind} IN ('parent_of','references','supersedes','derived_from')`),
+		sql`${t.kind} IN ('parent_of','references','supersedes','derived_from','protects')`),
 	foreignKey({ columns: [t.src_id], foreignColumns: [nodes.id], name: 'edges_src_fk' }),
 	foreignKey({ columns: [t.dst_id], foreignColumns: [nodes.id], name: 'edges_dst_fk' }),
 	// Phase-3 traversal indexes — partial on (invalidated_at IS NULL) for the common active path.

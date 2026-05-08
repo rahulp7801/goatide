@@ -20,6 +20,8 @@ export {
 	ContractPayload,
 	OpenQuestionPayload,
 	AttemptPayload,
+	DriftPattern,
+	type DriftPatternT,
 	type NodePayload,
 	type NodeKindLiteral,
 	type ProvenanceInput,

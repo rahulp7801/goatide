@@ -25,13 +25,12 @@ import { describe, it, expect, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 import { GraphDAO } from '../../../graph/index.js';
-import { mkTempDb } from '../../helpers/temp-db.js';
+import { mkTempDb, migrateInUnsafeMode } from '../../helpers/temp-db.js';
 import { startMcpServer, registerGraphTools, type McpServerHandle } from '../../../mcp/index.js';
 import { allocateLoopbackPort, makeBearerToken } from '../../helpers/mcp-fixtures.js';
 
@@ -54,7 +53,7 @@ async function setupHarness(): Promise<Sc4Harness> {
 	const tmp = mkTempDb();
 	const sqlite = new Database(tmp.dbPath);
 	const db = drizzle(sqlite);
-	migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+	migrateInUnsafeMode(sqlite, db, MIGRATIONS_FOLDER);
 	const dao = new GraphDAO(db);
 
 	const port = await allocateLoopbackPort();
