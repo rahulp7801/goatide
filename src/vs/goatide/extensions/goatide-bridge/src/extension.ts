@@ -20,6 +20,9 @@ import { PendingAttemptsQueue } from './save-gate/pending-attempts.js';
 import { KernelDegradedBanner } from './status-bar/kernel-degraded.js';
 import { registerGitEventWatcher } from './harvester/git-events.js';
 import { registerHarvester } from './harvester/index.js';
+import { registerMcpLivenessBannerExtension } from './mcp/liveness-banner-ext.js';
+import { registerSchemaDriftBanner } from './mcp/schema-drift-banner.js';
+import { registerMcpReconnectCommand } from './mcp/reconnect-command.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	console.log('[goatide-bridge] activate (Phase 4)');
@@ -70,6 +73,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	registerGitEventWatcher(context, kernel);     // Plan 05-03 — TELE-04
 	registerHarvester(context, kernel);           // Plan 05-04 — TELE-02 + TELE-03 (+ later TELE-06)
 	// /Phase 5 watchers wired
+
+	// Phase 6 Plan 06-06 — MCP UI surfaces:
+	//   - LivenessBanner extension command (`goatide.mcp.showStaleProviders`) — focused
+	//     entry point that filters the harvester liveness report to mcp.* sources and offers
+	//     reconnect actions per stale provider.
+	//   - SchemaDriftBanner — separate StatusBarItem (priority 98) that polls
+	//     mcp.getSchemaDriftReport every 30s and renders errorBackground when any provider
+	//     is paused on schema drift; click target offers Accept-new-schema / Pause-longer /
+	//     View-diff actions.
+	//   - `goatide.mcp.reconnect` command — palette-accessible single-provider reconnect.
+	registerMcpLivenessBannerExtension(context, kernel);
+	registerSchemaDriftBanner(context, kernel);
+	registerMcpReconnectCommand(context, kernel);
+	// /Phase 6 MCP wirings
 
 	// Plan 04-06: real reconnect command (replaces Plan 04-05's stub). Drives
 	// startReconnectAttempts with a 5-attempt cap so a permanently-dead kernel doesn't

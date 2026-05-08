@@ -36,6 +36,10 @@ import {
 	SubmitObservationRequest,
 	GetLivenessRequest,
 	GetDailyMetricsRequest,
+	McpGetProviderStateRequest,
+	McpGetSchemaDriftReportRequest,
+	McpAcceptProviderSchemaDriftRequest,
+	McpReconnectProviderRequest,
 	type QueryGraphParams, type QueryGraphResult,
 	type ProposeEditParams, type ProposeEditResult,
 	type RecordRejectionParams, type RecordRejectionResult,
@@ -46,6 +50,10 @@ import {
 	type SubmitObservationParams, type SubmitObservationResult,
 	type GetLivenessResult,
 	type GetDailyMetricsParams, type GetDailyMetricsResult,
+	type McpGetProviderStateParams, type McpGetProviderStateResult,
+	type McpGetSchemaDriftReportResult,
+	type McpAcceptProviderSchemaDriftParams, type McpAcceptProviderSchemaDriftResult,
+	type McpReconnectProviderParams, type McpReconnectProviderResult,
 } from './methods.js';
 import { existsSync } from 'node:fs';
 
@@ -309,6 +317,18 @@ export class KernelClient {
 	}
 	harvesterGetDailyMetrics(params: GetDailyMetricsParams): Promise<GetDailyMetricsResult> {
 		return this.sendWithTimeout(GetDailyMetricsRequest, params);
+	}
+	mcpGetProviderState(params: McpGetProviderStateParams): Promise<McpGetProviderStateResult> {
+		return this.sendWithTimeout(McpGetProviderStateRequest, params);
+	}
+	mcpGetSchemaDriftReport(): Promise<McpGetSchemaDriftReportResult> {
+		return this.sendWithTimeout(McpGetSchemaDriftReportRequest, {});
+	}
+	mcpAcceptProviderSchemaDrift(params: McpAcceptProviderSchemaDriftParams): Promise<McpAcceptProviderSchemaDriftResult> {
+		return this.sendWithTimeout(McpAcceptProviderSchemaDriftRequest, params);
+	}
+	mcpReconnectProvider(params: McpReconnectProviderParams): Promise<McpReconnectProviderResult> {
+		return this.sendWithTimeout(McpReconnectProviderRequest, params);
 	}
 
 	/**
