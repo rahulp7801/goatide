@@ -64,6 +64,50 @@ const showErrorMessageSpy: { calls: unknown[][]; respondWith: string | undefined
 	respondWith: undefined,
 };
 
+// Phase 7 Plan 07-05 — quickPick + inputBox + registered-commands spies and configuration
+// state for the goatide.setSessionPriority command palette flow + tier-dispatch
+// session_priority threading. Tests drive these via the helper functions below.
+const showQuickPickSpy: { calls: unknown[][]; respondWith: string | undefined } = {
+	calls: [],
+	respondWith: undefined,
+};
+const showInputBoxSpy: { calls: unknown[][]; respondWith: string | undefined } = {
+	calls: [],
+	respondWith: undefined,
+};
+const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
+const configurationStore = new Map<string, Map<string, unknown>>();
+
+export function setQuickPickResponse(value: string | undefined): void {
+	showQuickPickSpy.respondWith = value;
+}
+
+export function setInputBoxResponse(value: string | undefined): void {
+	showInputBoxSpy.respondWith = value;
+}
+
+export function getRegisteredCommand(id: string): ((...args: unknown[]) => unknown) | undefined {
+	return registeredCommands.get(id);
+}
+
+export function setWorkspaceConfigurationValue(section: string, key: string, value: unknown): void {
+	if (!configurationStore.has(section)) {
+		configurationStore.set(section, new Map());
+	}
+	configurationStore.get(section)!.set(key, value);
+}
+
+export function getWorkspaceConfigurationValue(section: string, key: string): unknown {
+	return configurationStore.get(section)?.get(key);
+}
+
+export function resetSessionPrioritySpies(): void {
+	showQuickPickSpy.calls.length = 0;
+	showQuickPickSpy.respondWith = undefined;
+	showInputBoxSpy.calls.length = 0;
+	showInputBoxSpy.respondWith = undefined;
+}
+
 // Phase-5 additions — TerminalShellExecution mock + git-extension mock.
 //
 // Plan 05-04 (TELE-03 terminal events) drives onDidStart/EndTerminalShellExecution; the
@@ -164,11 +208,24 @@ const vscodeStub = {
 	ViewColumn: { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 },
 	StatusBarAlignment: { Left: 1, Right: 2 },
 	ThemeColor: ThemeColorStub,
+	// Phase 7 Plan 07-05 — ConfigurationTarget enum surface used by the goatide.setSessionPriority
+	// command's update() call. Mirror of the real vscode.ConfigurationTarget shape.
+	ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
 	window: {
 		showInformationMessage: async (..._args: unknown[]): Promise<string | undefined> => undefined,
 		showErrorMessage: async (...args: unknown[]): Promise<string | undefined> => {
 			showErrorMessageSpy.calls.push(args);
 			return showErrorMessageSpy.respondWith;
+		},
+		// Phase 7 Plan 07-05 — recordable quickPick + inputBox spies for the
+		// goatide.setSessionPriority command-palette test.
+		showQuickPick: async (...args: unknown[]): Promise<string | undefined> => {
+			showQuickPickSpy.calls.push(args);
+			return showQuickPickSpy.respondWith;
+		},
+		showInputBox: async (...args: unknown[]): Promise<string | undefined> => {
+			showInputBoxSpy.calls.push(args);
+			return showInputBoxSpy.respondWith;
 		},
 		createWebviewPanel: () => {
 			throw new Error('createWebviewPanel: not stubbed (extension-host only)');
@@ -185,13 +242,35 @@ const vscodeStub = {
 		onDidSaveTextDocument: onDidSaveTextDocumentEmitter.event,
 		onDidChangeTextDocument: onDidChangeTextDocumentEmitter.event,
 		findFiles: async (_pattern: string): Promise<unknown[]> => [],
-		getConfiguration: (_section?: string) => ({
-			get: <T>(_key: string, defaultValue: T): T => defaultValue,
+		// Phase 7 Plan 07-05 — overridable configuration store. Tests prime values via
+		// setWorkspaceConfigurationValue(section, key, value). Reads fall back to the
+		// supplied default when the key isn't primed (preserves Phase-4..6 semantics).
+		// update() writes into the same store so the goatide.setSessionPriority command's
+		// round-trip can be asserted by the test.
+		getConfiguration: (section?: string) => ({
+			get: <T>(key: string, defaultValue: T): T => {
+				const stored = section !== undefined ? configurationStore.get(section)?.get(key) : undefined;
+				return (stored as T | undefined) ?? defaultValue;
+			},
+			update: async (key: string, value: unknown, _target?: number): Promise<void> => {
+				const sec = section ?? '';
+				if (!configurationStore.has(sec)) {
+					configurationStore.set(sec, new Map());
+				}
+				configurationStore.get(sec)!.set(key, value);
+			},
 		}),
 		workspaceFolders: undefined as unknown,
 	},
 	commands: {
-		registerCommand: (..._args: unknown[]): DisposableLike => ({ dispose: () => undefined }),
+		// Phase 7 Plan 07-05 — recordable registerCommand. Tests retrieve the registered
+		// callback via getRegisteredCommand('goatide.setSessionPriority') and invoke it
+		// directly (the real command-palette dispatch isn't simulated; the callback IS the
+		// integration surface).
+		registerCommand: (id: string, callback: (...args: unknown[]) => unknown): DisposableLike => {
+			registeredCommands.set(id, callback);
+			return { dispose: () => registeredCommands.delete(id) };
+		},
 		executeCommand: async (..._args: unknown[]): Promise<unknown> => undefined,
 	},
 	// Phase-5 TELE-04 — built-in vscode.git extension surface.
@@ -211,6 +290,11 @@ const vscodeStub = {
 	__test_showErrorMessageSpy: showErrorMessageSpy,
 	__test_StatusBarItemStub: StatusBarItemStub,
 	__test_ThemeColorStub: ThemeColorStub,
+	// Phase 7 Plan 07-05 — quickPick/inputBox/configuration spy escape hatches.
+	__test_showQuickPickSpy: showQuickPickSpy,
+	__test_showInputBoxSpy: showInputBoxSpy,
+	__test_registeredCommands: registeredCommands,
+	__test_configurationStore: configurationStore,
 };
 
 // Node's internal Module._resolveFilename + _cache surface (not in @types/node public API).

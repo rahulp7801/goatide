@@ -88,6 +88,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	registerMcpReconnectCommand(context, kernel);
 	// /Phase 6 MCP wirings
 
+	// Phase 7 Plan 07-05 — goatide.setSessionPriority command. Surfaces a quickPick over
+	// the four canonical priorities (Pitfall 5: typed enum prevents typos; 'Custom...'
+	// fallback allows free-form for advanced users) and writes the chosen value to the
+	// workspace configuration under 'goatide.session.priority'. tier-dispatch.ts reads the
+	// same key to thread session_priority into kernel.proposeEdit (DRIFT-02 evaluator).
+	context.subscriptions.push(
+		vscode.commands.registerCommand('goatide.setSessionPriority', async () => {
+			const items = ['Speed-First', 'Quality-First', 'Safety-First', 'Cost-First', 'Custom...'];
+			const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Select current session priority' });
+			if (!pick) {
+				return;
+			}
+			let value = pick;
+			if (pick === 'Custom...') {
+				const custom = await vscode.window.showInputBox({
+					prompt: 'Enter custom session priority (free-form; canonical four are recommended)',
+					value: '',
+				});
+				if (!custom) {
+					return;
+				}
+				value = custom;
+			}
+			await vscode.workspace
+				.getConfiguration('goatide')
+				.update('session.priority', value, vscode.ConfigurationTarget.Workspace);
+		}),
+	);
+
 	// Plan 04-06: real reconnect command (replaces Plan 04-05's stub). Drives
 	// startReconnectAttempts with a 5-attempt cap so a permanently-dead kernel doesn't
 	// loop forever; user can re-issue the command for another round.

@@ -12,6 +12,20 @@
 import { z } from 'zod';
 
 // -------- Citation shape consumed by the webview --------
+//
+// Phase 7 Plan 07-05 (DRIFT-02): RenderedCitationSchema gains an optional intent_drift_badge
+// field mirroring the kernel-side RenderedCitation. Plan 07-07 will render the badge via
+// CitationList.tsx (icon + click-to-modal explanation). The Zod schema is additive — the
+// host->webview canvas.show payload remains structurally compatible with pre-Plan-07-05
+// callers that don't populate the field.
+
+const IntentDriftBadgeSchema = z.object({
+	citation_node_id: z.string().length(26),
+	session_priority: z.string(),
+	cited_priority: z.string(),
+	explanation: z.string(),
+});
+export type IntentDriftBadgeForCanvas = z.infer<typeof IntentDriftBadgeSchema>;
 
 const RenderedCitationSchema = z.object({
 	node_id: z.string().length(26),
@@ -21,6 +35,7 @@ const RenderedCitationSchema = z.object({
 	snippet: z.string().max(2048),
 	body_preview: z.string().max(2048),
 	successor_id: z.string().length(26).nullable(),
+	intent_drift_badge: IntentDriftBadgeSchema.nullable().optional(),
 });
 export type RenderedCitationForCanvas = z.infer<typeof RenderedCitationSchema>;
 

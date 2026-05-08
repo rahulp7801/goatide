@@ -51,11 +51,24 @@ export interface QueryGraphResult {
 export const QueryGraphRequest = new RequestType<QueryGraphParams, QueryGraphResult, Error>('graph.queryGraph');
 
 // -------- graph.proposeEdit --------
+//
+// Phase 7 Plan 07-05 (DRIFT-02): ProposeEditParams gains optional session_priority.
+// When supplied, the kernel runs evaluateIntentDrift over the rendered receipt and
+// decorates matching citations with intent_drift_badge. Backward compatible: the field is
+// optional; pre-Plan-07-05 callers omit it. Mandate-C exact-equality (Pitfall 5).
 
 export interface ProposeEditParams {
 	diff: string;
 	destructive: boolean;
 	asOf?: string;
+	session_priority?: string;
+}
+
+export interface IntentDriftBadge {
+	citation_node_id: string;
+	session_priority: string;
+	cited_priority: string;
+	explanation: string;
 }
 
 export interface Citation {
@@ -64,6 +77,12 @@ export interface Citation {
 	confidence: 'Explicit' | 'Inferred';
 	edge_path: string;
 	snippet: string;
+	/**
+	 * Phase 7 Plan 07-05: present when proposeEdit was called with session_priority and
+	 * the kernel decorated this citation. Null on matching DecisionNode citations (or
+	 * non-DecisionNode citations); undefined when session_priority was not supplied.
+	 */
+	intent_drift_badge?: IntentDriftBadge | null;
 }
 
 export interface ReasoningReceipt {

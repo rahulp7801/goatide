@@ -96,12 +96,22 @@ async function handleProposedSave(
 	}
 	const diff = createPatch(doc.uri.fsPath, original, modified, '', '');
 
+	// Phase 7 Plan 07-05 (DRIFT-02): read goatide.session.priority from VS Code config and
+	// thread it through kernel.proposeEdit. The kernel runs evaluateIntentDrift over the
+	// rendered receipt and decorates citations with intent_drift_badge for cited
+	// DecisionNodes whose derived_under_priority does NOT exact-match this value.
+	// Default 'Quality-First' is the most-conservative canonical priority (Pitfall 5).
+	const sessionPriority = vscode.workspace
+		.getConfiguration('goatide')
+		.get<string>('session.priority', 'Quality-First');
+
 	let proposeResult;
 	try {
 		proposeResult = await kernel.proposeEdit({
 			diff,
 			destructive: false,
 			asOf: new Date().toISOString(),
+			session_priority: sessionPriority,
 		});
 	} catch (e) {
 		console.error('[goatide-bridge] proposeEdit failed', e);

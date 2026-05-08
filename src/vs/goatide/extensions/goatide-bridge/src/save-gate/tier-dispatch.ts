@@ -148,6 +148,12 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 	}
 
 	// modal tier — blocking dialog.
+	// Phase 7 Plan 07-05 (DRIFT-02): when the kernel-side renderReceipt evaluator ran
+	// (proposeEdit was called with session_priority), each receipt citation may carry an
+	// intent_drift_badge. The bridge threads this field through into the CanvasShowPayload
+	// so Plan 07-07's CitationList.tsx can render an icon + click-to-modal explanation.
+	// Citations without the field (pre-Plan-07-05 receipts, or matching DecisionNodes)
+	// pass through as undefined/null.
 	const showPayload: CanvasShowPayload = {
 		change_id: inputs.receipt.change_id,
 		tier,
@@ -165,6 +171,7 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 			snippet: c.snippet,
 			body_preview: deriveBodyPreview(citationDetails, c),
 			successor_id: deriveSuccessorId(citationDetails, c),
+			intent_drift_badge: (c as { intent_drift_badge?: { citation_node_id: string; session_priority: string; cited_priority: string; explanation: string } | null }).intent_drift_badge ?? null,
 		})),
 		drill_chain: inputs.receipt.drill_chain,
 	};

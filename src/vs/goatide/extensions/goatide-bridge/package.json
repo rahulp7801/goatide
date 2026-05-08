@@ -16,9 +16,24 @@
 					"items": { "type": "string" },
 					"default": ["/contracts/security/", "/contracts/api/", "/contracts/data/"],
 					"description": "Path prefixes that mark high-impact contract files; saves to these paths force the modal Verification Canvas tier."
+				},
+				"goatide.session.priority": {
+					"type": "string",
+					"default": "Quality-First",
+					"description": "Current development session priority. Cited DecisionNodes whose derived_under_priority does not exact-match this value are flagged in the Verification Canvas as IntentDrift (Phase 7 Plan 07-05 / DRIFT-02).",
+					"enum": ["Speed-First", "Quality-First", "Safety-First", "Cost-First"],
+					"enumDescriptions": [
+						"Optimize for shipping speed; quality + safety tradeoffs accepted.",
+						"Optimize for code quality; speed tradeoffs accepted.",
+						"Optimize for runtime safety + correctness; speed + cost tradeoffs accepted.",
+						"Optimize for runtime cost; quality tradeoffs accepted."
+					]
 				}
 			}
-		}
+		},
+		"commands": [
+			{ "command": "goatide.setSessionPriority", "title": "GoatIDE: Set Session Priority", "category": "GoatIDE" }
+		]
 	},
 	"private": true,
 	"scripts": {
