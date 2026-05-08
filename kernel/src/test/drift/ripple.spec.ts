@@ -87,10 +87,11 @@ describe('drift/ripple — Plan 07-04 (DRIFT-04 + DRIFT-05)', () => {
 		const harness2 = makeDriftHarness();
 		try {
 			const parentOut = seedContractWithDownstream(harness2, 'parent_of');
+			const parentAsOf = new Date().toISOString(); // captured AFTER seed so valid_from <= asOf
 			const parentReport = runRippleAnalysis({
 				contractNodeId: parentOut.contractId,
 				maxHops: 1,
-				asOf,
+				asOf: parentAsOf,
 				dao: harness2.dao,
 				sqlite: harness2.dbHandle.sqlite,
 			});
