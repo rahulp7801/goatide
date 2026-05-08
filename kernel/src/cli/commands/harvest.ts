@@ -27,6 +27,12 @@ import { Command as CommanderCommand } from 'commander';
 import { readRejections } from '../../harvester/filter/rejected-log.js';
 import { resolveRejectedLogPath } from '../../harvester/paths.js';
 import { HarvestMetricsDao, DEFAULT_PORT06_DAYS, DEFAULT_PORT06_MIN_VOLUME, type HarvestMetricsRow } from '../../harvester/metrics.js';
+
+// Phase 7 Plan 07-06 (DRIFT-06) — default threshold for the contract-override 7-day rollup
+// warning. Calibration signal: when the developer averages >= this many overrides per
+// 7-day window, the contract patterns are likely too tight (Pitfall 1 false-positive
+// density). Override via env GOATIDE_DRIFT_OVERRIDE_THRESHOLD.
+const DEFAULT_DRIFT_OVERRIDE_THRESHOLD = 5;
 import { openDatabase } from '../../graph/db.js';
 import { resolveDbPath } from '../db-path.js';
 import { formatError } from '../format.js';
@@ -98,7 +104,8 @@ export function registerHarvestCommand(parent: Command): void {
 					minDailyVolumeFloor: threshold,
 					now: nowMs,
 				});
-				process.stdout.write(formatMetricsTable(rows, sustained, days, threshold));
+				const overrideThreshold = resolveOverrideThreshold();
+				process.stdout.write(formatMetricsTable(rows, sustained, days, threshold, overrideThreshold));
 			} catch (e) {
 				console.error(formatError(e, 'harvest metrics failed'));
 				process.exit(1);
@@ -132,6 +139,23 @@ function resolveSinceArg(arg: string, nowMs: number): string {
 	return arg;
 }
 
+/**
+ * Plan 07-06 — resolve the contract-override threshold for the 7-day rollup warning.
+ * Env GOATIDE_DRIFT_OVERRIDE_THRESHOLD overrides the default (5). Invalid values fall back
+ * to the default so the metrics command stays robust against misconfigured environments.
+ */
+function resolveOverrideThreshold(): number {
+	const raw = process.env.GOATIDE_DRIFT_OVERRIDE_THRESHOLD;
+	if (raw === undefined) {
+		return DEFAULT_DRIFT_OVERRIDE_THRESHOLD;
+	}
+	const v = Number.parseInt(raw, 10);
+	if (!Number.isFinite(v) || v < 0) {
+		return DEFAULT_DRIFT_OVERRIDE_THRESHOLD;
+	}
+	return v;
+}
+
 /** Read GOATIDE_NOW_OVERRIDE_ISO env (test harness) or fall back to Date.now(). */
 function parseNowOverride(): number {
 	const iso = process.env.GOATIDE_NOW_OVERRIDE_ISO;
@@ -146,17 +170,32 @@ function parseNowOverride(): number {
 
 /**
  * Format the metrics rows as a fixed-width ASCII table. Columns: date_utc, source,
- * submitted, rejected_by_filter, promoted_to_node, accept_rate%. Sustained-zero sources
- * land in a footer warning block; empty rows yields a "no data" notice instead of an
- * empty table.
+ * submitted, rejected_by_filter, promoted_to_node, accept_rate, overrides. Sustained-zero
+ * sources land in a footer warning block; the contract-override 7-day rollup lands in a
+ * separate footer line with its own threshold-fired warning (Plan 07-06 — DRIFT-06).
+ *
+ * Empty rows yield a "no data" notice instead of an empty table.
+ *
+ * Plan 07-06 — contract_overrides column:
+ *   - Per-row value is the daily count for that (date_utc, source).
+ *   - 7-day rollup is the SUM across all canvas-source rows (only canvas seeds overrides;
+ *     other sources will always be 0 here, but we sum defensively in case the metric
+ *     surface is extended in a future phase).
+ *   - WARNING line fires when 7d total >= threshold (env GOATIDE_DRIFT_OVERRIDE_THRESHOLD,
+ *     default 5). Pitfall-1 calibration signal — high override density usually means
+ *     contract patterns are too tight.
+ *
+ * Pitfall-9 shame-loop defense: this footer is the ONLY surfacing of override frequency.
+ * The bridge LivenessBanner / SchemaDriftBanner deliberately do NOT subscribe.
  */
 function formatMetricsTable(
 	rows: HarvestMetricsRow[],
 	sustainedZero: string[],
 	days: number,
 	threshold: number,
+	overrideThreshold: number,
 ): string {
-	const headers = ['date_utc', 'source', 'submitted', 'rejected_by_filter', 'promoted_to_node', 'accept_rate'];
+	const headers = ['date_utc', 'source', 'submitted', 'rejected_by_filter', 'promoted_to_node', 'accept_rate', 'overrides'];
 	if (rows.length === 0) {
 		return `harvest_metrics_daily: no rows in last ${days} days.\n`;
 	}
@@ -172,6 +211,7 @@ function formatMetricsTable(
 			String(r.rejected_by_filter),
 			String(r.promoted_to_node),
 			acceptRate,
+			String(r.contract_overrides),
 		]);
 	}
 	// Compute column widths.
@@ -204,6 +244,21 @@ function formatMetricsTable(
 		}
 		out.push('  These sources had volume but no observations promoted to graph nodes.');
 		out.push('  Possible cause: misconfigured watcher, filter tuned too tight, or missing API key.');
+	}
+
+	// Plan 07-06 (DRIFT-06) — contract-override 7-day rollup + threshold warning.
+	// Sum across all canvas-source rows in the window. We always show the rollup line so
+	// developers see the running total even when below threshold (zero is informative).
+	let canvasOverrides7d = 0;
+	for (const r of rows) {
+		if (r.source === 'canvas') {
+			canvasOverrides7d += r.contract_overrides;
+		}
+	}
+	out.push('');
+	out.push(`canvas overrides (last ${days}d): ${canvasOverrides7d}`);
+	if (canvasOverrides7d >= overrideThreshold) {
+		out.push(`WARNING: ${canvasOverrides7d} contract overrides in last ${days} days (threshold ${overrideThreshold}) — review your contract patterns (Pitfall 1 false-positive density signal).`);
 	}
 	return out.join('\n') + '\n';
 }
