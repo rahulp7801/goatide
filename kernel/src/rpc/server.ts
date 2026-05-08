@@ -46,6 +46,9 @@ import {
 	McpGetSchemaDriftReportRequest,
 	McpAcceptProviderSchemaDriftRequest,
 	McpReconnectProviderRequest,
+	RunDriftAndLockRequest,
+	RunRippleProgressiveRequest,
+	DriftProgressNotificationType,
 	type QueryGraphResult,
 	type ProposeEditResult,
 	type RecordRejectionResult,
@@ -62,9 +65,17 @@ import {
 	type McpGetSchemaDriftReportResult,
 	type McpAcceptProviderSchemaDriftResult,
 	type McpReconnectProviderResult,
+	type RunDriftAndLockResult,
+	type RunRippleProgressiveResult,
 } from './methods.js';
 import type { McpProviderName, ProviderState } from '../mcp/clients/types.js';
 import { computeMcpLiveness } from '../mcp/liveness.js';
+import {
+	loadContractRegistry,
+	runDriftDetector,
+	detectsContractLock,
+	runRippleAnalysis,
+} from '../drift/index.js';
 
 export interface CreateRpcServerArgs {
 	dao: GraphDAO;
@@ -300,6 +311,54 @@ function bindHandlers(
 		}
 
 		return { attempt_node_id: attemptId };
+	}));
+
+	// Phase 7 Plan 07-07 — graph.runDriftAndLock (DRIFT-01 + DRIFT-03 bridge integration).
+	//
+	// Loads the contract registry once per call (per-save fresh; bridge-side caching is
+	// Plan 07-07's tier-dispatch concern), then runs the pure-function detector + lock
+	// detector and returns the union pair. requireAuth wrapper inherited like every other
+	// graph.* method.
+	connection.onRequest(RunDriftAndLockRequest, requireAuth(async (params): Promise<RunDriftAndLockResult> => {
+		const registry = await loadContractRegistry(ctx.dao, params.asOf);
+		const drift_findings = runDriftDetector({ diff: params.diff, contractRegistry: registry, asOf: params.asOf });
+		const lock_trigger = detectsContractLock({ diff: params.diff, contractRegistry: registry });
+		return { drift_findings: [...drift_findings], lock_trigger };
+	}));
+
+	// Phase 7 Plan 07-07 — graph.runRippleProgressive (DRIFT-04 + DRIFT-05 bridge integration).
+	//
+	// Two-phase progressive disclosure surface:
+	//   Phase A: synchronous runRippleAnalysis(maxHops=1). Emits a graph.driftProgress
+	//            notification with hops_complete=1 + the partial report. vscode-jsonrpc
+	//            8.2.1 sendNotification flushes synchronously to the underlying transport
+	//            so the bridge sees this notification BEFORE the final response arrives.
+	//   Phase B: yield via setImmediate (allow notification to flush + the bridge's UI
+	//            thread to render the partial), then runRippleAnalysis(maxHops=3) and
+	//            return as the RPC final.
+	//
+	// BFS monotonicity invariant: maxHops=3 walk subsumes everything maxHops=1 reached, so
+	// returning Phase B's report verbatim IS the merged final (no manual cross-phase merge
+	// code to introduce bug surface).
+	connection.onRequest(RunRippleProgressiveRequest, requireAuth(async (params): Promise<RunRippleProgressiveResult> => {
+		const phaseA = runRippleAnalysis({
+			contractNodeId: params.contract_node_id,
+			maxHops: 1,
+			asOf: params.asOf,
+			dao: ctx.dao,
+			sqlite: ctx.sqlite,
+		});
+		connection.sendNotification(DriftProgressNotificationType, { hops_complete: 1, partial: phaseA });
+		// Yield to allow the notification to flush + the bridge's UI thread to render.
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		const phaseB = runRippleAnalysis({
+			contractNodeId: params.contract_node_id,
+			maxHops: 3,
+			asOf: params.asOf,
+			dao: ctx.dao,
+			sqlite: ctx.sqlite,
+		});
+		return { report: phaseB };
 	}));
 
 	connection.onRequest(AtomicAcceptRequest, requireAuth(async (params): Promise<AtomicAcceptResult> => {

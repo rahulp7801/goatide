@@ -27,7 +27,7 @@
 // names match the SQLite column-name convention (graph_snapshot_tx_time, node_id,
 // edge_path) and serialize zero-cost between row and RPC payload.
 
-import { RequestType } from 'vscode-jsonrpc';
+import { RequestType, NotificationType } from 'vscode-jsonrpc';
 import type { AnchorRequest } from '../graph/anchor.js';
 import type { Scope, TraverseRow } from '../graph/traverse.js';
 import type { ReasoningReceipt } from '../receipt/index.js';
@@ -35,6 +35,7 @@ import type { RawObservation, ObservationSource } from '../harvester/observation
 import type { SubmitObservationResult } from '../harvester/index.js';
 import type { LivenessReport } from '../harvester/liveness.js';
 import type { HarvestMetricsRow } from '../harvester/metrics.js';
+import type { DriftFinding, LockTrigger, ComplianceReport } from '../drift/types.js';
 
 // -------- graph.queryGraph --------
 
@@ -352,3 +353,63 @@ export interface McpReconnectProviderResult {
 }
 
 export const McpReconnectProviderRequest = new RequestType<McpReconnectProviderParams, McpReconnectProviderResult, Error>('mcp.reconnectProvider');
+
+// -------- graph.runDriftAndLock (Plan 07-07 — DRIFT-01 + DRIFT-03 bridge integration) --------
+//
+// Phase 7 RPC method bridging the kernel's pattern detector (Plan 07-02) + lock detector
+// (Plan 07-03) into the bridge save-gate flow. The bridge calls this between proposeEdit
+// and tier-dispatch:
+//   1. Resolves the contract registry once via loadContractRegistry(dao, asOf).
+//   2. Runs runDriftDetector against the diff for pattern-level findings.
+//   3. Runs detectsContractLock against the diff for enforcing-section locks.
+//
+// Wire shape uses snake_case for symmetry with the rest of the kernel surface. Result is
+// the structural pair {drift_findings, lock_trigger} that tier-dispatch's classifyTier
+// consumes (escalate to inline on findings, force modal on lock).
+
+export interface RunDriftAndLockParams {
+	diff: string;
+	asOf: string;
+}
+
+export interface RunDriftAndLockResult {
+	drift_findings: DriftFinding[];
+	lock_trigger: LockTrigger | null;
+}
+
+export const RunDriftAndLockRequest = new RequestType<RunDriftAndLockParams, RunDriftAndLockResult, Error>('graph.runDriftAndLock');
+
+// -------- graph.runRippleProgressive (Plan 07-07 — DRIFT-04 + DRIFT-05 bridge integration) --------
+//
+// Phase 7 RPC method bridging the kernel's progressive-disclosure ripple analyzer (Plan
+// 07-04) into the bridge save-gate flow. The handler runs in two phases:
+//   Phase A: synchronous runRippleAnalysis(maxHops:1); emits a graph.driftProgress
+//            notification with hops_complete=1 + the partial report.
+//   Phase B: yield (setImmediate); runRippleAnalysis(maxHops:3); returns as the final
+//            response.
+//
+// vscode-jsonrpc 8.2.1 sendNotification flushes synchronously to the underlying transport;
+// the bridge sees the notification BEFORE the awaited Promise resolves (verified by the
+// notification-ordering test in kernel/src/test/drift/rpc.spec.ts).
+
+export interface RunRippleProgressiveParams {
+	contract_node_id: string;
+	asOf: string;
+}
+
+export interface RunRippleProgressiveResult {
+	report: ComplianceReport;
+}
+
+/**
+ * Notification emitted mid-flight by graph.runRippleProgressive. The bridge subscribes to
+ * this notification type via connection.onNotification and uses Promise.race against a 50ms
+ * timeout to avoid blocking dispatch on slow notifications (Plan 07-07 Truth #5).
+ */
+export interface DriftProgressNotification {
+	hops_complete: 1 | 3;
+	partial: ComplianceReport;
+}
+
+export const RunRippleProgressiveRequest = new RequestType<RunRippleProgressiveParams, RunRippleProgressiveResult, Error>('graph.runRippleProgressive');
+export const DriftProgressNotificationType = new NotificationType<DriftProgressNotification>('graph.driftProgress');

@@ -101,13 +101,13 @@ describe('drift/rpc — Plan 07-07 (graph.runDriftAndLock + graph.runRippleProgr
 
 	it('graph.runDriftAndLock returns drift_findings when diff violates a registered pattern', async () => {
 		harness.seedContractFixture('dependency-rules');
-		// dependency-rules anchor is /contracts/dependency_rules.md; forbidden_import patterns
-		// fire when the file matches anchor (anchor-defaulting). Diff edits the contract file
-		// itself with a banned import.
+		// dependency-rules' contract_path is `/contracts/dependency_rules.md` (with leading slash);
+		// forbidden_import patterns fire when filePath === anchorFile (Pitfall-1 anchor-defaulting).
+		// The diff path matches the contract anchor exactly via the `/contracts/...` prefix.
 		const diff = [
-			"diff --git a/contracts/dependency_rules.md b/contracts/dependency_rules.md",
-			"--- a/contracts/dependency_rules.md",
-			"+++ b/contracts/dependency_rules.md",
+			"diff --git a//contracts/dependency_rules.md b//contracts/dependency_rules.md",
+			"--- a//contracts/dependency_rules.md",
+			"+++ b//contracts/dependency_rules.md",
 			"@@ -1,1 +1,2 @@",
 			" some content",
 			"+import x from 'string-similarity';",
@@ -124,19 +124,19 @@ describe('drift/rpc — Plan 07-07 (graph.runDriftAndLock + graph.runRippleProgr
 	it('graph.runDriftAndLock returns lock_trigger when diff edits an enforcing section', async () => {
 		const contractId = harness.seedContractFixture('api-security');
 		// Build a diff against /contracts/api_security.md targeting the Authentication section.
-		// The fixture's body has Authentication starting around line 7; we replace lines in
-		// that range. parsePatch is strict — paired -/+ lines required.
+		// The fixture's body has `## Authentication` heading at line 6 (1-indexed); lock-detector
+		// uses [hunk.newStart, hunk.newStart + hunk.newLines - 1] inclusive against parseSections'
+		// inclusive range. Targeting line 6+ guarantees overlap with the Authentication section.
+		// parsePatch is strict — paired -/+ lines required (mirror lock-detector.spec.ts pattern).
 		const diff = [
-			"diff --git a/contracts/api_security.md b/contracts/api_security.md",
-			"--- a/contracts/api_security.md",
-			"+++ b/contracts/api_security.md",
-			"@@ -7,3 +7,3 @@",
+			"diff --git a//contracts/api_security.md b//contracts/api_security.md",
+			"--- a//contracts/api_security.md",
+			"+++ b//contracts/api_security.md",
+			"@@ -7,2 +7,2 @@",
 			"-## Authentication",
 			"-",
-			"-All routes MUST call `requireAuth()` before any business logic. The detector enforces",
 			"+## Authentication (revised)",
 			"+",
-			"+All routes MUST call `requireAuth()` before business logic — fully restated.",
 			"",
 		].join('\n');
 		const result = await pair.client.sendRequest(RunDriftAndLockRequest, {
