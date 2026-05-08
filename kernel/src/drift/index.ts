@@ -19,3 +19,13 @@ export type { SectionRange } from './section-parser.js';
 export { detectsContractLock } from './lock-detector.js';
 export type { LockDetectorInput } from './lock-detector.js';
 export type { LockTrigger, ContractNodeRecord, ContractRegistry } from './types.js';
+
+// Plan 07-02 (DRIFT-01) — pattern detector + contract registry public surface.
+export { runDriftDetector } from './detector.js';
+export type { DriftDetectorInput } from './detector.js';
+export { loadContractRegistry } from './registry.js';
+export { evalRegexPattern, evalJsonpathPattern, evalForbiddenImport } from './patterns.js';
+export type { AddedLine } from './patterns.js';
+export type { DriftFinding, PatternEntry } from './types.js';
+export { DriftPattern } from '../graph/payloads.js';
+export type { DriftPatternT } from '../graph/payloads.js';
