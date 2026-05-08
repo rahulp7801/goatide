@@ -1,0 +1,21 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// kernel/src/drift/index.ts — Phase 7 drift subsystem public surface.
+//
+// MERGE NOTE (Plans 07-02 + 07-03 parallel): Both plans contribute to this file via the
+// append-after-block convention. Plan 07-03 (DRIFT-03) re-exports parseSections,
+// detectsContractLock, SectionRange, LockTrigger, ContractNodeRecord, ContractRegistry.
+// Plan 07-02 (DRIFT-01) appends runDriftDetector, loadContractRegistry, DriftFinding,
+// PatternEntry, DriftPattern (re-export from payloads). When both plans land, the merged
+// file contains all re-exports; consumers (Plan 07-04 + 07-07) import the union from this
+// single entry point.
+
+// Plan 07-03 (DRIFT-03) — section-parser + lock-detector public surface.
+export { parseSections } from './section-parser.js';
+export type { SectionRange } from './section-parser.js';
+export { detectsContractLock } from './lock-detector.js';
+export type { LockDetectorInput } from './lock-detector.js';
+export type { LockTrigger, ContractNodeRecord, ContractRegistry } from './types.js';

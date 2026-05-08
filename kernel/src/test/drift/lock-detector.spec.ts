@@ -93,16 +93,19 @@ function makeRegistry(records: ContractNodeRecord[]): ContractRegistry {
 }
 
 /**
- * Build a unified diff that edits the given file at a specific line range.
- * `newStart` + `newLines` together describe the hunk's new-file line range; the body
- * payload is N `+ ...` lines (one per newLines) so the parsed hunk's lines array has the
- * correct count.
+ * Build a unified diff that edits the given file at a specific line range. The hunk pairs
+ * each new line with a deleted old line (1:1 replacement) so parsePatch from the 'diff'
+ * library accepts the structure. `newStart` + `newLines` describe the new-file line range;
+ * old-file range mirrors it with the same line count.
  */
 function makeUnifiedDiff(filePath: string, newStart: number, newLines: number, contentPrefix: string = 'edited content'): string {
 	const lines: string[] = [];
 	lines.push(`--- a/${filePath}`);
 	lines.push(`+++ b/${filePath}`);
 	lines.push(`@@ -${newStart},${newLines} +${newStart},${newLines} @@`);
+	for (let i = 0; i < newLines; i++) {
+		lines.push(`-original line ${newStart + i}`);
+	}
 	for (let i = 0; i < newLines; i++) {
 		lines.push(`+${contentPrefix} line ${newStart + i}`);
 	}
@@ -177,6 +180,8 @@ describe('drift/lock-detector — Plan 07-03 (DRIFT-03)', () => {
 			`--- a/${filePath}`,
 			`+++ b/${filePath}`,
 			'@@ -4,2 +4,2 @@',
+			'-original line 4',
+			'-original line 5',
 			'+DROP TABLE users;',
 			'+other edited line',
 			'',
