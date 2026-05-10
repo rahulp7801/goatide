@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Wave-0 spike: SINON_RESOLVES=true (with caveat — see require-vs-import note below)
+// Wave-0 spike: SINON_RESOLVES=true
 //
 // src/vs/goatide/extensions/goatide-bridge/test/integration/kernel/spawn-cwd.test.ts
 //
@@ -19,11 +19,13 @@
 //      mirrors kernel/src/test/harvester/daemon/ide-close-survival.spec.ts:31-77 (boots a
 //      throwaway `~/.goatide-fake-cwd/.git/` skeleton, spawns the bridge ensureKernel path
 //      against it, asserts daemon comes up).
-//
-// NOTE: Task 1 of this plan flips the 3 unit-test stubs; Task 2 flips the meta stub. The
-// meta block remains it.skip in this commit and is filled in separately.
 
 import * as assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import sinon from 'sinon';
 
 import { KernelClient } from '../../../src/kernel/client.js';
@@ -31,10 +33,11 @@ import { resolveGoatideConfigDir } from '../../../src/kernel/lockfile-reader.js'
 
 // Use CommonJS require to align with client.ts — sinon needs a mutable property
 // descriptor, which only the require-wrapped namespace exposes (the ESM-namespace wrapper
-// from `import * as cp` is frozen and not stubbable). Wave-0 spike confirmed sinon resolves
-// from root hoisting, but did not test the stub-on-namespace path; switching both client.ts
-// and this test to require() side-steps the frozen-namespace block.
+// from `import * as cp` is frozen and not stubbable).
 const childProcess: typeof import('node:child_process') = require('node:child_process');
+
+const __filename_local = fileURLToPath(import.meta.url);
+const __dirname_local = path.dirname(__filename_local);
 
 describe('BRIDGE-RT-02 unit: defensive spawn shape', () => {
 	let spawnStub: sinon.SinonStub;
@@ -88,14 +91,124 @@ describe('BRIDGE-RT-02 unit: defensive spawn shape', () => {
 });
 
 describe('BRIDGE-RT-02 meta: real-spawn with workspace-looking cwd', () => {
+	let tmpHome: string;
+	let savedHome: string | undefined;
+	let savedUserProfile: string | undefined;
+	let savedAppData: string | undefined;
+	let savedXdgConfigHome: string | undefined;
+	let savedLockfilePath: string | undefined;
+	let savedDbPath: string | undefined;
 
-	it.skip('daemon comes up when ~/.goatide-fake-cwd/.git exists', () => {
-		// TODO Task 2 of Plan 08-02:
-		//   Pattern: see kernel/src/test/harvester/daemon/ide-close-survival.spec.ts:31-77
-		//   for the real-spawn harness shape (mkdtempSync `.git/` skeleton, override
-		//   HOME/USERPROFILE/APPDATA/XDG_CONFIG_HOME so resolveGoatideConfigDir lands inside
-		//   tmpHome, ensureKernel against the real kernel/dist/main.js, assert lockfile
-		//   appears, then SIGTERM the spawned pid). Skip-with-reason on missing
-		//   kernel/dist/main.js OR on the better-sqlite3 NODE_MODULE_VERSION mismatch.
+	beforeEach(() => {
+		tmpHome = mkdtempSync(path.join(tmpdir(), 'goatide-fake-home-'));
+		// Workspace-looking dir: a `.git` folder in the would-be cwd.
+		mkdirSync(path.join(tmpHome, '.git'), { recursive: true });
+
+		savedHome = process.env.HOME;
+		savedUserProfile = process.env.USERPROFILE;
+		savedAppData = process.env.APPDATA;
+		savedXdgConfigHome = process.env.XDG_CONFIG_HOME;
+		savedLockfilePath = process.env.GOATIDE_LOCKFILE_PATH;
+		savedDbPath = process.env.GOATIDE_DB;
+
+		// Override platform HOME so resolveGoatideConfigDir returns a path UNDER tmpHome.
+		if (process.platform === 'win32') {
+			process.env.USERPROFILE = tmpHome;
+			process.env.APPDATA = path.join(tmpHome, 'AppData', 'Roaming');
+		} else {
+			process.env.HOME = tmpHome;
+			process.env.XDG_CONFIG_HOME = path.join(tmpHome, '.config');
+		}
+	});
+
+	afterEach(() => {
+		const restore = (key: string, val: string | undefined): void => {
+			if (val === undefined) {
+				delete process.env[key];
+			} else {
+				process.env[key] = val;
+			}
+		};
+		restore('HOME', savedHome);
+		restore('USERPROFILE', savedUserProfile);
+		restore('APPDATA', savedAppData);
+		restore('XDG_CONFIG_HOME', savedXdgConfigHome);
+		restore('GOATIDE_LOCKFILE_PATH', savedLockfilePath);
+		restore('GOATIDE_DB', savedDbPath);
+		try { rmSync(tmpHome, { recursive: true, force: true }); } catch { /* best-effort */ }
+	});
+
+	it('daemon comes up when fake-HOME contains .git (workspace-looking cwd)', async function () {
+		this.timeout(30_000);
+
+		// kernel/dist/main.js: walk up from
+		//   src/vs/goatide/extensions/goatide-bridge/test/integration/kernel/   (the test dir)
+		// to the repo root. That's 8 segments to ascend (integration -> test -> goatide-bridge
+		// -> extensions -> goatide -> vs -> src -> <root>), i.e. 8 `..` joins, then into
+		// kernel/dist/main.js.
+		const kernelMain = path.resolve(
+			__dirname_local,
+			'..', '..', '..', '..', '..', '..', '..', '..',
+			'kernel', 'dist', 'main.js',
+		);
+		if (!existsSync(kernelMain)) {
+			this.skip();
+			return;
+		}
+
+		// Pre-flight: detect the well-known `better-sqlite3` NODE_MODULE_VERSION mismatch
+		// (kernel/node_modules built against Electron's Node ABI ≠ the test runner's Node).
+		// When this hits, the daemon dies before writing its lockfile, surfacing as an
+		// uninformative pollForLockfile timeout. Skip-with-reason rather than fail — the ABI
+		// mismatch is tracked separately as a v1.0 runtime blocker (out of scope for
+		// BRIDGE-RT-02, which is about the bridge's spawn-call shape, not kernel runtime).
+		// Instantiating Database is what triggers the .node binding's dlopen — bare
+		// require('better-sqlite3') succeeds even on ABI mismatch.
+		const probeScript = 'const Db = require(\'better-sqlite3\'); const d = new Db(\':memory:\'); d.close();';
+		const probe = spawnSync(
+			process.execPath,
+			['-e', probeScript],
+			{
+				cwd: path.dirname(kernelMain),
+				env: process.env,
+				timeout: 5_000,
+			},
+		);
+		if (probe.status !== 0) {
+			const probeStderr = (probe.stderr ?? Buffer.from('')).toString();
+			if (probeStderr.includes('NODE_MODULE_VERSION') || probeStderr.includes('ERR_DLOPEN_FAILED')) {
+				console.warn(`[BRIDGE-RT-02 meta] skipping: better-sqlite3 ABI mismatch (NODE_MODULE_VERSION). Run \`cd kernel && npm rebuild better-sqlite3\` to enable this test.`);
+				this.skip();
+				return;
+			}
+		}
+
+		const lockfilePath = path.join(tmpHome, 'kernel.lock');
+		const dbPath = path.join(tmpHome, 'graph.db');
+		const client = new KernelClient({ lockfilePollTimeoutMs: 15_000 });
+
+		try {
+			await client.ensureKernel({
+				kernelPath: kernelMain,
+				dbPath,
+				lockfilePath,
+			});
+			assert.ok(
+				existsSync(lockfilePath),
+				`expected lockfile at ${lockfilePath} after ensureKernel`,
+			);
+		} finally {
+			let spawnedPid: number | undefined;
+			if (existsSync(lockfilePath)) {
+				try {
+					const lock = JSON.parse(readFileSync(lockfilePath, 'utf8')) as { pid: number };
+					spawnedPid = lock.pid;
+				} catch { /* best-effort */ }
+			}
+			client.dispose();
+			if (spawnedPid !== undefined) {
+				try { process.kill(spawnedPid, 'SIGTERM'); } catch { /* best-effort */ }
+			}
+		}
 	});
 });
