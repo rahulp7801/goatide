@@ -30,6 +30,22 @@ import { extractExtensionPointNamesFromFile } from './extractExtensionPoints.ts'
 
 // --- gulp-tsb: compile and transpile --------------------------------
 
+/**
+ * Source-glob exclusions applied uniformly to compileTask / transpileTask / watchTask gulp.src calls.
+ *
+ * BRIDGE-RT-05: First-party extensions under src/vs/goatide/extensions/ have their own
+ * node_modules/ trees (esbuild + react + monaco webview deps). Walking those breaks the
+ * gulp pipeline on Windows because some packages (e.g. decimal.js) ship a directory and
+ * a same-named file that collide on case-insensitive filesystems.
+ *
+ * Defensive (`!**\/node_modules/**`, not `src/vs/goatide/.../node_modules/`):
+ *   if a future first-party extension under src/ adds its own node_modules, this exclusion
+ *   already protects against it. VS Code itself does not ship node_modules under src/ in
+ *   its source tree (root node_modules/ is a sibling of src/, not under it), so the
+ *   broader pattern has no false-positive risk.
+ */
+const SRC_EXCLUDE_GLOBS = ['!**/node_modules/**'];
+
 const reporter = createReporter();
 
 function getTypeScriptCompilerOptions(src: string): ts.CompilerOptions {
@@ -110,7 +126,8 @@ export function transpileTask(src: string, out: string, esbuild?: boolean): task
 	const task = () => {
 
 		const transpile = createCompile(src, { build: false, emitError: true, transpileOnly: { esbuild: !!esbuild }, preserveEnglish: false });
-		const srcPipe = gulp.src(`${src}/**`, { base: `${src}` });
+		// BRIDGE-RT-05: spread `!**/node_modules/**` exclusion to skip bridge-side node_modules trees.
+		const srcPipe = gulp.src([`${src}/**`, ...SRC_EXCLUDE_GLOBS], { base: `${src}` });
 
 		return srcPipe
 			.pipe(transpile())
@@ -130,7 +147,8 @@ export function compileTask(src: string, out: string, build: boolean, options: {
 		}
 
 		const compile = createCompile(src, { build, emitError: true, transpileOnly: false, preserveEnglish: !!options.preserveEnglish });
-		const srcPipe = gulp.src(`${src}/**`, { base: `${src}` });
+		// BRIDGE-RT-05: spread `!**/node_modules/**` exclusion to skip bridge-side node_modules trees.
+		const srcPipe = gulp.src([`${src}/**`, ...SRC_EXCLUDE_GLOBS], { base: `${src}` });
 		const generator = new MonacoGenerator(false);
 		if (src === 'src') {
 			generator.execute();
@@ -175,8 +193,9 @@ export function watchTask(out: string, build: boolean, srcPath: string = 'src', 
 	const task = () => {
 		const compile = createCompile(srcPath, { build, emitError: false, transpileOnly: false, preserveEnglish: false, noEmit: options?.noEmit });
 
-		const src = gulp.src(`${srcPath}/**`, { base: srcPath });
-		const watchSrc = watch(`${srcPath}/**`, { base: srcPath, readDelay: 200 });
+		// BRIDGE-RT-05: spread `!**/node_modules/**` exclusion at both walk + watch sites so incremental rebuilds also skip node_modules.
+		const src = gulp.src([`${srcPath}/**`, ...SRC_EXCLUDE_GLOBS], { base: srcPath });
+		const watchSrc = watch([`${srcPath}/**`, ...SRC_EXCLUDE_GLOBS], { base: srcPath, readDelay: 200 });
 
 		const generator = new MonacoGenerator(true);
 		generator.execute();
