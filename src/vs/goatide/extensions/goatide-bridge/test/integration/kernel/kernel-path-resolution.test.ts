@@ -5,52 +5,73 @@
 
 // src/vs/goatide/extensions/goatide-bridge/test/integration/kernel/kernel-path-resolution.test.ts
 //
-// Phase 8 Plan 08-00 (Wave 0) — RED stub for BRIDGE-RT-01.
+// Phase 8 Plan 08-01 (Wave 1) — BRIDGE-RT-01 stat-then-fallback resolver tests (live).
 //
-// Stat-then-fallback resolver that picks the correct kernel/dist/main.js path regardless of
-// whether the bridge is loaded as a built-in extension (extensionUri at
+// resolveKernelPath() picks the correct <root>/kernel/dist/main.js regardless of whether
+// the bridge is loaded as a built-in extension (extensionUri at
 // `<root>/extensions/goatide-bridge`, 2 `..` to <root>) or in dev mode
 // (extensionUri at `<root>/src/vs/goatide/extensions/goatide-bridge`, 5 `..` to <root>).
-// The current code at src/extension.ts:33 hard-codes 4 `..` and lands at
-// `<root>/src/kernel/dist/main.js` — wrong in both modes.
 //
-// Plan 08-01 (Wave 1) lands `export function resolveKernelPath(extensionUri: vscode.Uri):
-// string` and flips these `it.skip` placeholders to real `it()` tests.
+// Wave-0 (Plan 08-00) seeded these as `it.skip(...)`; Wave-1 (this plan) lands the
+// `export function resolveKernelPath` in src/extension.ts and flips them to live `it()`.
 
 import * as assert from 'node:assert/strict';
 import * as path from 'node:path';
-import * as fs from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import type * as vscode from 'vscode';
 
-// TODO Wave 1 (Plan 08-01): `resolveKernelPath` does not exist yet on src/extension.ts —
-// the import below will resolve once Plan 08-01 adds the named export. Until then, mocha
-// loads this file but only encounters `it.skip(...)` so suite still exits 0.
-// @ts-expect-error: Wave-1 lands this export (Plan 08-01).
 import { resolveKernelPath } from '../../../src/extension.js';
 
-// Reference the symbol so tsc/eslint don't drop the import as unused. The reference is
-// inside an `if (false)` so it never executes at runtime.
-if (false) { void resolveKernelPath; void path; void fs; void assert; }
-
 describe('BRIDGE-RT-01: kernelPath stat-then-fallback resolver', () => {
+	let tmpRoot: string;
+	const fakeUri = (fsPath: string): vscode.Uri => ({ fsPath } as vscode.Uri);
 
-	it.skip('resolves to <root>/kernel/dist/main.js when extensionUri is dev-mode (5 .. up)', () => {
-		// TODO Wave 1 (Plan 08-01):
-		//   const devUri = { fsPath: '/repo/src/vs/goatide/extensions/goatide-bridge' } as vscode.Uri;
-		//   const expectedPath = path.normalize('/repo/kernel/dist/main.js');
-		//   assert.equal(resolveKernelPath(devUri), expectedPath);
+	beforeEach(() => {
+		tmpRoot = mkdtempSync(path.join(tmpdir(), 'goatide-bridge-rt-01-'));
+	});
+	afterEach(() => {
+		try { rmSync(tmpRoot, { recursive: true, force: true }); } catch { /* best-effort */ }
 	});
 
-	it.skip('resolves to <root>/kernel/dist/main.js when extensionUri is built-in mode (2 .. up)', () => {
-		// TODO Wave 1 (Plan 08-01):
-		//   const builtinUri = { fsPath: '/repo/extensions/goatide-bridge' } as vscode.Uri;
-		//   const expectedPath = path.normalize('/repo/kernel/dist/main.js');
-		//   assert.equal(resolveKernelPath(builtinUri), expectedPath);
+	it('resolves to <root>/kernel/dist/main.js when extensionUri is dev-mode (5 .. up)', () => {
+		const devExtUri = path.join(tmpRoot, 'src', 'vs', 'goatide', 'extensions', 'goatide-bridge');
+		const expectedKernel = path.join(tmpRoot, 'kernel', 'dist', 'main.js');
+		mkdirSync(devExtUri, { recursive: true });
+		mkdirSync(path.dirname(expectedKernel), { recursive: true });
+		writeFileSync(expectedKernel, '// fake kernel main');
+
+		const result = resolveKernelPath(fakeUri(devExtUri));
+		assert.equal(result, expectedKernel);
 	});
 
-	it.skip('throws with both candidates listed when neither file exists', () => {
-		// TODO Wave 1 (Plan 08-01):
-		//   const orphanUri = { fsPath: '/no/such/path/extensions/goatide-bridge' } as vscode.Uri;
-		//   assert.throws(() => resolveKernelPath(orphanUri),
-		//     /resolveKernelPath: kernel\/dist\/main\.js not found.*candidates tried/i);
+	it('resolves to <root>/kernel/dist/main.js when extensionUri is built-in mode (2 .. up)', () => {
+		const builtinExtUri = path.join(tmpRoot, 'extensions', 'goatide-bridge');
+		const expectedKernel = path.join(tmpRoot, 'kernel', 'dist', 'main.js');
+		mkdirSync(builtinExtUri, { recursive: true });
+		mkdirSync(path.dirname(expectedKernel), { recursive: true });
+		writeFileSync(expectedKernel, '// fake kernel main');
+
+		const result = resolveKernelPath(fakeUri(builtinExtUri));
+		assert.equal(result, expectedKernel);
+	});
+
+	it('throws with both candidates listed when neither file exists', () => {
+		const orphanUri = path.join(tmpRoot, 'somewhere', 'else');
+		mkdirSync(orphanUri, { recursive: true });
+		// No kernel/dist/main.js created in tmpRoot.
+
+		assert.throws(
+			() => resolveKernelPath(fakeUri(orphanUri)),
+			(err: Error) => {
+				assert.match(err.message, /kernelPath resolution failed/);
+				assert.match(err.message, /Tried:/);
+				// Both candidate paths should appear in the message (5-up and 2-up both end
+				// at kernel/dist/main.js, separated by ' AND '). Use [\s\S] to match across
+				// any platform-specific path separators between the two occurrences.
+				assert.match(err.message, /kernel[\\/]dist[\\/]main\.js[\s\S]*AND[\s\S]*kernel[\\/]dist[\\/]main\.js/);
+				return true;
+			},
+		);
 	});
 });
