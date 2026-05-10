@@ -54,16 +54,24 @@ fi
 echo "META PASS: BRIDGE-RT-04 filesystem mirror complete (dist/extension.js is real + production node_modules present)"
 
 # Section B — CDP smoke (gated).
+#
+# Plan 08-05 decision (OPTION A in the plan): defer Section B to Plan 08-06 phase-verify
+# (Wave 4) which already includes a manual host-launch checkpoint that humans verify
+# with eyes. Reasons:
+#   - CDP smoke launches a full GoatIDE process (~2 min per run, heavyweight)
+#   - Adds a dependency on chrome-devtools-protocol module not currently in tree
+#   - Section A filesystem assertions + Plan 08-06 manual checkpoint cover acceptance
+# If a future fresh-clone smoke (BUILD-RT-05 / Phase 9) uncovers gaps, implement here.
 if [ "${BRIDGE_RT_04_FULL:-0}" != "1" ]; then
-	echo "META SKIP: BRIDGE_RT_04_FULL=1 not set — CDP smoke skipped"
+	echo "META SKIP: BRIDGE_RT_04_FULL=1 not set — CDP smoke deferred to Plan 08-06 phase-verify (manual host-launch checkpoint)"
 	exit 0
 fi
 
-# TODO Wave 3 (Plan 08-05) or Wave 4 (Plan 08-06):
+# TODO (only triggers when BRIDGE_RT_04_FULL=1 is explicitly set):
 #   - Launch GoatIDE with --remote-debugging-port=9222
 #   - curl http://127.0.0.1:9222/json to find the renderer target
 #   - Fetch renderer log + grep for "Loading built-in extension at .*goatide-bridge"
 #   - Query the cmd palette via CDP for the "GoatIDE: Set Session Priority" entry
 #   - Tear down the IDE process at the end
-echo "META PEND: CDP smoke implementation deferred to Wave 3 (Plan 08-05) / Wave 4 (Plan 08-06)"
+echo "META PEND: CDP smoke implementation deferred to Plan 08-06 phase-verify"
 exit 0
