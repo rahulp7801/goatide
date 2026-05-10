@@ -13,6 +13,8 @@ node_modules/
 .build/
 .vscode/extensions/**/out/
 extensions/**/dist/
+# Bridge-mirror production deps (Plan 08-05; ~150MB).
+extensions/**/node_modules/
 src/vs/base/browser/ui/codicons/codicon/codicon.ttf
 
 # GoatIDE-owned build artifacts (Plan 01-04: kernel sidecar + bridge extension).
