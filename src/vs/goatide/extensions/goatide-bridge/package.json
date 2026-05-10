@@ -62,6 +62,7 @@
 		"esbuild": "^0.24",
 		"mocha": "^11",
 		"@types/mocha": "^10",
+		"@types/sinon": "^10.0.2",
 		"@testing-library/react": "^16",
 		"@testing-library/jest-dom": "^6",
 		"jsdom": "^25",
