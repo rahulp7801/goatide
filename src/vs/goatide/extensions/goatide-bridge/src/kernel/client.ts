@@ -18,12 +18,19 @@
 //
 // vscode-jsonrpc kept at ^8.2.1 to mirror kernel/package.json (Pitfall 5).
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess } from 'node:child_process';
+import { existsSync, mkdirSync } from 'node:fs';
 import * as net from 'node:net';
-import { homedir } from 'node:os';
 import * as rpc from 'vscode-jsonrpc/node.js';
 import { ConnectionStateMachine, type ConnectionState } from './connection-state.js';
-import { readLockfile, isPidAlive, clearStaleLockfile, resolveLockfilePath } from './lockfile-reader.js';
+import { readLockfile, isPidAlive, clearStaleLockfile, resolveLockfilePath, resolveGoatideConfigDir } from './lockfile-reader.js';
+
+// Resolve child_process via CommonJS `require` so the property `childProcess.spawn` lives
+// on a mutable, sinon-stubbable object. tsx's ESM-namespace wrapper (which `import * as cp`
+// would produce) freezes property descriptors and breaks sinon.stub(cp, 'spawn'), preventing
+// BRIDGE-RT-02 unit tests from intercepting the spawn call. The bridge ships as CJS
+// (no `"type": "module"` in package.json), so `require` is available without a shim.
+const childProcess: typeof import('node:child_process') = require('node:child_process');
 import {
 	QueryGraphRequest,
 	ProposeEditRequest,
@@ -63,7 +70,6 @@ import {
 	type RunRippleProgressiveParams, type RunRippleProgressiveResult,
 	type DriftProgressNotification,
 } from './methods.js';
-import { existsSync } from 'node:fs';
 
 export interface KernelClientOptions {
 	requestTimeoutMs?: number;
@@ -120,7 +126,7 @@ export class KernelClient {
 		const myGen = this.generation;
 		let proc: ChildProcess;
 		try {
-			proc = spawn(process.execPath, [kernelPath], {
+			proc = childProcess.spawn(process.execPath, [kernelPath], {
 				stdio: ['pipe', 'pipe', 'pipe'],
 				env: { ...process.env, ...(dbPath ? { GOATIDE_DB: dbPath } : {}) },
 			});
@@ -247,22 +253,40 @@ export class KernelClient {
 		if (!this.kernelPath) {
 			throw new Error('spawnDetachedKernel: kernelPath not set');
 		}
-		// Pitfall 3: detached:true + stdio:'ignore' + child.unref() — all three required so
-		// the bridge's parent process can actually exit.
-		// Pitfall 10: explicit cwd=homedir() so the daemon doesn't accidentally open the DB
-		// inside a workspace folder.
-		const env: NodeJS.ProcessEnv = { ...process.env };
+		// BRIDGE-RT-02: cwd must NOT be a workspace folder (Pitfall 10 — homedir() collides
+		// with `~/.git` on dev boxes that ran `git config --global` once, and the kernel's
+		// validateCwdForDaemon then refuses to start).
+		//
+		//   Belt:       cwd = resolveGoatideConfigDir() — the kernel's own config dir
+		//               (e.g. %APPDATA%\goatide on Windows, $XDG_CONFIG_HOME/goatide on Linux).
+		//               Guaranteed not to be a workspace.
+		//   Suspenders: env.GOATIDE_TEST_OVERRIDE_CWD='1' — kernel/src/main.ts
+		//               validateCwdForDaemon reads this and skips the workspace-cwd refusal
+		//               even if the cwd somehow ends up looking like a workspace.
+		//
+		// Pitfall 3 retained: detached:true + stdio:'ignore' + child.unref() — all three
+		// required so the bridge's parent process can actually exit.
+		const env: NodeJS.ProcessEnv = {
+			...process.env,
+			GOATIDE_TEST_OVERRIDE_CWD: '1',
+		};
 		if (this.dbPath) {
 			env.GOATIDE_DB = this.dbPath;
 		}
 		if (this.lockfilePath) {
 			env.GOATIDE_LOCKFILE_PATH = this.lockfilePath;
 		}
-		const child = spawn(process.execPath, [this.kernelPath, '--daemon'], {
+		const dataDir = resolveGoatideConfigDir();
+		// Ensure dataDir exists — first-ever spawn on a fresh box will need this. Best-effort:
+		// if mkdir fails the spawn will surface a clearer error and the user can fix perms.
+		try {
+			mkdirSync(dataDir, { recursive: true });
+		} catch { /* best-effort */ }
+		const child = childProcess.spawn(process.execPath, [this.kernelPath, '--daemon'], {
 			detached: true,
 			stdio: ['ignore', 'ignore', 'ignore'],
 			env,
-			cwd: homedir(),
+			cwd: dataDir,
 		});
 		child.unref();
 	}
