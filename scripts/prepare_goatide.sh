@@ -145,6 +145,12 @@ done
 # workbench-edits.sh does not inspect this path. extensions/ is upstream's
 # extensions root and adding new first-party extensions there is the standard
 # pattern (same as upstream's own extensions/ subtree).
+#
+# Plan 08-05 (BRIDGE-RT-04): also mirror production node_modules. dist/extension.js
+# is plain TSC output (only dist/canvas/index.js is esbuild-bundled iife). The
+# extension host needs require('vscode-jsonrpc/node.js') etc to resolve at
+# activate-time; without node_modules at the mirror destination, the extension
+# marks failed-to-activate (Pitfall 3 in 08-RESEARCH.md).
 BRIDGE_SRC="src/vs/goatide/extensions/goatide-bridge"
 BRIDGE_DST="extensions/goatide-bridge"
 if [[ -d "$BRIDGE_SRC" ]]; then
@@ -153,6 +159,20 @@ if [[ -d "$BRIDGE_SRC" ]]; then
 	if [[ -d "$BRIDGE_SRC/dist" ]]; then
 		rm -rf "$BRIDGE_DST/dist"
 		cp -r "$BRIDGE_SRC/dist" "$BRIDGE_DST/dist"
+	fi
+	# Plan 08-05: production-deps mirror via `npm ci --omit=dev` against the bridge's
+	# own package-lock.json. Keeps mocha/jsdom/test deps OUT, keeps runtime deps
+	# (vscode-jsonrpc, zod, monaco, react, etc) IN.
+	if [[ -f "$BRIDGE_SRC/package-lock.json" ]]; then
+		cp "$BRIDGE_SRC/package-lock.json" "$BRIDGE_DST/package-lock.json"
+		rm -rf "$BRIDGE_DST/node_modules"
+		if (cd "$BRIDGE_DST" && npm ci --omit=dev) >/dev/null 2>&1; then
+			echo "GoatIDE bridge production-deps mirrored to $BRIDGE_DST/node_modules"
+		else
+			echo "WARN: bridge mirror npm ci failed; built-in load will fail at activate-time. Investigate by running: cd $BRIDGE_DST && npm ci --omit=dev"
+		fi
+	else
+		echo "WARN: $BRIDGE_SRC/package-lock.json missing; production-deps not mirrored. Run 'cd $BRIDGE_SRC && npm install' first."
 	fi
 	echo "GoatIDE bridge extension synced to $BRIDGE_DST"
 fi
