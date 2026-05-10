@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os';
 import type * as vscode from 'vscode';
 
 import { resolveKernelPath } from '../../../src/extension.js';
+import { DEFAULT_LOCKFILE_POLL_TIMEOUT_MS } from '../../../src/kernel/client.js';
 
 describe('BRIDGE-RT-01: kernelPath stat-then-fallback resolver', () => {
 	let tmpRoot: string;
@@ -72,6 +73,16 @@ describe('BRIDGE-RT-01: kernelPath stat-then-fallback resolver', () => {
 				assert.match(err.message, /kernel[\\/]dist[\\/]main\.js[\s\S]*AND[\s\S]*kernel[\\/]dist[\\/]main\.js/);
 				return true;
 			},
+		);
+	});
+});
+
+describe('BRIDGE-RT-03: cold-start timeout floor', () => {
+	it('DEFAULT_LOCKFILE_POLL_TIMEOUT_MS >= 10_000', () => {
+		assert.ok(
+			DEFAULT_LOCKFILE_POLL_TIMEOUT_MS >= 10_000,
+			`Expected DEFAULT_LOCKFILE_POLL_TIMEOUT_MS >= 10_000 (cold-start budget); got ${DEFAULT_LOCKFILE_POLL_TIMEOUT_MS}. ` +
+			`See kernel/client.ts JSDoc — 15_000 is the recommended ceiling.`
 		);
 	});
 });

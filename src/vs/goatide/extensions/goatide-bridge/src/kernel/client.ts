@@ -85,7 +85,25 @@ export interface EnsureKernelArgs {
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
-const DEFAULT_LOCKFILE_POLL_TIMEOUT_MS = 5_000;
+
+/**
+ * Lockfile poll timeout for kernel daemon spawn detection.
+ *
+ * BRIDGE-RT-03: 15s covers cold-start arithmetic on a fresh clone:
+ *   - daemon process spawn:        ~3s (Node startup + better-sqlite3 native module load)
+ *   - lockfile atomic-rename:      ~2-3s on slow disks (Windows Defender scans tempfiles)
+ *   - variance budget for CI/VM:   5-7s
+ * Total: ~10-13s. 15s is the conservative ceiling.
+ *
+ * Nothing in the bridge depends on this value being short — it is purely an early-failure
+ * ceiling for `daemon failed to come up`. Lifting it does not slow happy-path scenarios
+ * (the poll loop returns as soon as the lockfile appears).
+ *
+ * Migrated to src from dist patch applied 2026-05-08 stress test (was 5_000 → 15_000).
+ * Exported so the BRIDGE-RT-03 test can statically assert the floor.
+ */
+export const DEFAULT_LOCKFILE_POLL_TIMEOUT_MS = 15_000;
+
 const DEFAULT_LOCKFILE_POLL_STEP_MS = 100;
 
 export class KernelClient {
