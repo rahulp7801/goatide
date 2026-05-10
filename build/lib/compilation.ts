@@ -43,8 +43,19 @@ import { extractExtensionPointNamesFromFile } from './extractExtensionPoints.ts'
  *   already protects against it. VS Code itself does not ship node_modules under src/ in
  *   its source tree (root node_modules/ is a sibling of src/, not under it), so the
  *   broader pattern has no false-positive risk.
+ *
+ * BRIDGE-RT-05 (Plan 08-06): Also exclude the goatide-bridge subtree itself. The bridge
+ * has its own tsconfig.json and is built via `npm run build` from its own dir (chained
+ * into compile via Plan 08-05's `build-bridge` script). Walking it from the root gulp tsc
+ * pipeline produces duplicate-identifier errors on `src/vscode-dts/vscode.d.ts` (because
+ * the bridge's `node_modules/@types/vscode/index.d.ts` declares the same identifiers) and
+ * surfaces test-only TS issues (sinon namespace shapes, JSX, etc.) that are properly
+ * type-checked by the bridge's own `npx tsc -p .` invocation.
  */
-const SRC_EXCLUDE_GLOBS = ['!**/node_modules/**'];
+const SRC_EXCLUDE_GLOBS = [
+	'!**/node_modules/**',
+	'!**/vs/goatide/extensions/goatide-bridge/**',
+];
 
 const reporter = createReporter();
 

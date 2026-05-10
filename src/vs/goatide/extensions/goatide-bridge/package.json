@@ -4,8 +4,12 @@
 	"description": "First-party bridge between the GoatIDE kernel sidecar and the editor process. Phase-4 Verification Canvas owner.",
 	"version": "0.0.1",
 	"publisher": "goatide",
-	"engines": { "vscode": "^1.117.0" },
-	"activationEvents": ["onStartupFinished"],
+	"engines": {
+		"vscode": "^1.117.0"
+	},
+	"activationEvents": [
+		"onStartupFinished"
+	],
 	"main": "./dist/extension.js",
 	"contributes": {
 		"configuration": {
@@ -13,15 +17,26 @@
 			"properties": {
 				"goatide.contracts.highImpactAllowlist": {
 					"type": "array",
-					"items": { "type": "string" },
-					"default": ["/contracts/security/", "/contracts/api/", "/contracts/data/"],
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						"/contracts/security/",
+						"/contracts/api/",
+						"/contracts/data/"
+					],
 					"description": "Path prefixes that mark high-impact contract files; saves to these paths force the modal Verification Canvas tier."
 				},
 				"goatide.session.priority": {
 					"type": "string",
 					"default": "Quality-First",
 					"description": "Current development session priority. Cited DecisionNodes whose derived_under_priority does not exact-match this value are flagged in the Verification Canvas as IntentDrift (Phase 7 Plan 07-05 / DRIFT-02).",
-					"enum": ["Speed-First", "Quality-First", "Safety-First", "Cost-First"],
+					"enum": [
+						"Speed-First",
+						"Quality-First",
+						"Safety-First",
+						"Cost-First"
+					],
 					"enumDescriptions": [
 						"Optimize for shipping speed; quality + safety tradeoffs accepted.",
 						"Optimize for code quality; speed tradeoffs accepted.",
@@ -32,7 +47,11 @@
 			}
 		},
 		"commands": [
-			{ "command": "goatide.setSessionPriority", "title": "GoatIDE: Set Session Priority", "category": "GoatIDE" }
+			{
+				"command": "goatide.setSessionPriority",
+				"title": "GoatIDE: Set Session Priority",
+				"category": "GoatIDE"
+			}
 		]
 	},
 	"private": true,
@@ -41,31 +60,32 @@
 		"test": "mocha"
 	},
 	"dependencies": {
-		"vscode-jsonrpc": "^8.2.1",
-		"zod": "^3.25",
-		"@vscode-elements/elements": "^1",
 		"@monaco-editor/react": "^4.6",
+		"@vscode-elements/elements": "^1",
+		"@vscode/codicons": "^0.0.36",
+		"diff": "^7.0.0",
 		"monaco-editor": "^0.52",
 		"react": "^18.3",
 		"react-dom": "^18.3",
-		"@vscode/codicons": "^0.0.36",
-		"diff": "^7.0.0",
-		"ulid": "^2.3"
+		"ulid": "^2.3",
+		"vscode-jsonrpc": "^8.2.1",
+		"zod": "^3.25"
 	},
 	"devDependencies": {
-		"typescript": "^5.6.0",
-		"@types/vscode": "^1.117.0",
+		"@testing-library/dom": "^10.4.1",
+		"@testing-library/jest-dom": "^6",
+		"@testing-library/react": "^16",
+		"@types/diff": "^7.0.2",
+		"@types/mocha": "^10",
 		"@types/node": "^22.0.0",
 		"@types/react": "^18.3",
 		"@types/react-dom": "^18.3",
-		"@types/diff": "^7.0.2",
-		"esbuild": "^0.24",
-		"mocha": "^11",
-		"@types/mocha": "^10",
 		"@types/sinon": "^10.0.2",
-		"@testing-library/react": "^16",
-		"@testing-library/jest-dom": "^6",
+		"@types/vscode": "^1.117.0",
+		"esbuild": "^0.24",
 		"jsdom": "^25",
-		"tsx": "^4.21"
+		"mocha": "^11",
+		"tsx": "^4.21",
+		"typescript": "^5.6.0"
 	}
 }
