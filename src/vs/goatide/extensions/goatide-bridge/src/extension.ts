@@ -11,6 +11,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { KernelClient } from './kernel/client.js';
 import { HeartbeatPoller } from './kernel/heartbeat.js';
 import { CanvasPanel } from './canvas/panel.js';
@@ -24,13 +25,53 @@ import { registerMcpLivenessBannerExtension } from './mcp/liveness-banner-ext.js
 import { registerSchemaDriftBanner } from './mcp/schema-drift-banner.js';
 import { registerMcpReconnectCommand } from './mcp/reconnect-command.js';
 
+/**
+ * BRIDGE-RT-01: resolves `<fork-root>/kernel/dist/main.js` across both bridge load modes.
+ *
+ * The literal `..` count from extensionUri to fork-root differs by mode:
+ *   - Dev mode (--extensionDevelopmentPath): extensionUri = `<root>/src/vs/goatide/extensions/goatide-bridge` → 5 `..`
+ *   - Built-in mode (Plan 08-05 mirror):    extensionUri = `<root>/extensions/goatide-bridge`               → 2 `..`
+ *
+ * Hardcoding either count breaks the other mode. Stat-then-fallback handles both: try
+ * each candidate in turn, return the first that exists on disk. If neither exists,
+ * throw with both attempted paths so the failure is debuggable (typically means
+ * `cd kernel && npm install && npm run build` was skipped).
+ *
+ * Exported so unit tests can verify both load modes without spinning up an extension host.
+ *
+ * @throws Error with both attempted paths listed if neither candidate exists on disk.
+ */
+export function resolveKernelPath(extensionUri: vscode.Uri): string {
+	const ext = extensionUri.fsPath;
+	const candidates = [
+		// Dev mode: src/vs/goatide/extensions/goatide-bridge/ → root (5 ..)
+		path.resolve(ext, '..', '..', '..', '..', '..', 'kernel', 'dist', 'main.js'),
+		// Built-in mode: extensions/goatide-bridge/ → root (2 ..)
+		path.resolve(ext, '..', '..', 'kernel', 'dist', 'main.js'),
+	];
+	for (const candidate of candidates) {
+		try {
+			fs.statSync(candidate);
+			return candidate;
+		} catch {
+			// try next candidate
+		}
+	}
+	throw new Error(
+		`[goatide-bridge] kernelPath resolution failed. extensionUri=${ext}. ` +
+		`Tried: ${candidates.join(' AND ')}. ` +
+		`Did 'cd kernel && npm install && npm run build' run successfully?`,
+	);
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
 	console.log('[goatide-bridge] activate (Phase 4)');
 
-	// kernel/dist/main.js — relative to this extension's dist/extension.js position.
-	// Layout: <fork-root>/src/vs/goatide/extensions/goatide-bridge/dist/extension.js
-	// Kernel:  <fork-root>/kernel/dist/main.js
-	const kernelPath = path.resolve(context.extensionUri.fsPath, '..', '..', '..', '..', 'kernel', 'dist', 'main.js');
+	// BRIDGE-RT-01: stat-then-fallback resolver (see resolveKernelPath above). Replaces
+	// the hardcoded 4-`..` literal that worked only when the activation root happened to
+	// be 4 levels above kernel/dist; both dev mode (5 ..) and built-in mirror (2 ..) now
+	// resolve correctly.
+	const kernelPath = resolveKernelPath(context.extensionUri);
 
 	const kernel = new KernelClient();
 	context.subscriptions.push({ dispose: () => kernel.dispose() });
