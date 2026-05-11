@@ -1,0 +1,37 @@
+[
+	{
+		"id": "contract-auth-security",
+		"kind_alias": "contract",
+		"body": "Auth security contract: every authenticate* function must call requireAuth(session) before reading session data.",
+		"payload": {
+			"contract_path": "contracts/auth-security.md",
+			"anchor": { "file": "contracts/auth-security.md" },
+			"patterns": [
+				{
+					"kind": "regex",
+					"pattern": "function\\s+authenticate\\w+[^}]*\\{(?![^}]*requireAuth)",
+					"required": true,
+					"scope": "src/auth/**/*.ts"
+				}
+			],
+			"enforcing_sections": ["Authentication", "OAuth Scopes"]
+		}
+	},
+	{
+		"id": "decision-priority-quality-first",
+		"kind_alias": "decision",
+		"body": "Workspace operates under Quality-First priority; refuse Speed-First overrides without explicit operator confirmation.",
+		"payload": {
+			"derived_under_priority": "Quality-First",
+			"anchor": { "file": "src/auth/login.ts", "line": 30 }
+		}
+	},
+	{
+		"id": "constraint-no-fuzzy-auth",
+		"kind_alias": "constraint",
+		"body": "Auth code paths may not use fuzzy string comparison against credentials; exact-match only.",
+		"payload": {
+			"anchor": { "file": "src/auth/login.ts" }
+		}
+	}
+]
