@@ -51,7 +51,7 @@ export class SaveDeferredError extends Error {
 export function registerSaveGate(
 	ctx: vscode.ExtensionContext,
 	kernel: KernelClient,
-	panel: CanvasPanel,
+	getPanel: () => CanvasPanel,
 	queue: PendingAttemptsQueue,
 ): vscode.Disposable {
 	const sub = vscode.workspace.onWillSaveTextDocument((event) => {
@@ -87,7 +87,7 @@ export function registerSaveGate(
 			}
 			// Fire-and-forget the proposal flow; do NOT await it inside the veto Promise
 			// because the 1.5s budget applies to the waitUntil Promise resolution.
-			void handleProposedSave(kernel, panel, doc, original, modified, queue);
+			void handleProposedSave(kernel, getPanel(), doc, original, modified, queue);
 			// Reject so the save is vetoed (cancel-then-redo pattern).
 			throw new SaveDeferredError(doc.uri.toString());
 		})();

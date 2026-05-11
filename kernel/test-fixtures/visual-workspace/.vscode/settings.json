@@ -1,4 +1,5 @@
 {
 	"goatide.session.priority": "Quality-First",
-	"goatide.contracts.highImpactAllowlist": ["/contracts/auth-security.md"]
+	"goatide.contracts.highImpactAllowlist": ["/contracts/auth-security.md"],
+	"files.autoSave": "off"
 }

@@ -85,8 +85,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		// Continue activation in degraded state — Plan 04-06 banner picks up the connection state.
 	}
 
-	const panel = CanvasPanel.getOrCreate(context);
+	// DEFERRED-11-01-A robustness fix: instead of capturing a single panel reference
+	// (which becomes stale if the user closes the Verification Canvas tab — panel.show()
+	// then throws), wrap with a getter that always returns a live panel via getOrCreate.
+	// getOrCreate is idempotent: returns the existing instance if still alive, recreates
+	// otherwise. This means closing the canvas tab and triggering another save just works.
+	let panel = CanvasPanel.getOrCreate(context);
 	context.subscriptions.push({ dispose: () => panel.dispose() });
+	const getPanel = (): CanvasPanel => {
+		// CanvasPanel.getOrCreate returns the existing instance if non-disposed, or creates a
+		// fresh one when the prior instance was disposed (e.g., user closed the tab).
+		panel = CanvasPanel.getOrCreate(context);
+		return panel;
+	};
 
 	// Plan 04-06: pending-attempts queue rooted at the first workspace folder, falling
 	// back to the extension dir if no workspace is open (rare; degraded saves wouldn't
@@ -108,7 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		console.error('[goatide-bridge] recovery scan failed', e);
 	});
 
-	registerSaveGate(context, kernel, panel, queue);
+	registerSaveGate(context, kernel, getPanel, queue);
 
 	// Phase 5 watchers wired:
 	registerGitEventWatcher(context, kernel);     // Plan 05-03 — TELE-04

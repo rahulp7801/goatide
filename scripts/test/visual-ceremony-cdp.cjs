@@ -830,6 +830,7 @@ async function prepareDriftSave(window) {
 		throw new Error('VIS-06/07/08: fixture baseline corrupt — contracts/auth-security.md already contains the DROP TABLE auth_session marker; previous run did not clean up');
 	}
 
+
 	// 1. Open the contract markdown file. Same F1 + Go to File flow used by ensureCanvasOpen.
 	const openProbe = await executeWorkbenchCommand(window, 'vscode.open', filePath);
 	if (!openProbe.startsWith('ok')) {
@@ -1749,6 +1750,17 @@ async function main() {
 		// + blocks command execution until dismissed. --disable-workspace-trust is the
 		// canonical CLI flag for automated runs (designed for exactly this scenario).
 		'--disable-workspace-trust',
+		// DEFERRED-11-01-A Wave-3 single-launch fix: --disable-extensions disables ALL
+		// installed AND built-in extensions EXCEPT those passed via --extensionDevelopmentPath.
+		// Diagnostic on the single-launch sweep showed that auth-security.md's save event
+		// never fires onWillSave despite the buffer being dirty (.tab.dirty class verified).
+		// The most likely cause: built-in extensions like Copilot/agent chat panels grab
+		// keyboard focus on the workbench's right-side auxiliary bar and intercept Ctrl+S
+		// (or VS Code's active-editor detection routes the save command to the auxiliary
+		// surface). Disabling everything except the bridge eliminates this competition —
+		// the only extension loaded is goatide-bridge (via --extensionDevelopmentPath),
+		// which is all the visual-ceremony harness needs to exercise.
+		'--disable-extensions',
 	];
 	if (bridgeLoadable) {
 		launchArgs.push('--extensionDevelopmentPath=' + BRIDGE_EXTENSION_DEV_PATH);
