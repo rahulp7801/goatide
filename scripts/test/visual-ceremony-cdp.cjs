@@ -90,6 +90,7 @@ const SURFACE_REGISTRY = [
 	{ id: 'VIS-10', wave: 1, runner: runVis10 },
 	{ id: 'VIS-09', wave: 1, runner: runVis09 },
 	{ id: 'VIS-01', wave: 1, runner: runVis01 },
+	{ id: 'VIS-02', wave: 2, runner: runVis02 },
 ];
 
 // WAVE_BY_ID — flat id → wave map used by Plans 11-01..11-04 for cross-referencing
@@ -102,6 +103,7 @@ const WAVE_BY_ID = {
 	'VIS-10': 1,
 	'VIS-09': 1,
 	'VIS-01': 1,
+	'VIS-02': 2,
 };
 
 // --- Pre-flight: kill stale GoatIDE processes -------------------------------
@@ -497,6 +499,178 @@ async function runVis01(window) {
 	await sleep(500);
 }
 
+// === Wave 2: VIS-02 =========================================================
+// Phase 11 Plan 11-02 — destructive-save ConfirmationPhrase modal. The kernel-side
+// destructive classifier (kernel/src/canvas/destructive.ts:23-32) regex-scans the
+// unified diff for ^[+-].*\bDROP\s+TABLE\b/im and seven similar patterns. When a
+// match fires, classifyTier hard-pins tier='modal' (classifier.ts:71-73) BEFORE the
+// citation-based classification path runs — this is exactly why VIS-02 can sidestep
+// DEFERRED-11-01-A (the citation classifier returning 'silent' for the fixture's
+// contract path). The destructive verb extractor (destructive.ts:76-83) maps the
+// matched verb to one of ['drop','delete','rm','revert','truncate'] and emits it as
+// payload.confirmation_phrase, which App.tsx:127-135 wires into the ConfirmationPhrase
+// component's expectedPhrase prop. The component then renders:
+//   <div data-testid="confirmation-phrase">
+//     <label>Type <code>{expectedPhrase}</code> to enable Accept ...</label>
+//     <input data-testid="confirmation-phrase-input" />
+//     <button data-testid="confirmation-phrase-button" disabled={!matches}>...</button>
+//   </div>
+//
+// Content-injection path: write benign on-disk + edit the in-buffer copy (via
+// keyboard.type after Ctrl+End) so the save-gate's `original = readFile(disk)` and
+// `modified = doc.getText()` produce a non-empty diff containing the DROP TABLE line.
+// This path is preferred over write-then-open because the latter leaves buffer ==
+// disk, the save is a clean no-op, and onWillSaveTextDocument never fires.
+//
+// Fixture preservation invariant: this function MUST restore the on-disk content to
+// its original benign baseline after every run. The harness's main()-level `finally`
+// block also restores migration.ts defensively in case runVis02 throws before reaching
+// its own cleanup.
+async function runVis02(window) {
+	const filePath = path.join(FIXTURE, 'src', 'destructive', 'migration.ts');
+	const original = await fsPromises.readFile(filePath, 'utf8');
+
+	// Belt-and-braces: confirm the on-disk fixture is benign before we start. If a
+	// previous run crashed mid-flight without cleanup, this surfaces it as a clear
+	// precondition failure rather than a confusing "phrase already matches" downstream.
+	if (/\bDROP\s+TABLE\b/i.test(original)) {
+		throw new Error('VIS-02: fixture baseline corrupt — on-disk migration.ts already contains destructive content; previous run did not clean up');
+	}
+
+	try {
+		// 1. Open migration.ts via the workbench's quickOpen file picker. Same F1 + Go to
+		//    File path used by ensureCanvasOpen — most reliable on this Electron build
+		//    where globalThis.require is undefined (Wave-0 deviation #4).
+		const openProbe = await executeWorkbenchCommand(window, 'vscode.open', filePath);
+		if (!openProbe.startsWith('ok')) {
+			await window.keyboard.press('F1');
+			await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
+			await sleep(400);
+			await window.keyboard.type('Go to File: ');
+			await sleep(400);
+			await window.keyboard.press('Enter');
+			await sleep(400);
+			await window.keyboard.type('migration.ts');
+			await sleep(500);
+			await window.keyboard.press('Enter');
+			await sleep(1500);  // editor open + LSP attach
+		}
+
+		// 2. Explicitly focus the active editor group via the workbench command palette
+		//    rather than mouse-click. The Welcome walkthrough webview is the default
+		//    first-focus target on cold start; without an explicit focus shift,
+		//    subsequent keyboard.type() lands inside the Welcome webview instead of the
+		//    migration.ts editor buffer (verified empirically on the first VIS-02 live
+		//    run — fixture file showed zero edits despite the keystrokes succeeding).
+		//
+		//    workbench.action.focusActiveEditorGroup is a built-in command registered by
+		//    the workbench; F1 + typing the title routes through the same keybinding-
+		//    service path that VIS-10 uses for goatide.setSessionPriority. Do NOT use a
+		//    body-level mouse click — Plan 11-01 documented that focus-stealing on this
+		//    Electron build is sticky and clicks on the workbench body silently steal
+		//    focus from the workbench's keyboard-handling scope.
+		await window.keyboard.press('F1');
+		await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
+		await sleep(400);
+		await window.keyboard.type('View: Focus Active Editor Group');
+		await sleep(500);
+		await window.keyboard.press('Enter');
+		await sleep(700);  // focus-shift + editor input mode settle
+
+		// 3. Edit the in-buffer copy: Ctrl+End moves the cursor to EOF, then we type
+		//    a destructive line. The buffer is now dirty; on-disk content stays benign.
+		//    The save-gate's readFile(disk) returns the benign baseline, and doc.getText()
+		//    returns the buffer (with the destructive line), so createPatch produces a
+		//    diff containing `+const migration = "DROP TABLE users CASCADE";` which
+		//    matches DESTRUCTIVE_DIFF_PATTERNS[1] (/^[+-].*\bDROP\s+TABLE\b/im).
+		await window.keyboard.press('Control+End');
+		await sleep(200);
+		await window.keyboard.type('\nconst migration = "DROP TABLE users CASCADE";\n');
+		await sleep(700);
+
+		// 4. Trigger save. workbench.action.files.save via the AMD path first (no-op on
+		//    this build but cheap to attempt); fallback Ctrl+S chord works universally.
+		const saveProbe = await executeWorkbenchCommand(window, 'workbench.action.files.save');
+		if (!saveProbe.startsWith('ok')) {
+			await window.keyboard.press('Control+S');
+		}
+
+		// 4. Wait for the bridge's Verification Canvas to reveal with the ConfirmationPhrase
+		//    component visible. Same iframe-disambiguation pattern as ensureCanvasOpen.
+		//    Modal tier rendering takes ~1-3s on this build (proposeEdit cold call +
+		//    runDriftAndLock + dispatchTier + webview React mount).
+		const canvasFrame = window
+			.frameLocator('iframe.webview.ready[src*="extensionId=goatide.goatide-bridge"]')
+			.frameLocator('iframe#active-frame');
+		await canvasFrame.locator('[data-testid="confirmation-phrase"]').waitFor({ state: 'visible', timeout: 20_000 });
+
+		// 5. Assert the initial state: input is enabled (developer can type), button is
+		//    disabled (typed !== expectedPhrase because nothing has been typed yet).
+		const input = canvasFrame.locator('[data-testid="confirmation-phrase-input"]');
+		const btn = canvasFrame.locator('[data-testid="confirmation-phrase-button"]');
+		if (!(await input.isEnabled())) {
+			throw new Error('VIS-02: confirmation-phrase-input expected enabled before typing');
+		}
+		if (await btn.isEnabled()) {
+			throw new Error('VIS-02: confirmation-phrase-button expected disabled before typing');
+		}
+
+		// 6. Extract the expected phrase from the visible prompt. ConfirmationPhrase.tsx:26-28
+		//    renders `Type <code>{expectedPhrase}</code> to enable Accept ...` — the verb
+		//    is in a <code> element nested inside the <label>. The destructive verb extractor
+		//    (kernel/src/canvas/destructive.ts:76-83) maps `DROP TABLE` → 'drop' (first match
+		//    in the DESTRUCTIVE_VERBS array). We read the <code> element's innerText to
+		//    decouple from that ordering — any verb in the allowlist would pass.
+		const codeText = await canvasFrame
+			.locator('[data-testid="confirmation-phrase"] code')
+			.first()
+			.innerText();
+		const expectedPhrase = codeText.trim();
+		if (!expectedPhrase) {
+			const promptText = await canvasFrame.locator('[data-testid="confirmation-phrase"]').innerText();
+			throw new Error('VIS-02: could not extract expected phrase from <code> element; prompt was: ' + JSON.stringify(promptText));
+		}
+
+		// 7. Fill the input with the expected phrase. The component's onChange uses
+		//    `setTyped(e.target.value)` and `matches = typed === expectedPhrase` is the
+		//    sole gate on the button's disabled prop, so the button should become enabled
+		//    on the next React render flush.
+		await input.fill(expectedPhrase);
+		await sleep(400);   // React state flush — 200ms occasionally raced on cold mounts.
+		if (!(await btn.isEnabled())) {
+			throw new Error('VIS-02: confirmation-phrase-button expected enabled after typing matching phrase "' + expectedPhrase + '"');
+		}
+
+		// 8. Cleanup: click the canvas Reject button. ConfirmationPhrase lives inside the
+		//    same App.tsx CanvasShell as the canvas-reject footer button, so the locator
+		//    must reach into the canvasFrame at the App.tsx footer level (not nested
+		//    inside the confirmation-phrase element). The Reject action posts back to the
+		//    bridge which closes the panel WITHOUT writing the destructive payload to
+		//    disk — preserving the fixture-preservation invariant.
+		//
+		//    `force: true` bypasses Playwright's pointer-event interception check. The
+		//    Monaco diff-editor's <div class="margin"> overlay reports as intercepting
+		//    pointer events at the canvas-reject coordinates on this build, but the
+		//    button is still functionally clickable (the React handler fires regardless
+		//    of overlay z-stacking). Without force, the click times out after 30s
+		//    retrying past the margin overlay (observed empirically on the second VIS-02
+		//    live attempt — the canvas + confirmation-phrase rendered correctly but the
+		//    rejection click was blocked).
+		await canvasFrame.locator('[data-testid="canvas-reject"]').click({ force: true });
+		await sleep(500);
+	} finally {
+		// 9. Restore the on-disk fixture unconditionally. Even on failure, the next run
+		//    needs migration.ts to be benign (the precondition check at step 0 enforces
+		//    this). Non-fatal on error so a failing assertion still reports its own root
+		//    cause rather than being masked by a cleanup exception.
+		try {
+			await fsPromises.writeFile(filePath, original, 'utf8');
+		} catch (err) {
+			console.warn('[visual-ceremony-cdp]   VIS-02: fixture-baseline restore failed (non-fatal): ' + (err && err.message));
+		}
+	}
+}
+
 // --- Report printer ---------------------------------------------------------
 function printReport(results) {
 	console.log('');
@@ -763,6 +937,49 @@ async function main() {
 		} catch (err) {
 			console.warn('[visual-ceremony-cdp] login.ts restore failed (non-fatal): ' + err.message);
 		}
+
+		// Phase 11 Plan 11-02 (defense-in-depth): if runVis02 was interrupted between its
+		// keyboard.type() of the destructive line and its own `finally`-block restore,
+		// the on-disk migration.ts could still contain DROP TABLE. The fixture-preservation
+		// invariant is critical for downstream waves (and git hygiene), so we strip any
+		// destructive content here as a backstop. runVis02's own restore handles the
+		// happy path; this catches the cleanup-exception edge case.
+		try {
+			const migrationPath = path.join(FIXTURE, 'src', 'destructive', 'migration.ts');
+			if (fs.existsSync(migrationPath)) {
+				const migrationContent = await fsPromises.readFile(migrationPath, 'utf8');
+				if (/\bDROP\s+TABLE\b/i.test(migrationContent) || /\brm\s+-rf\b/.test(migrationContent)) {
+					// Rewrite the canonical benign baseline (matches the committed fixture
+					// byte-for-byte). The comment intentionally avoids the literal destructive
+					// verb so the fixture-preservation grep returns clean.
+					const benign = [
+						'/*---------------------------------------------------------------------------------------------',
+						' *  Copyright (c) Microsoft Corporation. All rights reserved.',
+						' *  Licensed under the MIT License. See License.txt in the project root for license information.',
+						' *--------------------------------------------------------------------------------------------*/',
+						'',
+						'// kernel/test-fixtures/visual-workspace/src/destructive/migration.ts',
+						'//',
+						'// Visual-ceremony fixture (Phase 11 Plan 11-02). Benign baseline file. The harness',
+						'// `runVis02` injects a destructive SQL payload at runtime via in-buffer keyboard.type',
+						'// immediately before triggering the save, then restores this baseline after the',
+						'// assertion completes. The on-disk content here MUST remain destructive-free —',
+						'// see the "fixture preservation invariant" in 11-02-destructive-confirmation-PLAN.md.',
+						'// (The literal destructive verb is intentionally omitted from this comment so the',
+						'// fixture-preservation grep `! grep -q D R O P T A B L E` returns false on disk.)',
+						'',
+						'export function placeholderMigration(): void {',
+						'\t// Intentionally empty. Replaced at runtime by the visual-ceremony harness.',
+						'}',
+						'',
+					].join('\n');
+					await fsPromises.writeFile(migrationPath, benign, 'utf8');
+					console.log('[visual-ceremony-cdp] restored fixture migration.ts (stripped destructive content backstop)');
+				}
+			}
+		} catch (err) {
+			console.warn('[visual-ceremony-cdp] migration.ts backstop restore failed (non-fatal): ' + err.message);
+		}
 	}
 
 	printReport(results);
@@ -800,6 +1017,7 @@ module.exports = {
 	runVis10,
 	runVis09,
 	runVis01,
+	runVis02,
 	ensureCanvasOpen,
 	executeWorkbenchCommand,
 	readFixtureSettings,
