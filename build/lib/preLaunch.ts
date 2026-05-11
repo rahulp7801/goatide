@@ -36,9 +36,38 @@ async function getElectron() {
 	await runProcess(npm, ['run', 'electron']);
 }
 
-async function ensureCompiled() {
-	if (!(await exists('out'))) {
+// Phase 9 BUILD-RT-01: sentinel files that MUST exist after a complete compile+transpile
+// cycle. `out/main.js` is the Electron entry point produced by transpile-client; the two
+// `out/vs/...` files come from `npm run compile` (gulp). Checking the directory alone is
+// insufficient — `npm run compile` can succeed yet leave `out/main.js` absent, producing
+// a runnable-looking build that crashes with `Cannot find module './out/main.js'`.
+const SENTINELS = [
+	'out/main.js',
+	'out/vs/base/common/arrays.js',
+	'out/vs/code/electron-main/main.js',
+];
+
+export async function findMissingSentinels(baseDir: string = rootDir): Promise<string[]> {
+	const missing: string[] = [];
+	for (const sentinel of SENTINELS) {
+		const full = path.join(baseDir, sentinel);
+		try {
+			await fs.stat(full);
+		} catch {
+			missing.push(sentinel);
+		}
+	}
+	return missing;
+}
+
+export async function ensureCompiled() {
+	const missing = await findMissingSentinels();
+	if (missing.length > 0) {
+		console.log(`[preLaunch] Build incomplete (missing: ${missing.join(', ')}). Running compile + transpile...`);
 		await runProcess(npm, ['run', 'compile']);
+		// After BUILD-RT-02 lands (`npm run compile` chains `transpile-client`), this becomes a no-op.
+		// Keep explicit for belt-and-suspenders + clarity in error messages.
+		await runProcess(npm, ['run', 'transpile-client']);
 	}
 }
 
