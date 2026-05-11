@@ -51,6 +51,31 @@
 				"command": "goatide.setSessionPriority",
 				"title": "GoatIDE: Set Session Priority",
 				"category": "GoatIDE"
+			},
+			{
+				"command": "goatide.kernel.reconnect",
+				"title": "GoatIDE: Reconnect Kernel",
+				"category": "GoatIDE"
+			},
+			{
+				"command": "goatide.mcp.reconnect",
+				"title": "GoatIDE: Reconnect MCP Provider",
+				"category": "GoatIDE"
+			},
+			{
+				"command": "goatide.mcp.showStaleProviders",
+				"title": "GoatIDE: Show Stale MCP Providers",
+				"category": "GoatIDE"
+			},
+			{
+				"command": "goatide.mcp.showSchemaDrift",
+				"title": "GoatIDE: Show MCP Schema Drift",
+				"category": "GoatIDE"
+			},
+			{
+				"command": "goatide.harvester.showStaleSources",
+				"title": "GoatIDE: Show Stale Telemetry Sources",
+				"category": "GoatIDE"
 			}
 		]
 	},
