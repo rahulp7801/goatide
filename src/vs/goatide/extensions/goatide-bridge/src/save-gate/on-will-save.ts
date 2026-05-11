@@ -113,6 +113,7 @@ async function handleProposedSave(
 		return;
 	}
 	const diff = createPatch(doc.uri.fsPath, original, modified, '', '');
+	console.log('[goatide-bridge]   handleProposedSave fsPath=' + doc.uri.fsPath + ' diff.length=' + diff.length);
 
 	// Phase 7 Plan 07-05 (DRIFT-02): read goatide.session.priority from VS Code config and
 	// thread it through kernel.proposeEdit. The kernel runs evaluateIntentDrift over the
@@ -155,6 +156,7 @@ async function handleProposedSave(
 		});
 		driftFindings = driftLockResult.drift_findings;
 		lockTrigger = driftLockResult.lock_trigger;
+		console.log('[goatide-bridge]   runDriftAndLock fsPath=' + doc.uri.fsPath + ' drift_findings.length=' + driftFindings.length + ' lock_trigger=' + (lockTrigger ? 'set' : 'null'));
 	} catch (e) {
 		console.error('[goatide-bridge] runDriftAndLock failed (continuing with empty findings)', e);
 	}

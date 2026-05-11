@@ -830,103 +830,101 @@ async function prepareDriftSave(window) {
 		throw new Error('VIS-06/07/08: fixture baseline corrupt — contracts/auth-security.md already contains the DROP TABLE auth_session marker; previous run did not clean up');
 	}
 
-	// DEFERRED-11-01-A Wave-3 single-launch fix: by the time Wave-3 starts in a full sweep, the
-	// workbench has accumulated multiple editor groups from Wave-1 (login.ts) and Wave-2
-	// (migration.ts). The harness's F1 → Go-to-File flow opens auth-security.md in SOME group
-	// but the cursor focus + the keyboard input target editor may be a DIFFERENT group's tab.
-	// Net effect: Ctrl+G + 14 + type "DROP TABLE auth_session" land in the wrong file (often
-	// migration.ts or login.ts), the save fires for that wrong file, drift_findings comes back
-	// empty (the diff path doesn't match the contract's anchor.file), and only the destructive
-	// modal fires (the DROP TABLE substring is enough on its own).
+	// 1. Open the contract markdown file. Same F1 + Go to File flow used by ensureCanvasOpen.
+	const openProbe = await executeWorkbenchCommand(window, 'vscode.open', filePath);
+	if (!openProbe.startsWith('ok')) {
+		await window.keyboard.press('F1');
+		await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
+		await sleep(400);
+		await window.keyboard.type('Go to File: ');
+		await sleep(400);
+		await window.keyboard.press('Enter');
+		await sleep(400);
+		await window.keyboard.type('auth-security.md');
+		await sleep(500);
+		await window.keyboard.press('Enter');
+		await sleep(1500);  // editor open + markdown LSP attach
+	}
+
+	// 2 + 3. Focus active editor group, navigate to line 14 inside Authentication section,
+	//        type the DROP TABLE auth_session marker. Retry the whole sequence up to 3 times
+	//        if the auth-security.md tab doesn't show the "dirty" marker dot — the dirty
+	//        check verifies the typing actually landed in the right editor's buffer.
 	//
-	// IMPORTANT — what NOT to do: `View: Merge All Editor Groups` and `View: Close All Editors`
-	// both DISPOSE the bridge's CanvasPanel webview (VS Code can't transfer webviews between
-	// groups, so merge disposes them; close obviously closes them). Once the panel is disposed,
-	// the next save-gate-driven panel.show() fails silently and the save proceeds to disk
-	// without modal intercept (verified empirically — exthost log shows `panel.showAndAwait
-	// failed: CanvasPanel disposed before decision` after merge, followed by NO onWillSave log
-	// for the next save's URI). Avoid both commands; instead rely on tab-click to force focus.
-
-	// 1. Open the contract markdown file via F1 → Go to File (skip vscode.open since it's
-	//    no-amd-loader on this build anyway). Active-tab sanity check + retry mirrors the
-	//    DEFERRED-11-01-A pattern from ensureCanvasOpen.
-	let active = false;
-	for (let attempt = 0; !active && attempt < 3; attempt++) {
+	// DEFERRED-11-01-A Wave-3 single-launch fix (2026-05-11): diagnostic logs proved that
+	// the typing was NOT dirtying auth-security.md's buffer in single-launch — bridge's
+	// onWillSaveTextDocument never fired for auth-security.md, despite VIS-02 working
+	// identically for migration.ts. Hypothesized cause: focus competition with side panels
+	// (Build with Agent, prior Verification Canvas tabs) and Markdown LSP load timing
+	// stealing focus from the editor surface during keyboard input. VS Code's tab strip
+	// gets a `dirty` class on the tab when the buffer is modified — that's an observable
+	// signal we can poll to verify the typing landed before triggering save.
+	let dirty = false;
+	for (let attempt = 0; !dirty && attempt < 3; attempt++) {
 		if (attempt > 0) {
-			console.log('[visual-ceremony-cdp]   prepareDriftSave: auth-security.md did not land as active tab on attempt ' + attempt + '; retrying F1 → Go to File');
-			await sleep(1000);
-		}
-		try {
+			console.log('[visual-ceremony-cdp]   prepareDriftSave: auth-security.md not dirty after attempt ' + attempt + '; re-focusing and re-typing');
 			await window.keyboard.press('Escape');
-			await sleep(200);
-			await window.keyboard.press('F1');
-			await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
-			await sleep(400);
-			await window.keyboard.type('Go to File: ');
-			await sleep(400);
-			await window.keyboard.press('Enter');
-			await sleep(400);
-			await window.keyboard.type('auth-security.md');
-			await sleep(500);
-			await window.keyboard.press('Enter');
-			await sleep(1500);
+			await sleep(300);
+		}
 
-			await window.locator('.tab.active').filter({ hasText: 'auth-security.md' }).first()
-				.waitFor({ state: 'visible', timeout: 8_000 });
-			active = true;
+		// 2. Focus active editor group (Plan 11-02 pattern).
+		await window.keyboard.press('F1');
+		await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
+		await sleep(400);
+		await window.keyboard.type('View: Focus Active Editor Group');
+		await sleep(500);
+		await window.keyboard.press('Enter');
+		await sleep(700);  // focus-shift settle
+
+		// 3. Position cursor inside the `## Authentication` section (Ctrl+G + 14 + Enter →
+		//    End → \n + marker line).
+		await window.keyboard.press('Control+G');
+		await sleep(400);
+		await window.keyboard.type('14');
+		await sleep(300);
+		await window.keyboard.press('Enter');
+		await sleep(400);
+		await window.keyboard.press('End');
+		await sleep(200);
+		await window.keyboard.type('\nDROP TABLE auth_session: scheduled for removal in v2');
+		await sleep(700);
+
+		// Verify the auth-security.md tab is marked dirty. If not, the keystrokes landed
+		// somewhere other than the editor buffer (focus competition) — retry the whole
+		// focus-and-type sequence.
+		try {
+			await window.locator('.tab.dirty').filter({ hasText: 'auth-security.md' }).first()
+				.waitFor({ state: 'visible', timeout: 3_000 });
+			dirty = true;
 		} catch (_e) {
 			// fall through to next attempt
 		}
 	}
-	if (!active) {
-		throw new Error('prepareDriftSave: auth-security.md did not land as the active editor tab after 3 F1 → Go to File attempts.');
+	if (!dirty) {
+		throw new Error('prepareDriftSave: auth-security.md buffer never went dirty after 3 type attempts. Keystrokes are landing outside the editor — workbench focus is stuck in a non-editor surface (chat panel, prior canvas webview, etc).');
 	}
 
-	// 1b. Belt-and-braces: directly click the auth-security.md tab to force-focus the group
-	//     containing it (covers the case where multiple groups have separate tabs with the
-	//     same filename). The click() also dismisses any lingering hover state from earlier
-	//     palette interactions.
-	try {
-		await window.locator('.tab').filter({ hasText: 'auth-security.md' }).first()
-			.click({ timeout: 5_000 });
-		await sleep(400);
-	} catch (_clickErr) {
-		console.warn('[visual-ceremony-cdp]   prepareDriftSave: tab-click on auth-security.md failed (non-fatal): ' + _clickErr.message);
-	}
-
-	// 2. Explicitly focus the active editor group (Plan 11-02 pattern: Welcome walkthrough
-	//    webview is default first-focus on cold start; keyboard.type without this lands
-	//    inside the walkthrough). F1 + workbench command routes through keybinding service.
-	await window.keyboard.press('F1');
-	await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
-	await sleep(400);
-	await window.keyboard.type('View: Focus Active Editor Group');
-	await sleep(500);
-	await window.keyboard.press('Enter');
-	await sleep(700);  // focus-shift settle
-
-	// 3. Position cursor inside the `## Authentication` section. The heading is at line 12;
-	//    its enforcing-section range starts at line 13. Use Ctrl+G (Go to Line) + type 13
-	//    + Enter to land precisely. Then End → newline → type the marker so the addition
-	//    overlaps the section range AND introduces the DROP TABLE auth_session pattern.
-	await window.keyboard.press('Control+G');
-	await sleep(400);
-	await window.keyboard.type('14');
-	await sleep(300);
-	await window.keyboard.press('Enter');
-	await sleep(400);
-	await window.keyboard.press('End');
-	await sleep(200);
-	// Type a newline + marker line. The marker phrase `DROP TABLE auth_session` matches the
-	// second pattern added to seed-payloads.json (scope: contracts/**/*.md). The line
-	// itself is inserted at line 14-15, well within the Authentication section's range.
-	await window.keyboard.type('\nDROP TABLE auth_session: scheduled for removal in v2');
-	await sleep(700);
-
-	// 4. Trigger save.
+	// 4. Trigger save. Belt-and-braces: try several different save dispatch paths because
+	//    VS Code's save-command routing in a multi-group multi-webview workbench is finicky —
+	//    even with auth-security.md's tab confirmed dirty, Ctrl+S and File:Save and Save All
+	//    have all been observed to NOT fire onWillSave for the target file in single-launch
+	//    full-sweep. We try all three in sequence; the first one that triggers a save wins.
 	const saveProbe = await executeWorkbenchCommand(window, 'workbench.action.files.save');
 	if (!saveProbe.startsWith('ok')) {
 		await window.keyboard.press('Control+S');
+		await sleep(500);
+		// Save All via F1 (Save All saves every dirty buffer regardless of active-editor).
+		try {
+			await window.keyboard.press('F1');
+			await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 5_000 });
+			await sleep(300);
+			await window.keyboard.type('Save All');
+			await sleep(400);
+			await window.keyboard.press('Enter');
+			await sleep(800);
+		} catch (_e) {
+			// fall through silently — Ctrl+S above is the primary path
+		}
 	}
 
 	// 5. Wait for the Canvas iframe to populate. tier-dispatch runs runDriftAndLock +

@@ -20,7 +20,7 @@
 //       side via the working-set-only Mandate-A test 2; this spec re-verifies the
 //       structural invariant by counting submitted via metrics — 100 fires → 0 submits.
 
-import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -40,6 +40,15 @@ describe('ROADMAP SC #3 — rejection CLI shows predicate per observation + Mand
 	let harness: IntegrationHarness;
 
 	beforeEach(() => {
+		// Pin the system clock to TEST_NOW_MS so dao.seed()'s internal `new Date()` call
+		// (kernel/src/graph/dao.ts nowIso()) records valid_from = TEST_NOW_MS. Without
+		// this, dao.seed uses real-time (e.g. 2026-05-11), but the harness's ctx.now() +
+		// queryByAnchor asOf are TEST_NOW_MS (e.g. 2026-05-08T12:00:00Z) — bitemporal
+		// logic correctly hides nodes whose valid_from > asOf, so isNetNew finds no
+		// match for the seeded ConstraintNode and the net_new gate doesn't fire.
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(TEST_NOW_MS));
+
 		harness = makeHarness({
 			now: () => TEST_NOW_MS,
 			workspaceFolders: ['/repo'],
@@ -48,6 +57,7 @@ describe('ROADMAP SC #3 — rejection CLI shows predicate per observation + Mand
 
 	afterEach(() => {
 		harness.dispose();
+		vi.useRealTimers();
 	});
 
 	it('6 engineered observations trip each predicate; CLI prints predicate name on every line; Mandate-A invariant: 100 change-events → 0 submits', async () => {
