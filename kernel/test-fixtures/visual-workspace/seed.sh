@@ -80,6 +80,22 @@ run_node_abi140() {
 }
 
 PAYLOADS_JSON="$SCRIPT_DIR/seed-payloads.json"
+# Phase 11 Plan 11-03: optional override lets the visual-ceremony harness inject an
+# absolute-path-rewritten payload file (per-run, in mktemp). Required because the
+# bridge save-gate creates a unified diff with the file's absolute fsPath, but the
+# committed seed-payloads.json uses workspace-relative paths (contracts/...). The
+# lock detector keys its registry by contract_path string-exact match, so the
+# committed payload can never match an absolute-path diff. The harness rewrites
+# `contract_path` and `anchor.file` to absolute paths under FIXTURE then sets this
+# env var to point at the rewritten file.
+if [[ -n "${SEED_PAYLOADS_JSON_OVERRIDE:-}" ]]; then
+	if [[ ! -f "$SEED_PAYLOADS_JSON_OVERRIDE" ]]; then
+		echo "[seed.sh] error: SEED_PAYLOADS_JSON_OVERRIDE set but file not found: $SEED_PAYLOADS_JSON_OVERRIDE" >&2
+		exit 1
+	fi
+	PAYLOADS_JSON="$SEED_PAYLOADS_JSON_OVERRIDE"
+	echo "[seed.sh] using SEED_PAYLOADS_JSON_OVERRIDE=$PAYLOADS_JSON"
+fi
 if [[ ! -f "$PAYLOADS_JSON" ]]; then
 	echo "[seed.sh] error: seed-payloads.json not found at $PAYLOADS_JSON" >&2
 	exit 1

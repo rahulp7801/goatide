@@ -12,6 +12,11 @@
 					"pattern": "function\\s+authenticate\\w+[^}]*\\{(?![^}]*requireAuth)",
 					"required": true,
 					"scope": "src/auth/**/*.ts"
+				},
+				{
+					"kind": "regex",
+					"pattern": "\\bDROP\\s+TABLE\\b",
+					"required": false
 				}
 			],
 			"enforcing_sections": ["Authentication", "OAuth Scopes"]
