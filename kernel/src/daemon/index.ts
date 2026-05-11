@@ -159,7 +159,13 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 	// Plan 05-07 — TELE-06 in-memory watchdog + PORT-06 daily metrics DAO. One LivenessState
 	// per daemon process; the bridge polls harvester.getLiveness on the bridge side every
 	// 30s. HarvestMetricsDao wraps the harvest_metrics_daily table created by 0005.
-	const livenessState = new LivenessState();
+	// Phase 11 Plan 11-04 — test-only stale-source forcing. When
+	// GOATIDE_LIVENESS_TEST_FORCE_STALE_SOURCES is set (comma-separated source list), the
+	// LivenessState reports those sources as stale regardless of whether they have ever
+	// been observed. Bypasses the cold-start grace period documented in liveness.ts. Empty
+	// or unset in production. The visual-ceremony harness sets this for VIS-04.
+	const testForcedStaleSources = parseForcedStaleSourcesFromEnv();
+	const livenessState = new LivenessState(undefined, { testForcedStaleSources });
 	const metricsDao = new HarvestMetricsDao(args.sqlite);
 	const harvesterDeps: HarvesterDeps = {
 		enrichGit: enrichGitCommitObservation,
@@ -281,7 +287,7 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 			// signal the bridge SchemaDriftBanner needs to suppress its 30s poll loop.
 			listProviders: () => mcpClientPool.listProviders(),
 		}
-		: undefined;
+		: maybeBuildMcpTestStubControl();
 	createTcpRpcServer(server, (socket, connection) => {
 		sockets.add(socket);
 		socket.once('close', () => sockets.delete(socket));
@@ -491,6 +497,80 @@ async function maybeBuildMcpClientPool(deps: {
 		console.error(`[daemon] McpClientPool construction failed: ${e instanceof Error ? e.message : String(e)}`);
 		return null;
 	}
+}
+
+/**
+ * Phase 11 Plan 11-04 VIS-04 — test-only parser for the comma-separated list of
+ * harvester sources that should be force-reported as stale. Used by the visual-ceremony
+ * harness to exercise the LivenessBanner without firing real observations. Returns an
+ * empty array when the env var is unset, empty, or contains only unknown source names.
+ *
+ * Unknown source names are silently skipped (logged at info level via stderr) so a typo
+ * in the env var doesn't break the daemon. Production sets nothing — empty array means
+ * the cold-start grace period is preserved.
+ */
+function parseForcedStaleSourcesFromEnv(): import('../harvester/observations.js').ObservationSource[] {
+	const raw = process.env.GOATIDE_LIVENESS_TEST_FORCE_STALE_SOURCES;
+	if (!raw) {
+		return [];
+	}
+	const validSources: ReadonlySet<string> = new Set<string>([
+		'claude_jsonl', 'editor_save', 'terminal_shell', 'git_commit', 'mcp_external_signal',
+	]);
+	const out: import('../harvester/observations.js').ObservationSource[] = [];
+	for (const token of raw.split(',')) {
+		const name = token.trim();
+		if (name.length === 0) {
+			continue;
+		}
+		if (validSources.has(name)) {
+			out.push(name as import('../harvester/observations.js').ObservationSource);
+		} else {
+			console.error(`[daemon] GOATIDE_LIVENESS_TEST_FORCE_STALE_SOURCES: unknown source '${name}' (expected one of ${[...validSources].join(', ')}); skipping`);
+		}
+	}
+	if (out.length > 0) {
+		console.error(`[daemon] LivenessState test stub: forcing stale=true for sources [${out.join(', ')}]`);
+	}
+	return out;
+}
+
+/**
+ * Phase 11 Plan 11-04 VIS-05 — test-only McpControlSurface stub.
+ *
+ * When `GOATIDE_MCP_TEST_DRIFT_PROVIDER=<name>` is set in the daemon process env (the
+ * visual-ceremony harness sets it before launching Electron), synthesizes a minimal
+ * McpControlSurface that reports the named provider as paused on schema drift. This
+ * bypasses the McpClientPool (no stdio children, no keychain, no real provider config)
+ * so the bridge's SchemaDriftBanner can be exercised in isolation against the live
+ * Electron build.
+ *
+ * Returns undefined when the env var is unset or holds an invalid provider name. The
+ * caller then propagates `undefined` to `bindHandlersForTcp`, where the server.ts
+ * `mcp.listProviders` handler nullish-coalesces to `{providers: []}` — preserving the
+ * Plan 10-02 POLISH-02 SchemaDriftBanner precondition gate for production.
+ */
+function maybeBuildMcpTestStubControl(): McpControlSurface | undefined {
+	const raw = process.env.GOATIDE_MCP_TEST_DRIFT_PROVIDER;
+	if (!raw) {
+		return undefined;
+	}
+	const provider = raw.trim();
+	const validProviders: readonly string[] = ['github', 'slack', 'linear', 'jira'];
+	if (!validProviders.includes(provider)) {
+		console.error(`[daemon] GOATIDE_MCP_TEST_DRIFT_PROVIDER='${raw}' invalid; expected one of ${validProviders.join(', ')} — ignoring test stub`);
+		return undefined;
+	}
+	const driftSummary = process.env.GOATIDE_MCP_TEST_DRIFT_SUMMARY ?? `VIS-05 test stub: ${provider} paused on schema drift`;
+	console.error(`[daemon] McpControlSurface test stub active: provider=${provider} paused=true (VIS-05 path; no real MCP pool)`);
+	const typedProvider = provider as McpProviderName;
+	return {
+		getProviderState: (p) => (p === typedProvider ? 'paused_drift' : 'closed'),
+		getSchemaDriftReport: () => [{ provider: typedProvider, paused: true, drift_summary: driftSummary }],
+		acceptProviderSchemaDrift: async () => true,
+		reconnect: async () => { /* no-op for the test stub */ },
+		listProviders: () => [typedProvider],
+	};
 }
 
 /**

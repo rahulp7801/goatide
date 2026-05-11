@@ -85,6 +85,11 @@ function parseArgs(argv) {
 // VIS-10 flips workspace priority, VIS-09 saves a file (consumes the flipped priority
 // to produce an IntentDriftBadge), VIS-01 verifies the Canvas chrome of the same save
 // flow + clicks reject to leave the canvas clean for downstream waves.
+// Phase 11 Plan 11-04 (Wave 4) appends VIS-04 → VIS-05 → VIS-03 in Pitfall-9 order. VIS-04
+// (LivenessBanner) and VIS-05 (SchemaDriftBanner) are non-destructive status-bar polls
+// against the LIVE kernel; VIS-03 (KernelDegradedBanner) SIGTERMs the kernel daemon and
+// MUST be the last VIS-* invocation — every subsequent kernel-dependent surface would
+// fail because the daemon is intentionally dead.
 const SURFACE_REGISTRY = [
 	{ id: 'WAVE0-SMOKE', wave: 0, runner: runWebviewSmokeAssertion },
 	{ id: 'VIS-10', wave: 1, runner: runVis10 },
@@ -94,6 +99,9 @@ const SURFACE_REGISTRY = [
 	{ id: 'VIS-06', wave: 3, runner: runVis06 },
 	{ id: 'VIS-07', wave: 3, runner: runVis07 },
 	{ id: 'VIS-08', wave: 3, runner: runVis08 },
+	{ id: 'VIS-04', wave: 4, runner: runVis04 },
+	{ id: 'VIS-05', wave: 4, runner: runVis05 },
+	{ id: 'VIS-03', wave: 4, runner: runVis03 },
 ];
 
 // WAVE_BY_ID — flat id → wave map used by Plans 11-01..11-04 for cross-referencing
@@ -110,6 +118,9 @@ const WAVE_BY_ID = {
 	'VIS-06': 3,
 	'VIS-07': 3,
 	'VIS-08': 3,
+	'VIS-04': 4,
+	'VIS-05': 4,
+	'VIS-03': 4,
 };
 
 // Phase 11 Plan 11-03 — Wave-3 shared canvas context. VIS-06/07/08 ride on a single
@@ -1168,6 +1179,209 @@ async function runVis08(window) {
 	// by design (audit-trail invariant).
 }
 
+// === Wave 4: VIS-04 → VIS-05 → VIS-03 (status-bar surfaces; VIS-03 LAST per Pitfall 9) ===
+// Phase 11 Plan 11-04 — the three closing-ceremony surfaces. All three target the bottom
+// VS Code status bar (`footer[id="workbench.parts.statusbar"]`), not the bridge canvas
+// iframe — so they DO NOT use the iframe-frameLocator chain that Waves 1-3 use. The
+// status-bar items are rendered by the bridge extension via `vscode.window.createStatusBarItem`
+// (KernelDegradedBanner priority 100; LivenessBanner priority 99; SchemaDriftBanner priority 98)
+// and appear as plain `.statusbar-item` children of the workbench footer DOM.
+//
+// Sequencing invariant (Pitfall 9): VIS-04 + VIS-05 are non-destructive polls against the
+// live kernel. VIS-03 SIGTERMs the kernel daemon, after which any subsequent kernel-dependent
+// surface would fail (the bridge would surface degraded state forever). VIS-03 MUST be the
+// LAST `runVis(...)` invocation in main(). The SURFACE_REGISTRY order above enforces this
+// even when only Wave-4 is invoked via `--waves 4`.
+
+/**
+ * VIS-04 — assert the LivenessBanner status-bar item renders with `/stale/` matching text.
+ *
+ * Trigger: the harness launches the IDE with `GOATIDE_LIVENESS_<SOURCE>_MS=1000` env vars
+ * set for each of the 5 harvester sources (mirrors Plan 11-00 Open Q 4 resolution — the
+ * env override already exists at kernel/src/harvester/liveness.ts:113). With a 1s threshold,
+ * any source that has not emitted an observation since daemon-spawn becomes stale within
+ * seconds. The LivenessBanner's 30s setInterval (override via GOATIDE_LIVENESS_POLL_INTERVAL_MS
+ * for tests — already honored by harvester/index.ts) sees the staleness on first poll +
+ * surfaces a status-bar item priority 99 with text `$(warning) <source> stale`.
+ *
+ * The 30s liveness-banner poll is the dominant cost of VIS-04 (~30-35s wait per surface).
+ * The harness already sets GOATIDE_LIVENESS_POLL_INTERVAL_MS=5000 so the banner polls every
+ * 5s instead of every 30s in test mode — reduces VIS-04 wall-clock to ~10s.
+ *
+ * @param {import('playwright').Page} window
+ */
+async function runVis04(window) {
+	const statusbarSelector = 'footer[id="workbench.parts.statusbar"]';
+	// LivenessBanner is at priority 99 on the LEFT alignment (vscode.StatusBarAlignment.Left,
+	// 99) per harvester/liveness-banner.ts:58. The `.statusbar-item` class is shared across
+	// all bottom-bar entries; the bridge's StatusBarItems render with their text directly
+	// inside. We use a regex filter on `/stale/i` because the visible text varies by source
+	// (`$(warning) editor_save stale` vs `$(warning) terminal_shell stale` vs aggregated
+	// `$(warning) 4 sources stale` when >=2 stale).
+	const banner = window
+		.locator(statusbarSelector + ' .statusbar-item')
+		.filter({ hasText: /stale/i });
+	// Wait up to 60s for the banner to appear. The poll interval is 5s (harness-overridden);
+	// the staleness threshold is 1s. First poll runs immediately in the LivenessBanner
+	// constructor (harvester/liveness-banner.ts:69 `void this.poll()`), but the kernel side
+	// also needs to have a `LivenessState` populated — observations get tagged with
+	// `last_seen_ms` only when they fire through `submitRawObservation`. On a cold harness
+	// the editor_save / git_commit / terminal_shell sources start with `last_seen_ms=null`,
+	// which the liveness.ts logic SHOULD treat as stale once threshold > 0. The first poll
+	// after the kernel boots returns the stale set.
+	await banner.first().waitFor({ state: 'visible', timeout: 60_000 });
+
+	// Capture the text for the SUMMARY's deviation-doc + EVIDENCE walkthrough.
+	try {
+		const txt = await banner.first().innerText();
+		console.log('[visual-ceremony-cdp]   VIS-04: stale-source text: ' + JSON.stringify(txt.slice(0, 120)));
+	} catch (_e) {
+		// non-fatal — innerText can fail on transient render states
+	}
+
+	// No cleanup — the banner stays visible (it's a per-poll-cycle render). VIS-05 + VIS-03
+	// don't depend on it being hidden; both query different status-bar items.
+}
+
+/**
+ * VIS-05 — assert the SchemaDriftBanner status-bar item renders with `/MCP schema drift/`
+ * matching text + `has-background-color` CSS class (errorBackground).
+ *
+ * Trigger: the harness launches the IDE with `GOATIDE_MCP_TEST_DRIFT_PROVIDER=github` set.
+ * Per Plan 11-04 deviation #1 (kernel-side stub), the daemon's `maybeBuildMcpTestStubControl()`
+ * synthesizes a minimal `McpControlSurface` that reports github as `paused: true` — without
+ * spawning real MCP stdio children or requiring keychain credentials. The bridge's
+ * SchemaDriftBanner.bootstrap() calls `mcp.listProviders` (returns `[github]` — non-empty
+ * → poll path activates per the Plan 10-02 POLISH-02 precondition gate), then 30s later
+ * (or 5s override) calls `mcp.getSchemaDriftReport` which returns the paused entry — banner
+ * renders priority 98 with text `$(warning) MCP schema drift: github` + errorBackground.
+ *
+ * This sidesteps Plan 11-00 Open Q 3's Path A (pre-write a stale schema-snapshot to disk)
+ * because that path required a real McpClientPool with valid keychain credentials — the
+ * kernel-side stub is hermetic and doesn't pollute production %APPDATA% snapshots.
+ *
+ * @param {import('playwright').Page} window
+ */
+async function runVis05(window) {
+	const statusbarSelector = 'footer[id="workbench.parts.statusbar"]';
+	// SchemaDriftBanner is at priority 98 on Left alignment per mcp/schema-drift-banner.ts:63.
+	// Text format per render(): `$(warning) MCP schema drift: <provider>` (1 paused) or
+	// `$(warning) MCP schema drift (N)` (>1 paused). Match on `/MCP schema drift/i` to cover
+	// both shapes.
+	const banner = window
+		.locator(statusbarSelector + ' .statusbar-item')
+		.filter({ hasText: /MCP schema drift/i });
+	// Same 60s timeout for poll-driven render (5s interval override; first poll immediate).
+	await banner.first().waitFor({ state: 'visible', timeout: 60_000 });
+
+	// Assert errorBackground CSS class. VS Code's workbench applies `has-background-color`
+	// when StatusBarItem.backgroundColor is non-null. The class lives on the `.statusbar-item`
+	// element itself.
+	const cls = await banner.first().getAttribute('class');
+	if (!cls || !cls.includes('has-background-color')) {
+		throw new Error('VIS-05: expected has-background-color CSS class on banner; got class="' + cls + '"');
+	}
+
+	// Capture the text for diagnostic value + EVIDENCE walkthrough.
+	try {
+		const txt = await banner.first().innerText();
+		console.log('[visual-ceremony-cdp]   VIS-05: drift-banner text: ' + JSON.stringify(txt.slice(0, 120)));
+	} catch (_e) {
+		// non-fatal
+	}
+
+	// No cleanup — banner stays visible. VIS-03 doesn't depend on it.
+}
+
+/**
+ * VIS-03 — SIGTERM the kernel daemon; assert the KernelDegradedBanner status-bar item
+ * renders within 40s with text `GoatIDE kernel degraded` + `has-background-color` CSS class
+ * (errorBackground).
+ *
+ * MUST be the LAST `runVis(...)` invocation in main(): SIGTERMing the kernel breaks every
+ * subsequent kernel-dependent surface (drift detection, override submit, harvester polls,
+ * MCP RPC). The SURFACE_REGISTRY order enforces this even when only Wave-4 is invoked via
+ * `--waves 4`.
+ *
+ * Mechanism: the bridge's ConnectionStateMachine (Plan 04-06) transitions to 'degraded'
+ * after the HeartbeatPoller misses its 30s window (10s ping interval, 30s miss threshold).
+ * KernelDegradedBanner.render() observes the state via state.onDidChangeState + flips
+ * StatusBarItem to text `$(warning) GoatIDE kernel degraded (<reason>)` with
+ * errorBackground (status-bar/kernel-degraded.ts:38-42).
+ *
+ * @param {import('playwright').Page} window
+ */
+async function runVis03(window) {
+	// 1. Read kernel PID from the harness-isolated lockfile. The harness sets
+	//    GOATIDE_LOCKFILE_PATH to userDataDir/goatide/kernel.lock; the daemon writes its
+	//    PID + listening port to that JSON file on startup. The PID isn't accessible from
+	//    process.env directly but resolveKernelLockPath() reads %APPDATA% by default — we
+	//    need to read the isolated path from the harness env hint we stashed in main().
+	const lockPath = process.env.GOATIDE_LOCKFILE_PATH_FOR_QUERY || resolveKernelLockPath();
+	let lockContent;
+	try {
+		lockContent = await fsPromises.readFile(lockPath, 'utf8');
+	} catch (err) {
+		throw new Error('VIS-03: failed to read kernel.lock at ' + lockPath + ': ' + err.message);
+	}
+	let parsed;
+	try {
+		parsed = JSON.parse(lockContent);
+	} catch (err) {
+		throw new Error('VIS-03: kernel.lock JSON parse failed: ' + err.message + '; raw=' + lockContent.slice(0, 200));
+	}
+	const pid = parsed.pid;
+	if (typeof pid !== 'number' || pid <= 0) {
+		throw new Error('VIS-03: kernel.lock has no valid pid: ' + JSON.stringify(parsed));
+	}
+	console.log('[visual-ceremony-cdp]   VIS-03: killing kernel pid=' + pid);
+
+	// 2. SIGTERM the kernel. On win32, process.kill('PID', 'SIGTERM') maps to TerminateProcess
+	//    via libuv; it works for most use cases but if the kernel is running under a different
+	//    OS user (rare on developer workstations), we fall back to `taskkill /F /PID <pid>`.
+	try {
+		process.kill(pid, 'SIGTERM');
+	} catch (err) {
+		if (process.platform === 'win32') {
+			try {
+				child_process.execSync('taskkill /F /PID ' + pid, { stdio: 'ignore' });
+			} catch (taskkillErr) {
+				throw new Error('VIS-03: failed to SIGTERM/taskkill kernel pid=' + pid + ': ' + err.message + ' (taskkill also failed: ' + taskkillErr.message + ')');
+			}
+		} else {
+			throw new Error('VIS-03: failed to SIGTERM kernel pid=' + pid + ': ' + err.message);
+		}
+	}
+
+	// 3. Wait up to 40s for the KernelDegradedBanner status-bar item to appear with text
+	//    `GoatIDE kernel degraded`. The 30s heartbeat-miss + 5s margin + 5s for status-bar
+	//    update is the budget per Plan 11-04 spec.
+	const statusbarSelector = 'footer[id="workbench.parts.statusbar"]';
+	const banner = window
+		.locator(statusbarSelector + ' .statusbar-item')
+		.filter({ hasText: /GoatIDE kernel degraded/i });
+	await banner.first().waitFor({ state: 'visible', timeout: 40_000 });
+
+	// 4. Assert errorBackground CSS class. KernelDegradedBanner sets backgroundColor to
+	//    statusBarItem.errorBackground in the degraded branch (kernel-degraded.ts:39).
+	const cls = await banner.first().getAttribute('class');
+	if (!cls || !cls.includes('has-background-color')) {
+		throw new Error('VIS-03: expected has-background-color CSS class on banner; got class="' + cls + '"');
+	}
+
+	// 5. Assert the text contains `GoatIDE kernel degraded` (filter regex already matched;
+	//    this is belt-and-braces for the assertion message).
+	const txt = await banner.first().innerText();
+	if (!txt.includes('GoatIDE kernel degraded')) {
+		throw new Error('VIS-03: banner text mismatch: ' + JSON.stringify(txt));
+	}
+	console.log('[visual-ceremony-cdp]   VIS-03: degraded-banner text: ' + JSON.stringify(txt.slice(0, 120)));
+
+	// 6. Cleanup: NONE. VIS-03 is the LAST assertion, the harness's finally-block runs
+	//    electron.close() which tears everything down. No reconnect attempt needed —
+	//    leaving the kernel dead is acceptable.
+}
+
 // --- Report printer ---------------------------------------------------------
 function printReport(results) {
 	console.log('');
@@ -1407,12 +1621,57 @@ async function main() {
 	// %APPDATA%/goatide/kernel.lock would be reused by the bridge's ensureKernel).
 	const isolatedDbPath = path.join(userDataDir, 'goatide', 'graph.db');
 	const isolatedLockPath = path.join(userDataDir, 'goatide', 'kernel.lock');
-	const launchEnv = Object.assign({}, process.env, {
+	// Phase 11 Plan 11-04 — Wave-4 status-bar surfaces (VIS-04 + VIS-05) need test-tuned
+	// kernel state. Plan 11-00 Open Q 4 documented that GOATIDE_LIVENESS_<SOURCE>_MS is
+	// already honored by kernel/src/harvester/liveness.ts:113 — setting all 5 sources to 1s
+	// thresholds makes them stale within seconds (no observations land during the harness's
+	// short window). GOATIDE_LIVENESS_POLL_INTERVAL_MS=5000 collapses the LivenessBanner's
+	// 30s default poll interval to 5s, reducing VIS-04 wall-clock from ~30-35s to ~10s.
+	// GOATIDE_MCP_TEST_DRIFT_PROVIDER=github activates the kernel-side test stub added by
+	// this plan (kernel/src/daemon/index.ts maybeBuildMcpTestStubControl) so the bridge's
+	// SchemaDriftBanner receives a non-empty providers list + a paused entry without needing
+	// a real McpClientPool / keychain credentials. Sidesteps Plan 11-00 Open Q 3 Path A.
+	const wave4Surfaces = new Set(['VIS-04', 'VIS-05', 'VIS-03']);
+	const needsWave4Env = surfaces.some(s => wave4Surfaces.has(s.id));
+	const launchEnvAdditions = {
 		VSCODE_DEV: '1',
 		VSCODE_CLI: '1',
 		GOATIDE_DB: isolatedDbPath,
 		GOATIDE_LOCKFILE_PATH: isolatedLockPath,
-	});
+	};
+	if (needsWave4Env) {
+		// 5 harvester sources per kernel/src/harvester/liveness.ts DEFAULT_LIVENESS_THRESHOLDS.
+		// Setting to 1000ms (1s) ensures any source with a recent observation appears stale
+		// quickly. BUT: liveness.ts has a cold-start grace period — sources NEVER observed
+		// stay `stale: false` regardless of threshold (see line 97 of liveness.ts). The
+		// visual-ceremony harness never fires real observations, so the threshold knob alone
+		// is insufficient. Plan 11-04 deviation #2: add GOATIDE_LIVENESS_TEST_FORCE_STALE_SOURCES
+		// which the daemon parses to populate LivenessState's testForcedStaleSources Set,
+		// bypassing the cold-start grace period for the named sources. Combined with sub-second
+		// threshold this guarantees VIS-04's stale banner renders within one poll cycle.
+		launchEnvAdditions.GOATIDE_LIVENESS_EDITOR_SAVE_MS = '1000';
+		launchEnvAdditions.GOATIDE_LIVENESS_GIT_COMMIT_MS = '1000';
+		launchEnvAdditions.GOATIDE_LIVENESS_TERMINAL_SHELL_MS = '1000';
+		launchEnvAdditions.GOATIDE_LIVENESS_CLAUDE_JSONL_MS = '1000';
+		launchEnvAdditions.GOATIDE_LIVENESS_MCP_EXTERNAL_SIGNAL_MS = '1000';
+		launchEnvAdditions.GOATIDE_LIVENESS_TEST_FORCE_STALE_SOURCES = 'editor_save,terminal_shell,git_commit,claude_jsonl,mcp_external_signal';
+		// LivenessBanner poll interval (harvester/index.ts:52 parseIntOrUndefined of this var).
+		// Default is 30000ms; 5000ms keeps Wave-4 wall-clock within budget.
+		launchEnvAdditions.GOATIDE_LIVENESS_POLL_INTERVAL_MS = '5000';
+		// SchemaDriftBanner poll interval (mcp/schema-drift-banner.ts default 30s). Tests can
+		// override via opts.pollIntervalMs but the production code path does NOT honor an env
+		// var for this banner (Plan 06-06 didn't add one). The bridge's bootstrap() runs once
+		// at activation; we have to accept the 30s polling cadence for VIS-05, OR rely on the
+		// IMMEDIATE first poll (mcp/schema-drift-banner.ts:99 `void this.poll()` before
+		// setInterval) which fires within ~1s of activation. The first poll will see the stub's
+		// paused entry and render — we don't need to wait for the 30s setInterval.
+		// VIS-05 — activates the kernel-side McpControlSurface test stub. Plan 11-04 deviation
+		// #1: instead of spawning real MCP stdio children + persisting drift snapshots to
+		// %APPDATA%, we synthesize a paused-on-drift report at the daemon's bind path.
+		launchEnvAdditions.GOATIDE_MCP_TEST_DRIFT_PROVIDER = 'github';
+		console.log('[visual-ceremony-cdp] Wave-4 env: GOATIDE_LIVENESS_*_MS=1000 + TEST_FORCE_STALE_SOURCES=<5>, POLL_INTERVAL_MS=5000, MCP_TEST_DRIFT_PROVIDER=github');
+	}
+	const launchEnv = Object.assign({}, process.env, launchEnvAdditions);
 	console.log('[visual-ceremony-cdp] kernel isolation: GOATIDE_DB=' + isolatedDbPath);
 	console.log('[visual-ceremony-cdp] kernel isolation: GOATIDE_LOCKFILE_PATH=' + isolatedLockPath);
 
@@ -1424,6 +1683,12 @@ async function main() {
 	// sees zero Attempt(contract_override) rows because the override was persisted to
 	// the isolated DB.
 	process.env.GOATIDE_DB_FOR_QUERY = isolatedDbPath;
+	// Phase 11 Plan 11-04: VIS-03's `runVis03` needs the kernel PID to SIGTERM. The PID
+	// lives in kernel.lock at the isolated path; the runner is invoked by THIS Node process
+	// so it inherits process.env (not launchEnv). Without this hint, `resolveKernelLockPath()`
+	// would return the production %APPDATA% path and `process.kill(pid, 'SIGTERM')` would
+	// either no-op (lockfile missing) or terminate the developer's real daemon.
+	process.env.GOATIDE_LOCKFILE_PATH_FOR_QUERY = isolatedLockPath;
 
 	console.log('[visual-ceremony-cdp] launching ' + electronPath);
 	const electron = await playwright._electron.launch({
@@ -1672,6 +1937,9 @@ module.exports = {
 	runVis06,
 	runVis07,
 	runVis08,
+	runVis04,
+	runVis05,
+	runVis03,
 	prepareDriftSave,
 	ensureCanvasOpen,
 	executeWorkbenchCommand,

@@ -62,9 +62,21 @@ export interface LivenessReport {
 export class LivenessState {
 	private readonly lastTs = new Map<ObservationSource, number>();
 	private readonly bootTs: number;
+	/**
+	 * Phase 11 Plan 11-04 — test-only forcing of stale sources. When set, sources in this
+	 * Set are reported `stale: true` regardless of whether they have ever been observed.
+	 * Bypasses the cold-start grace period documented at line 88-91 below. Production daemon
+	 * spawns with this Set empty; only the visual-ceremony harness populates it via the
+	 * GOATIDE_LIVENESS_TEST_FORCE_STALE_SOURCES env var (parsed in daemon/index.ts).
+	 */
+	private readonly testForcedStaleSources: Set<ObservationSource>;
 
-	constructor(now: () => number = Date.now) {
+	constructor(
+		now: () => number = Date.now,
+		opts: { testForcedStaleSources?: Iterable<ObservationSource> } = {},
+	) {
 		this.bootTs = now();
+		this.testForcedStaleSources = new Set(opts.testForcedStaleSources ?? []);
 	}
 
 	/**
@@ -79,6 +91,13 @@ export class LivenessState {
 	 * Compute liveness for every known source. Reports are sorted alphabetically by source
 	 * for stable output (CLI, snapshot tests). Sources never observed fall back to bootTs
 	 * (initial-grace) so a freshly-started kernel never warns before the first observation.
+	 *
+	 * Phase 11 Plan 11-04 (Rule 1 — bug): the cold-start grace period (`last !== undefined`)
+	 * keeps never-observed sources non-stale forever, even when the configured threshold
+	 * is sub-second. The visual-ceremony harness needs to exercise the LivenessBanner
+	 * status-bar item without firing real observations, so testForcedStaleSources (populated
+	 * from GOATIDE_LIVENESS_TEST_FORCE_STALE_SOURCES) bypasses the grace period for the
+	 * named sources. Empty set in production = previous behavior preserved byte-for-byte.
 	 */
 	computeLiveness(opts: {
 		now: number;
@@ -92,9 +111,11 @@ export class LivenessState {
 			const referenceTs = last ?? this.bootTs;
 			const silent = opts.now - referenceTs;
 			const threshold = merged[source]!;
+			const productionStale = last !== undefined && silent > threshold;
+			const testForcedStale = this.testForcedStaleSources.has(source) && silent > threshold;
 			out.push({
 				source,
-				stale: last !== undefined && silent > threshold,
+				stale: productionStale || testForcedStale,
 				silent_for_ms: silent,
 				threshold_ms: threshold,
 				last_observation_iso: last !== undefined ? new Date(last).toISOString() : undefined,
