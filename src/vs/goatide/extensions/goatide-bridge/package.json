@@ -25,7 +25,7 @@
 						"/contracts/api/",
 						"/contracts/data/"
 					],
-					"description": "Path prefixes that mark high-impact contract files; saves to these paths force the modal Verification Canvas tier."
+					"description": "Path substrings that mark high-impact contract files; any cited ContractNode whose normalized contract_path contains one of these substrings forces the modal Verification Canvas tier. Path separators are normalized (Windows backslashes folded to forward slashes) before comparison."
 				},
 				"goatide.session.priority": {
 					"type": "string",

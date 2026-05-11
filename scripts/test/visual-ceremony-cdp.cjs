@@ -451,6 +451,22 @@ async function ensureCanvasOpen(window) {
 		await sleep(1500);  // editor open + LSP attach
 	}
 
+	// DEFERRED-11-01-A: assert that login.ts actually landed as the active editor
+	// before triggering save. On cold extension-host startup, the F1 → Go-to-File flow
+	// occasionally fails to open the file (palette not yet keyboard-responsive); without
+	// this check the subsequent Ctrl+S fires on the Walkthrough webview / wrong editor
+	// and the save-gate's onWillSave never sees a `login.ts` save — modal canvas never
+	// reveals — and the test times out 90s later with no useful diagnostic. Asserting
+	// the tab label here surfaces the open-failure mode in 5s with a clear error.
+	try {
+		await window
+			.locator('.tab.active').filter({ hasText: 'login.ts' })
+			.first()
+			.waitFor({ state: 'visible', timeout: 5_000 });
+	} catch (_e) {
+		throw new Error('ensureCanvasOpen: login.ts did not land as the active editor tab within 5s after F1 → Go to File — workbench keyboard-handling may still be settling. Bump the post-launch bridge-ready wait if this recurs.');
+	}
+
 	// Trigger save. The save-gate listener intercepts and shows the Canvas asynchronously.
 	const saveProbe = await executeWorkbenchCommand(window, 'workbench.action.files.save');
 	if (!saveProbe.startsWith('ok')) {
@@ -470,7 +486,13 @@ async function ensureCanvasOpen(window) {
 	const canvasFrame = window
 		.frameLocator('iframe.webview.ready[src*="extensionId=goatide.goatide-bridge"]')
 		.frameLocator('iframe#active-frame');
-	await canvasFrame.locator('[data-testid="canvas-accept"]').waitFor({ state: 'visible', timeout: 20_000 });
+	// DEFERRED-11-01-A: bumped from 20s to 90s. On cold kernel start the daemon
+	// negotiation + proposeEdit + runDriftAndLock + dispatchTier + webview React mount
+	// regularly exceeds 45s on this Electron build (observed empirically when the
+	// highImpactAllowlist fix landed — VIS-01 immediately after a failed VIS-09 wait
+	// sees the canvas open in <3s, proving the canvas IS opening but past VIS-09's
+	// budget on first save). Subsequent saves in the same harness session are fast.
+	await canvasFrame.locator('[data-testid="canvas-accept"]').waitFor({ state: 'visible', timeout: 90_000 });
 	return canvasFrame;
 }
 
@@ -526,7 +548,13 @@ async function runVis01(window) {
 	// Cleanup: click reject so the canvas closes and downstream waves get a clean slate.
 	// Plan 11-01 sequencing invariant — VIS-02's destructive save will fail if the
 	// canvas is still open from this run.
-	await canvasFrame.locator('[data-testid="canvas-reject"]').click();
+	//
+	// DEFERRED-11-01-A: force:true bypasses Playwright's pointer-event interception
+	// check. The Monaco diff-editor's <div class="margin"> overlay reports as
+	// intercepting pointer events at the canvas-reject coordinates on this build, but
+	// the button is still functionally clickable (the React handler fires regardless
+	// of overlay z-stacking). VIS-02 uses the same workaround.
+	await canvasFrame.locator('[data-testid="canvas-reject"]').click({ force: true });
 	await sleep(500);
 }
 
@@ -1422,6 +1450,19 @@ async function main() {
 
 	console.log('[visual-ceremony-cdp] running ' + surfaces.length + ' surface(s): ' + surfaces.map(s => s.id).join(', '));
 
+	// DEFERRED-11-01-A remediation: snapshot the committed fixture .vscode/settings.json
+	// at harness start so the post-run restoration writes back EXACTLY what was on disk
+	// pre-run. Previous implementation hardcoded `{"goatide.session.priority": "Quality-First"}`
+	// in the cleanup block, which dropped any other committed settings (like the new
+	// goatide.contracts.highImpactAllowlist) every run.
+	const fixtureSettingsPath = path.join(FIXTURE, '.vscode', 'settings.json');
+	let fixtureSettingsSnapshot = null;
+	try {
+		fixtureSettingsSnapshot = fs.readFileSync(fixtureSettingsPath, 'utf8');
+	} catch (err) {
+		console.warn('[visual-ceremony-cdp] could not snapshot fixture settings.json (' + err.message + '); cleanup will fall back to Quality-First-only baseline');
+	}
+
 	const electronPath = resolveElectronPath();
 	const kernelLockPath = resolveKernelLockPath();
 
@@ -1744,8 +1785,24 @@ async function main() {
 		// empirically: no-click F1 → palette opens; body-click + F1 → palette stays hidden).
 		const needsKeybindingSettle = surfaces.some(s => s.id.startsWith('VIS-'));
 		if (needsKeybindingSettle) {
-			console.log('[visual-ceremony-cdp] settling 15s for keybinding service attach...');
-			await sleep(15_000);
+			// DEFERRED-11-01-A: the 15s baseline was tuned with a warm kernel + warm extension
+			// host. On a cold launch with --waves 1 (no Wave-3 to pre-warm the daemon), the
+			// extension-host startup banner ("Extension host did not start in 10 seconds")
+			// regularly fires and the F1 palette doesn't respond to keyboard input until
+			// activation completes. Wait for the Verification Canvas tab to attach as a
+			// proxy for "bridge extension activated, workbench ready for keyboard input."
+			console.log('[visual-ceremony-cdp] settling for bridge activation (Verification Canvas tab)...');
+			try {
+				await window
+					.locator('.tab').filter({ hasText: 'Verification Canvas' })
+					.first()
+					.waitFor({ state: 'visible', timeout: 60_000 });
+				console.log('[visual-ceremony-cdp]   Verification Canvas tab attached — bridge ready');
+			} catch (_e) {
+				console.warn('[visual-ceremony-cdp]   Verification Canvas tab did not attach within 60s — proceeding anyway');
+			}
+			console.log('[visual-ceremony-cdp] settling 5s for keybinding service attach...');
+			await sleep(5_000);
 		}
 
 		// Run each filtered surface sequentially. Single-launch + sequential runners
@@ -1779,14 +1836,16 @@ async function main() {
 		// from Quality-First → Speed-First. The next run's baseline assertion needs
 		// Quality-First — without this restoration, the harness becomes non-idempotent
 		// and the second invocation fails the precondition check.
+		//
+		// DEFERRED-11-01-A: write back the snapshot captured at harness start (preserves
+		// any committed settings beyond `goatide.session.priority`, e.g. the
+		// `goatide.contracts.highImpactAllowlist` added during DEFERRED-11-01-A remediation).
 		try {
-			const settingsPath = path.join(FIXTURE, '.vscode', 'settings.json');
-			await fsPromises.writeFile(
-				settingsPath,
-				JSON.stringify({ 'goatide.session.priority': 'Quality-First' }, null, '\t') + '\n',
-				'utf8',
-			);
-			console.log('[visual-ceremony-cdp] restored fixture baseline (.vscode/settings.json -> Quality-First)');
+			const restoreContent = fixtureSettingsSnapshot !== null
+				? fixtureSettingsSnapshot
+				: JSON.stringify({ 'goatide.session.priority': 'Quality-First' }, null, '\t') + '\n';
+			await fsPromises.writeFile(fixtureSettingsPath, restoreContent, 'utf8');
+			console.log('[visual-ceremony-cdp] restored fixture baseline (.vscode/settings.json -> committed snapshot)');
 		} catch (err) {
 			console.warn('[visual-ceremony-cdp] fixture-baseline restore failed (non-fatal): ' + err.message);
 		}

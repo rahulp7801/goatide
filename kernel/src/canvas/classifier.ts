@@ -13,6 +13,12 @@
 //   - any Inferred-unpromoted citation → inline (ROADMAP SC #4)
 //   - default → silent (defensive)
 //
+// DEFERRED-11-01-A (closed 2026-05-11): the high-impact ContractNode match is now a
+// substring containment check on the normalized contract_path (backslashes folded to
+// forward slashes), not a prefix `startsWith`. Same intent — flag saves citing a
+// high-impact contract — but it works when the contract subtree isn't at the
+// filesystem root (workspace-relative paths, absolute paths on either platform).
+//
 // CONFIDENCE: MEDIUM. Signal weighting has no public prior art (STATE.md ## Blockers/Concerns).
 // The 5 signals above are derived from REQUIREMENTS + ROADMAP success criterion #4 verbatim.
 // The contract-allowlist prefix set is config-driven (caller passes; default exported below)
@@ -26,7 +32,10 @@ import { detectDestructive } from './destructive.js';
 import type { CanvasTier, CitationDetail, TierClassifierInputs } from './types.js';
 
 /**
- * Default contract-path prefixes that route a citation to the modal tier.
+ * Default contract-path substrings that route a citation to the modal tier. Per
+ * DEFERRED-11-01-A remediation, these are matched via substring containment after
+ * separator normalization — so a contract anchored at any depth (workspace-relative
+ * or absolute, POSIX or Windows) under `contracts/security/` etc. still escalates.
  * Phase 4 ships with these three; Phase 7 (DRIFT) extends to a registry.
  */
 export const DEFAULT_HIGH_IMPACT_CONTRACT_PREFIXES: readonly string[] = [
@@ -34,6 +43,18 @@ export const DEFAULT_HIGH_IMPACT_CONTRACT_PREFIXES: readonly string[] = [
 	'/contracts/api/',
 	'/contracts/data/',
 ];
+
+/**
+ * Normalize a path-or-entry for substring matching:
+ *   1. Backslashes → forward slashes (cross-platform).
+ *   2. Prepend `/` if missing so workspace-relative and absolute paths both behave
+ *      as rooted segments — e.g. `contracts/auth-security.md` and
+ *      `C:\repo\contracts\auth-security.md` both end up containing `/contracts/`.
+ */
+function normalizeForMatch(p: string): string {
+	const slashed = p.replace(/\\/g, '/');
+	return slashed.startsWith('/') ? slashed : `/${slashed}`;
+}
 
 function citesHighImpactContract(
 	citationDetails: readonly CitationDetail[] | undefined,
@@ -45,6 +66,12 @@ function citesHighImpactContract(
 	if (allowlist.length === 0) {
 		return false;
 	}
+	// DEFERRED-11-01-A remediation: contract_path may be workspace-relative POSIX
+	// (`contracts/security/auth.md`), workspace-relative Windows (`contracts\security\auth.md`),
+	// absolute POSIX (`/repo/contracts/security/auth.md`), or absolute Windows
+	// (`C:\repo\contracts\security\auth.md`). The previous implementation used `.startsWith()`,
+	// which silently failed for any path whose contract subtree wasn't at the filesystem root.
+	// Both sides are rooted-with-`/` and forward-slash-normalized before substring matching.
 	return citationDetails.some((d) => {
 		if (d.kind !== 'ContractNode') {
 			return false;
@@ -52,7 +79,8 @@ function citesHighImpactContract(
 		if (!d.contract_path) {
 			return false;
 		}
-		return allowlist.some((prefix) => d.contract_path!.startsWith(prefix));
+		const normalizedPath = normalizeForMatch(d.contract_path);
+		return allowlist.some((entry) => normalizedPath.includes(normalizeForMatch(entry)));
 	});
 }
 

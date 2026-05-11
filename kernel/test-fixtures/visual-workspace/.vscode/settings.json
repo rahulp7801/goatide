@@ -1,3 +1,4 @@
 {
-	"goatide.session.priority": "Quality-First"
+	"goatide.session.priority": "Quality-First",
+	"goatide.contracts.highImpactAllowlist": ["/contracts/auth-security.md"]
 }

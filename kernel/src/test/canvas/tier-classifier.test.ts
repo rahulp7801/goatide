@@ -118,4 +118,46 @@ describe('CANV-04 + CANV-05 — tier classifier (5-signal ordered guard chain)',
 			'/contracts/data/',
 		]);
 	});
+
+	// DEFERRED-11-01-A — substring + separator-normalized matching. The classifier MUST
+	// escalate ContractNode citations whose contract_path contains an allowlisted segment,
+	// regardless of (a) whether the contract subtree sits at the filesystem root or under
+	// arbitrary parent dirs, or (b) whether the path uses POSIX or Windows separators.
+	it('signal 2: substring match catches absolute Windows contract_path against default allowlist', () => {
+		const citationDetails: CitationDetail[] = [
+			{ node_id: '01JC', kind: 'ContractNode', contract_path: 'C:\\repo\\contracts\\security\\auth.md' },
+		];
+		const inputs: TierClassifierInputs = {
+			receipt: makeReceipt({ confidences: ['Explicit'] }),
+			diff: PLAIN_DIFF,
+			citationDetails,
+		};
+		expect(classifyTier(inputs)).toBe('modal');
+	});
+
+	it('signal 2: substring match catches workspace-relative POSIX contract_path against caller allowlist', () => {
+		const citationDetails: CitationDetail[] = [
+			{ node_id: '01JC', kind: 'ContractNode', contract_path: 'contracts/auth-security.md' },
+		];
+		const inputs: TierClassifierInputs = {
+			receipt: makeReceipt({ confidences: ['Explicit'] }),
+			diff: PLAIN_DIFF,
+			citationDetails,
+			contractAllowlist: ['/contracts/auth-security.md'],
+		};
+		expect(classifyTier(inputs)).toBe('modal');
+	});
+
+	it('signal 2: substring match catches absolute Windows contract_path against caller allowlist', () => {
+		const citationDetails: CitationDetail[] = [
+			{ node_id: '01JC', kind: 'ContractNode', contract_path: 'C:\\users\\dev\\repo\\contracts\\auth-security.md' },
+		];
+		const inputs: TierClassifierInputs = {
+			receipt: makeReceipt({ confidences: ['Explicit'] }),
+			diff: PLAIN_DIFF,
+			citationDetails,
+			contractAllowlist: ['/contracts/auth-security.md'],
+		};
+		expect(classifyTier(inputs)).toBe('modal');
+	});
 });
