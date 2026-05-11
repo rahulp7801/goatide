@@ -334,6 +334,37 @@ export interface McpGetSchemaDriftReportResult {
 
 export const McpGetSchemaDriftReportRequest = new RequestType<McpGetSchemaDriftReportParams, McpGetSchemaDriftReportResult, Error>('mcp.getSchemaDriftReport');
 
+// -------- mcp.listProviders (Plan 10-02 — POLISH-02 precondition for SchemaDriftBanner polling) --------
+//
+// Phase 10 Plan 10-00 stages this type contract; Plan 10-02 registers the handler. The
+// bridge's SchemaDriftBanner uses this method as a precondition gate — when no providers
+// are configured (empty array), the banner skips its 30s drift-report poll loop entirely,
+// avoiding unnecessary kernel round-trips at idle. When >=1 provider is configured, the
+// banner resumes its standard poll cadence.
+//
+// Wire shape mirrors McpGetSchemaDriftReport — parameterless request, `providers` array
+// result. Snake_case wire-property name (`providers`) is symmetric with the rest of the
+// kernel mcp.* surface.
+
+/**
+ * Parameters for `mcp.listProviders`. Intentionally empty: the kernel returns the full
+ * configured-provider set regardless of caller context.
+ */
+export interface McpListProvidersParams {
+	/* intentionally empty — listProviders is parameterless */
+}
+
+/**
+ * Result of `mcp.listProviders`. The `providers` array is empty when no MCP providers
+ * have been configured (Plan 06-04 keychain entries absent). The bridge's
+ * SchemaDriftBanner treats an empty array as a signal to suppress its drift-report poll.
+ */
+export interface McpListProvidersResult {
+	providers: McpProviderNameWire[];
+}
+
+export const McpListProvidersRequest = new RequestType<McpListProvidersParams, McpListProvidersResult, Error>('mcp.listProviders');
+
 export interface McpAcceptProviderSchemaDriftParams {
 	provider: McpProviderNameWire;
 }

@@ -373,6 +373,31 @@ export interface McpGetSchemaDriftReportResult {
 
 export const McpGetSchemaDriftReportRequest = new RequestType<McpGetSchemaDriftReportParams, McpGetSchemaDriftReportResult, Error>('mcp.getSchemaDriftReport');
 
+// -------- mcp.listProviders (Plan 10-02 — POLISH-02 precondition for SchemaDriftBanner polling) --------
+//
+// Bridge-side mirror of the kernel's McpListProvidersRequest. SchemaDriftBanner calls this
+// before starting its 30s drift-report poll loop; an empty `providers` array suppresses the
+// poll until at least one provider is configured. Wire shape is byte-identical to
+// kernel/src/rpc/methods.ts (Pitfall 5: never let the bridge drift from the kernel surface).
+
+/**
+ * Parameters for `mcp.listProviders`. Intentionally empty: the kernel returns the full
+ * configured-provider set regardless of caller context.
+ */
+export interface McpListProvidersParams {
+	/* intentionally empty — listProviders is parameterless */
+}
+
+/**
+ * Result of `mcp.listProviders`. Empty array when no MCP providers have been configured;
+ * SchemaDriftBanner skips its drift-report poll in that case.
+ */
+export interface McpListProvidersResult {
+	providers: McpProviderNameWire[];
+}
+
+export const McpListProvidersRequest = new RequestType<McpListProvidersParams, McpListProvidersResult, Error>('mcp.listProviders');
+
 export interface McpAcceptProviderSchemaDriftParams {
 	provider: McpProviderNameWire;
 }
