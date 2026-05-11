@@ -40,6 +40,20 @@ import { ILifecycleService, WillShutdownEvent } from '../../lifecycle/common/lif
 import { parseExtensionDevOptions } from '../common/extensionDevOptions.js';
 import { IDefaultLogLevelsService } from '../../log/common/defaultLogLevels.js';
 
+/**
+ * Phase 10 BRIDGE-POLISH-05 (2026-05-10): bumped from 10000 (upstream default) to 20000
+ * to align with the bridge's cold-start budget. Phase 8 BRIDGE-RT-03 lifted the lockfile-poll
+ * timeout to 15s for the same reason; ext-host startup needs another ~5s for the rest of
+ * activation (Windows Defender realtime scan + better-sqlite3 binary load + bridge's
+ * detached kernel spawn). Production builds skip this code path via the `isBuilt` check,
+ * so end users are unaffected.
+ *
+ * See `.planning/phases/10-bridge-production-polish/10-RESEARCH.md ## SC#5 Option 1` for
+ * the full rationale and the alternatives considered (extension-specific suppression /
+ * documentation-only).
+ */
+const EXTENSION_HOST_STARTUP_TIMEOUT_MS = 20000;
+
 export interface ILocalProcessExtensionHostInitData {
 	readonly extensions: ExtensionHostExtensions;
 }
@@ -338,11 +352,11 @@ export class NativeLocalProcessExtensionHost extends Disposable implements IExte
 		let startupTimeoutHandle: Timeout | undefined;
 		if (!this._environmentService.isBuilt && !this._environmentService.remoteAuthority || this._isExtensionDevHost) {
 			startupTimeoutHandle = setTimeout(() => {
-				this._logService.error(`[LocalProcessExtensionHost]: Extension host did not start in 10 seconds (debugBrk: ${this._isExtensionDevDebugBrk})`);
+				this._logService.error(`[LocalProcessExtensionHost]: Extension host did not start in 20 seconds (debugBrk: ${this._isExtensionDevDebugBrk})`);
 
 				const msg = this._isExtensionDevDebugBrk
-					? nls.localize('extensionHost.startupFailDebug', "Extension host did not start in 10 seconds, it might be stopped on the first line and needs a debugger to continue.")
-					: nls.localize('extensionHost.startupFail', "Extension host did not start in 10 seconds, that might be a problem.");
+					? nls.localize('extensionHost.startupFailDebug', "Extension host did not start in 20 seconds, it might be stopped on the first line and needs a debugger to continue.")
+					: nls.localize('extensionHost.startupFail', "Extension host did not start in 20 seconds, that might be a problem.");
 
 				this._notificationService.prompt(Severity.Warning, msg,
 					[{
@@ -354,7 +368,7 @@ export class NativeLocalProcessExtensionHost extends Disposable implements IExte
 						priority: NotificationPriority.URGENT
 					}
 				);
-			}, 10000);
+			}, EXTENSION_HOST_STARTUP_TIMEOUT_MS);
 		}
 
 		// Initialize extension host process with hand shakes
