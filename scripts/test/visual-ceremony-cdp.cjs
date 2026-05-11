@@ -89,6 +89,7 @@ const SURFACE_REGISTRY = [
 	{ id: 'WAVE0-SMOKE', wave: 0, runner: runWebviewSmokeAssertion },
 	{ id: 'VIS-10', wave: 1, runner: runVis10 },
 	{ id: 'VIS-09', wave: 1, runner: runVis09 },
+	{ id: 'VIS-01', wave: 1, runner: runVis01 },
 ];
 
 // WAVE_BY_ID — flat id → wave map used by Plans 11-01..11-04 for cross-referencing
@@ -100,6 +101,7 @@ const WAVE_BY_ID = {
 	'WAVE0-SMOKE': 0,
 	'VIS-10': 1,
 	'VIS-09': 1,
+	'VIS-01': 1,
 };
 
 // --- Pre-flight: kill stale GoatIDE processes -------------------------------
@@ -467,6 +469,34 @@ async function runVis09(window) {
 	// Leave the canvas open — VIS-01 immediately consumes the same state.
 }
 
+// runVis01 — verify the Verification Canvas modal chrome (Accept + Reject +
+// Reject-with-note-toggle buttons + >=1 citation row). Cleanup: click reject so
+// subsequent waves (especially VIS-02 destructive saves) start with a clean canvas.
+async function runVis01(window) {
+	// ensureCanvasOpen is idempotent — if the canvas is already open from VIS-09, it
+	// re-asserts the iframe is visible and returns; if invoked --only VIS-01, it runs
+	// the full open-edit-save precondition.
+	const canvasFrame = await ensureCanvasOpen(window);
+
+	// Assert all three buttons are visible. Each waitFor doubles as an existence check.
+	await canvasFrame.locator('[data-testid="canvas-accept"]').waitFor({ state: 'visible', timeout: 15_000 });
+	await canvasFrame.locator('[data-testid="canvas-reject"]').waitFor({ state: 'visible', timeout: 15_000 });
+	await canvasFrame.locator('[data-testid="canvas-reject-with-note-toggle"]').waitFor({ state: 'visible', timeout: 15_000 });
+
+	// Assert >=1 citation row.
+	const citations = canvasFrame.locator('[data-testid="citation-row"]');
+	const count = await citations.count();
+	if (count < 1) {
+		throw new Error('VIS-01: expected >=1 [data-testid="citation-row"]; got ' + count);
+	}
+
+	// Cleanup: click reject so the canvas closes and downstream waves get a clean slate.
+	// Plan 11-01 sequencing invariant — VIS-02's destructive save will fail if the
+	// canvas is still open from this run.
+	await canvasFrame.locator('[data-testid="canvas-reject"]').click();
+	await sleep(500);
+}
+
 // --- Report printer ---------------------------------------------------------
 function printReport(results) {
 	console.log('');
@@ -769,6 +799,7 @@ module.exports = {
 	runVis,
 	runVis10,
 	runVis09,
+	runVis01,
 	ensureCanvasOpen,
 	executeWorkbenchCommand,
 	readFixtureSettings,
