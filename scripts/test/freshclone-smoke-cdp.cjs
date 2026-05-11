@@ -280,12 +280,30 @@ async function main() {
 		}
 		assertionsPassed++;
 
-		// === SC10-1 SC10-3 — Plan 10-01 will fill this in ===
-		// Static-precondition assertion: validate bridge package.json `contributes.commands`
-		// contains all 6 user-discoverable bridge commands. Placeholder is a no-op so the
-		// harness keeps running until 10-01 lands the requiredCommands array + foreach check.
-		const SC10_1_3_PLACEHOLDER = true;
-		if (!SC10_1_3_PLACEHOLDER) { /* unreachable — 10-01 owns */ }
+		// === SC10-1 SC10-3: bridge contributes.commands static precondition ===
+		// Validates that all 6 user-discoverable bridge commands are declared in package.json
+		// so VS Code's MenuRegistry can surface them via Ctrl+Shift+P palette filter.
+		// Pattern mirrors the existing SC#5 #4 static precondition at line 225 (require + ROOT).
+		const bridgePkgForCommands = require(path.join(ROOT, 'extensions', 'goatide-bridge', 'package.json'));
+		const contribCmds = (bridgePkgForCommands && bridgePkgForCommands.contributes && bridgePkgForCommands.contributes.commands) || [];
+		const requiredCommands = [
+			{ command: 'goatide.setSessionPriority', title: 'GoatIDE: Set Session Priority' },
+			{ command: 'goatide.kernel.reconnect', title: 'GoatIDE: Reconnect Kernel' },
+			{ command: 'goatide.mcp.reconnect', title: 'GoatIDE: Reconnect MCP Provider' },
+			{ command: 'goatide.mcp.showStaleProviders', title: 'GoatIDE: Show Stale MCP Providers' },
+			{ command: 'goatide.mcp.showSchemaDrift', title: 'GoatIDE: Show MCP Schema Drift' },
+			{ command: 'goatide.harvester.showStaleSources', title: 'GoatIDE: Show Stale Telemetry Sources' },
+		];
+		for (const req of requiredCommands) {
+			const found = contribCmds.find(c => c && c.command === req.command);
+			if (!found) {
+				throw new Error('SC10-1/SC10-3 FAIL: missing contributes.commands entry for ' + req.command);
+			}
+			if (typeof found.title !== 'string' || found.title.length === 0) {
+				throw new Error('SC10-1/SC10-3 FAIL: ' + req.command + ' has empty title');
+			}
+		}
+		console.log('[freshclone-smoke-cdp] SC10-1/SC10-3: all 6 bridge commands declared in contributes.commands');
 
 		// === SC10-5 — Plan 10-04 will fill this in ===
 		// Meta-test: 40s settle wait + filesystem grep of renderer.log for [error] from
