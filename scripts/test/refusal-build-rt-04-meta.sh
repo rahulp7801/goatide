@@ -54,24 +54,28 @@ if [ "$has_postinstall_script" = "0" ] && [ "$has_prebuild_cjs" -eq 0 ]; then
 	exit 1
 fi
 
-# Section A passes. Section B Node-load check is always cheap; run it now.
-# `cd "$KERNEL"` ensures `require('better-sqlite3')` resolves against kernel/node_modules.
-set +e
-node_load_output=$(cd "$KERNEL" && node -e "require('better-sqlite3').prepare('SELECT 1').get()" 2>&1)
-node_load_ec=$?
-set -e
+# Section A passes. Section B Node-load check.
+#
+# IMPORTANT (Plan 09-06 phase-verify auto-fix Rule 1):
+#   The previous version of this script tried to load better-sqlite3 under plain
+#   Node and used the wrong API shape (`require('better-sqlite3').prepare(...)`
+#   — better-sqlite3's export is a Database constructor, not a connection object).
+#   That always failed with `TypeError: require(...).prepare is not a function`.
+#
+#   Even after fixing the eval-string, plain-Node load is FUNDAMENTALLY INCOMPATIBLE
+#   with Plan 09-04's design: the kernel postinstall fetches an Electron-ABI prebuild
+#   (NODE_MODULE_VERSION 140) because Electron is the production runtime. Node 22 is
+#   ABI 127, so loading an ABI-140 binary under plain Node REQUIRES failing per Node's
+#   loader contract. Plan 09-04 SUMMARY §Deferred Issue #2 documents this and gives
+#   three options; we pick (c): skip Node-load entirely, because only the Electron-
+#   as-Node check is meaningful for the production runtime contract.
+#
+# Section B short-circuit: when BUILD_RT_04_FULL=1 is NOT set, we PASS based on
+# Section A static check alone (postinstall wired). When set, we run the FULL
+# Electron-as-Node load below, which is the actual SC#3 contract.
 
-if [ "$node_load_ec" -ne 0 ]; then
-	echo "META FAIL: kernel postinstall script present but better-sqlite3 doesn't load under node — check ABI mismatch" >&2
-	echo "Node load output:" >&2
-	echo "$node_load_output" >&2
-	exit 1
-fi
-
-# Section B Electron-load check is gated. Without BUILD_RT_04_FULL=1, we stop here
-# with a PASS for the Node half — same gating pattern as refusal-bridge-rt-04.
 if [ "${BUILD_RT_04_FULL:-0}" != "1" ]; then
-	echo "META PASS: kernel postinstall present + better-sqlite3 loads under node (BUILD-RT-04)"
+	echo "META PASS: kernel postinstall wired (BUILD-RT-04 static-config layer)"
 	echo "META SKIP: BUILD_RT_04_FULL=1 not set — Electron-as-Node load deferred to Plan 09-06 phase-verify"
 	exit 0
 fi
@@ -101,16 +105,20 @@ if [ -z "$ELECTRON_BIN" ]; then
 fi
 
 set +e
-electron_load_output=$(cd "$KERNEL" && ELECTRON_RUN_AS_NODE=1 "$ELECTRON_BIN" -e "require('better-sqlite3').prepare('SELECT 1').get()" 2>&1)
+# Use proper better-sqlite3 API: the export is a Database constructor, not an
+# already-opened connection. `new (require('better-sqlite3'))(':memory:')` opens
+# an in-memory DB; .prepare/.get exercises the native binding without disk I/O.
+electron_load_output=$(cd "$KERNEL" && ELECTRON_RUN_AS_NODE=1 "$ELECTRON_BIN" -e "var Database=require('better-sqlite3'); var db=new Database(':memory:'); console.log(db.prepare('SELECT 1 AS v').get().v);" 2>&1)
 electron_load_ec=$?
 set -e
 
 if [ "$electron_load_ec" -ne 0 ]; then
-	echo "META FAIL: better-sqlite3 loads under node but FAILS under Electron-as-Node — ABI mismatch (Node ABI vs Electron ABI)" >&2
+	echo "META FAIL: better-sqlite3 FAILS to load under Electron-as-Node — ABI mismatch (kernel postinstall may not have fetched Electron-target prebuild)" >&2
 	echo "Electron load output:" >&2
 	echo "$electron_load_output" >&2
 	exit 1
 fi
 
-echo "META PASS: kernel postinstall present + better-sqlite3 loads under BOTH node AND Electron-as-Node (BUILD-RT-04 SC #3)"
+echo "META PASS: kernel postinstall wired + better-sqlite3 loads under Electron-as-Node (BUILD-RT-04 SC #3)"
+echo "Electron load output (last line): $(echo "$electron_load_output" | tail -1)"
 exit 0

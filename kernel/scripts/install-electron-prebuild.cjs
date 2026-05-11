@@ -54,10 +54,20 @@ if (fs.existsSync(stalePrebuilt)) {
 	console.log('[kernel/postinstall] Removed stale better_sqlite3.node (replacing with Electron-ABI prebuild for ' + electronTarget + ')');
 }
 
-const cmd = 'npx prebuild-install --runtime electron --target ' + electronTarget + ' --module-dir ' + JSON.stringify(moduleDir);
+// Plan 09-06 phase-verify Rule-1 auto-fix:
+//   The original invocation used `--module-dir <better-sqlite3>` with `cwd: KERNEL_DIR`.
+//   prebuild-install resolved the WRONG package metadata (the cwd's package.json,
+//   i.e. the `kernel` root pkg), producing requests for
+//   `kernel-v0.0.1-electron-v140-...tar.gz` (404). The correct invocation runs
+//   prebuild-install FROM WITHIN the dependent package's directory so it reads
+//   the target package's name/version from its own package.json — yielding
+//   `better-sqlite3-v12.9.0-electron-v140-win32-x64.tar.gz` which actually exists
+//   in the better-sqlite3 GitHub releases. See `prebuild-install --verbose` output
+//   for the metadata difference.
+const cmd = 'npx prebuild-install --runtime electron --target ' + electronTarget;
 console.log('[kernel/postinstall] Fetching Electron-ABI prebuild for better-sqlite3 (Electron ' + electronTarget + ')');
-console.log('[kernel/postinstall] $ ' + cmd);
+console.log('[kernel/postinstall] $ ' + cmd + '   (cwd: ' + moduleDir + ')');
 
-execSync(cmd, { stdio: 'inherit', cwd: KERNEL_DIR });
+execSync(cmd, { stdio: 'inherit', cwd: moduleDir });
 
 console.log('[kernel/postinstall] Done');

@@ -233,9 +233,33 @@ async function runWithConcurrency(tasks: (() => Promise<void>)[], concurrency: n
 	}
 }
 
+// BUILD-RT-03 (Phase 9): copy @vscode/sqlite3 N-API binary from remote/ to root.
+// Hoisted ABOVE the isUpToDate() short-circuit (Plan 09-06 phase-verify Rule-1
+// auto-fix): the original Plan 09-03 placement inside main() AFTER the up-to-date
+// guard meant that simply deleting the binary (e.g. during disk hygiene or a
+// fresh-clone smoke that wipes targeted files) did NOT trigger re-copy on next
+// `npm install`, because the install-state hash hadn't changed. Hoisting + the
+// existing `!fs.existsSync(rootSqliteBinary)` idempotency check makes the copy
+// run on every postinstall invocation when the binary is missing, while staying
+// a no-op when both files are already in place.
+function ensureRootSqliteBinary(): void {
+	const remoteSqliteBinary = path.join(root, 'remote', 'node_modules', '@vscode', 'sqlite3', 'build', 'Release', 'vscode-sqlite3.node');
+	const rootSqliteBinary = path.join(root, 'node_modules', '@vscode', 'sqlite3', 'build', 'Release', 'vscode-sqlite3.node');
+	if (fs.existsSync(remoteSqliteBinary) && !fs.existsSync(rootSqliteBinary)) {
+		fs.mkdirSync(path.dirname(rootSqliteBinary), { recursive: true });
+		fs.copyFileSync(remoteSqliteBinary, rootSqliteBinary);
+		log('.', 'BUILD-RT-03: Copied @vscode/sqlite3 N-API binary to root node_modules');
+	} else if (!fs.existsSync(remoteSqliteBinary)) {
+		log('.', 'BUILD-RT-03: remote/ sqlite3 binary missing — skipping (likely fresh-clone before remote install)');
+	}
+}
+
 async function main() {
 	if (!process.env['VSCODE_FORCE_INSTALL'] && isUpToDate()) {
 		log('.', 'All dependencies up to date, skipping postinstall.');
+		// BUILD-RT-03: still ensure the root sqlite3 binary is in place, even when
+		// the install-state hash short-circuits the full postinstall flow.
+		ensureRootSqliteBinary();
 		child_process.execSync('git config pull.rebase merges');
 		child_process.execSync('git config blame.ignoreRevsFile .git-blame-ignore-revs');
 		return;
@@ -310,21 +334,10 @@ async function main() {
 	await runWithConcurrency(parallelTasks, concurrency);
 
 	// BUILD-RT-03 (Phase 9): copy @vscode/sqlite3 N-API binary from remote/ to root.
-	// The binary lives at <pkg>/build/Release/vscode-sqlite3.node and is hardcoded
-	// in remote/node_modules/@vscode/sqlite3/lib/sqlite3-binding.js:4 as
-	// `require('../build/Release/vscode-sqlite3.node')`. The binary is N-API
-	// (napi_versions: [3, 6] per package.json) so it works under both Node and
-	// Electron. Use copyFileSync (NOT symlink): binary is ~3MB and Windows
-	// non-admin can't create file symlinks (Pitfall 4 in 09-RESEARCH.md).
-	const remoteSqliteBinary = path.join(root, 'remote', 'node_modules', '@vscode', 'sqlite3', 'build', 'Release', 'vscode-sqlite3.node');
-	const rootSqliteBinary = path.join(root, 'node_modules', '@vscode', 'sqlite3', 'build', 'Release', 'vscode-sqlite3.node');
-	if (fs.existsSync(remoteSqliteBinary) && !fs.existsSync(rootSqliteBinary)) {
-		fs.mkdirSync(path.dirname(rootSqliteBinary), { recursive: true });
-		fs.copyFileSync(remoteSqliteBinary, rootSqliteBinary);
-		log('.', 'BUILD-RT-03: Copied @vscode/sqlite3 N-API binary to root node_modules');
-	} else if (!fs.existsSync(remoteSqliteBinary)) {
-		log('.', 'BUILD-RT-03: remote/ sqlite3 binary missing — skipping (likely fresh-clone before remote install)');
-	}
+	// See ensureRootSqliteBinary() above for full context — the function is hoisted
+	// so the up-to-date short-circuit at the top of main() also restores the binary
+	// when missing.
+	ensureRootSqliteBinary();
 
 	child_process.execSync('git config pull.rebase merges');
 	child_process.execSync('git config blame.ignoreRevsFile .git-blame-ignore-revs');
