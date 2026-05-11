@@ -14,7 +14,7 @@ import { describe, it, beforeEach, afterEach } from 'mocha';
 import { strict as assert } from 'node:assert';
 import * as vscode from 'vscode';
 import { SchemaDriftBanner, type SchemaDriftKernelClient } from '../../../src/mcp/schema-drift-banner.js';
-import type { McpSchemaDriftReportEntry } from '../../../src/kernel/methods.js';
+import type { McpProviderNameWire, McpSchemaDriftReportEntry } from '../../../src/kernel/methods.js';
 
 interface VscodeStatusBarItemSpy {
 	text: string;
@@ -28,16 +28,27 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Test-only options for `makeMockKernel`. `providers` seeds the `mcpListProviders` response
+ * so SchemaDriftBanner's Plan 10-02 precondition gate can be exercised: empty array means
+ * "no MCP providers configured -> banner must not poll drift-report".
+ */
+interface MockKernelOpts {
+	providers?: readonly McpProviderNameWire[];
+}
+
 interface MockKernel extends SchemaDriftKernelClient {
+	mcpListProviders(): Promise<{ providers: McpProviderNameWire[] }>;
 	__setReport(entries: McpSchemaDriftReportEntry[]): void;
 	__pollCount(): number;
 	__acceptCalls(): { provider: string }[];
 }
 
-function makeMockKernel(): MockKernel {
+function makeMockKernel(opts: MockKernelOpts = {}): MockKernel {
 	let report: McpSchemaDriftReportEntry[] = [];
 	let pollCount = 0;
 	const acceptCalls: { provider: string }[] = [];
+	const configuredProviders: McpProviderNameWire[] = opts.providers ? [...opts.providers] : [];
 	const k: MockKernel = {
 		mcpGetSchemaDriftReport: async () => {
 			pollCount++;
@@ -47,6 +58,7 @@ function makeMockKernel(): MockKernel {
 			acceptCalls.push({ provider: params.provider });
 			return { accepted: true };
 		},
+		mcpListProviders: async () => ({ providers: [...configuredProviders] }),
 		__setReport: (e) => { report = e; },
 		__pollCount: () => pollCount,
 		__acceptCalls: () => acceptCalls,
@@ -273,5 +285,28 @@ describe('MCP-07: schema-drift banner polls + renders + offers user actions', ()
 				pauseInfoCalls: ['GoatIDE: MCP slack remains paused on schema drift.'],
 			},
 		});
+	});
+
+	// Phase 10 Plan 10-00 (Wave 0) — RED stubs staking out the POLISH-02 precondition gate.
+	// Plan 10-02 lands the SchemaDriftBanner refactor that calls mcpListProviders before
+	// scheduling its 30s poll loop; empty providers => skip poll => no protocol-drift noise
+	// in renderer.log when no MCP servers are configured (SC#2 closure).
+
+	it.skip('does not poll mcp.getSchemaDriftReport when no providers configured', async () => {
+		// Plan 10-02 implements:
+		//   - construct SchemaDriftBanner with makeMockKernel({ providers: [] });
+		//   - sleep 5x pollIntervalMs to give the banner ample time for any (incorrect) polls;
+		//   - assert kernel.__pollCount() === 0 (precondition gate suppressed the poll loop);
+		//   - banner.dispose().
+		void makeMockKernel;
+	});
+
+	it.skip('polls mcp.getSchemaDriftReport when at least one provider configured', async () => {
+		// Plan 10-02 implements:
+		//   - construct SchemaDriftBanner with makeMockKernel({ providers: ['github'] });
+		//   - sleep 5x pollIntervalMs to allow multiple poll ticks;
+		//   - assert kernel.__pollCount() > 0 (precondition gate let the poll loop through);
+		//   - banner.dispose().
+		void makeMockKernel;
 	});
 });
