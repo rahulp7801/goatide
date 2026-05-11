@@ -54,26 +54,39 @@ export function registerSaveGate(
 	panel: CanvasPanel,
 	queue: PendingAttemptsQueue,
 ): vscode.Disposable {
-	const sub = vscode.workspace.onWillSaveTextDocument(async (event) => {
+	const sub = vscode.workspace.onWillSaveTextDocument((event) => {
 		if (event.reason !== vscode.TextDocumentSaveReason.Manual) {
 			return;   // skip auto-save / format-on-save (data-integrity carveout)
 		}
 		const doc = event.document;
-
-		// Capture the original (on-disk) content + the in-memory modified content BEFORE we veto.
-		// readFile is fast (single file, small); does not blow the 1.5s budget.
-		let original: string;
-		try {
-			const buf = await fsp.readFile(doc.uri.fsPath, 'utf8');
-			original = buf;
-		} catch {
-			original = '';   // new file
-		}
+		// Capture modified content synchronously (in-memory; cheap).
 		const modified = doc.getText();
 
-		// Veto the save. The handler runs asynchronously in the background.
-		event.waitUntil(Promise.reject(new SaveDeferredError(doc.uri.toString())));
-		void handleProposedSave(kernel, panel, doc, original, modified, queue);
+		// Phase 11 Plan 11-01 (Rule 1 Bug — VS Code API contract violation): the previous
+		// implementation `await fsp.readFile(...)` BEFORE `event.waitUntil(...)`, which
+		// violates VS Code's onWillSaveTextDocument contract (waitUntil must be called
+		// synchronously or within the same microtask as the listener invocation). On cold
+		// starts the await took >1750ms and VS Code logged `Illegal state: waitUntil can
+		// not be called async`, aborting the save-gate before the canvas could reveal.
+		//
+		// Fix: call waitUntil() FIRST, passing a Promise that does the readFile inside it.
+		// The Promise still rejects with SaveDeferredError to veto the save; the file-read +
+		// handleProposedSave happens inside the Promise's async chain so VS Code's
+		// extension-host scheduler sees a single synchronous waitUntil call.
+		const vetoPromise = (async () => {
+			let original: string;
+			try {
+				original = await fsp.readFile(doc.uri.fsPath, 'utf8');
+			} catch {
+				original = '';   // new file
+			}
+			// Fire-and-forget the proposal flow; do NOT await it inside the veto Promise
+			// because the 1.5s budget applies to the waitUntil Promise resolution.
+			void handleProposedSave(kernel, panel, doc, original, modified, queue);
+			// Reject so the save is vetoed (cancel-then-redo pattern).
+			throw new SaveDeferredError(doc.uri.toString());
+		})();
+		event.waitUntil(vetoPromise);
 	});
 	ctx.subscriptions.push(sub);
 	return sub;
