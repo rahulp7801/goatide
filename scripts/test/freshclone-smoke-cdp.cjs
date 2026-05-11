@@ -26,6 +26,11 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
+// Phase 10 Plan 10-00 (Wave 0): pre-stage promise-based fs API so Plan 10-04 (SC10-5
+// renderer.log meta-test) can `await fsPromises.readFile(...)` without re-introducing a
+// helper at its insertion site. The existing `sleep` helper at line ~62 is reused for the
+// 40s settle wait; no new `sleep` declaration is added.
+const fsPromises = require('node:fs/promises');
 const os = require('node:os');
 const playwright = require('playwright');
 
@@ -274,6 +279,21 @@ async function main() {
 			console.log('[freshclone-smoke-cdp] SC#5 assert 4/4: goatide.setSessionPriority command contribution PASS (static); runtime probe = ' + runtimeProbe + ' (delegated to Plan 09-06 phase-verify per RESEARCH.md)');
 		}
 		assertionsPassed++;
+
+		// === SC10-1 SC10-3 — Plan 10-01 will fill this in ===
+		// Static-precondition assertion: validate bridge package.json `contributes.commands`
+		// contains all 6 user-discoverable bridge commands. Placeholder is a no-op so the
+		// harness keeps running until 10-01 lands the requiredCommands array + foreach check.
+		const SC10_1_3_PLACEHOLDER = true;
+		if (!SC10_1_3_PLACEHOLDER) { /* unreachable — 10-01 owns */ }
+
+		// === SC10-5 — Plan 10-04 will fill this in ===
+		// Meta-test: 40s settle wait + filesystem grep of renderer.log for [error] from
+		// goatide-bridge. Placeholder is a no-op so the harness keeps running until 10-04
+		// lands the wait + readFile + filter logic. Helpers `sleep` (line ~62) and
+		// `fsPromises` (added in this plan, near imports) are already in scope.
+		const SC10_5_PLACEHOLDER = true;
+		if (!SC10_5_PLACEHOLDER) { /* unreachable — 10-04 owns */ }
 	} finally {
 		// Pitfall 6: do NOT force-kill the kernel daemon; it persists per Mandate-A.
 		// Pitfall 7 (this plan): electron.close() can hang indefinitely if the renderer is
