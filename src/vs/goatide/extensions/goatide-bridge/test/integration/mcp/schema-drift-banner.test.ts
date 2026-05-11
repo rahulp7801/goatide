@@ -296,26 +296,30 @@ describe('MCP-07: schema-drift banner polls + renders + offers user actions', ()
 		});
 	});
 
-	// Phase 10 Plan 10-00 (Wave 0) — RED stubs staking out the POLISH-02 precondition gate.
-	// Plan 10-02 lands the SchemaDriftBanner refactor that calls mcpListProviders before
-	// scheduling its 30s poll loop; empty providers => skip poll => no protocol-drift noise
-	// in renderer.log when no MCP servers are configured (SC#2 closure).
+	// Phase 10 Plan 10-02 (POLISH-02) — SchemaDriftBanner precondition gate.
+	// Banner calls kernel.mcpListProviders() once at construction; an empty providers array
+	// suppresses the 30s mcp.getSchemaDriftReport poll loop entirely (eliminating the
+	// renderer.log `[error]` noise that grew out of MethodNotFound responses when no MCP
+	// providers were configured — research SC#5 root cause). Non-empty array proceeds into
+	// the normal poll cadence.
 
-	it.skip('does not poll mcp.getSchemaDriftReport when no providers configured', async () => {
-		// Plan 10-02 implements:
-		//   - construct SchemaDriftBanner with makeMockKernel({ providers: [] });
-		//   - sleep 5x pollIntervalMs to give the banner ample time for any (incorrect) polls;
-		//   - assert kernel.__pollCount() === 0 (precondition gate suppressed the poll loop);
-		//   - banner.dispose().
-		void makeMockKernel;
+	it('Plan 10-02 (POLISH-02): does not poll mcp.getSchemaDriftReport when no providers configured', async () => {
+		const kernel = makeMockKernel({ providers: [] });
+		const banner = new SchemaDriftBanner(kernel, { pollIntervalMs: 200 });
+		// Wait 5x pollIntervalMs (Nyquist) — ample time for any (incorrect) polls to fire.
+		await sleep(1000);
+		const pollCount = kernel.__pollCount();
+		banner.dispose();
+		assert.strictEqual(pollCount, 0);
 	});
 
-	it.skip('polls mcp.getSchemaDriftReport when at least one provider configured', async () => {
-		// Plan 10-02 implements:
-		//   - construct SchemaDriftBanner with makeMockKernel({ providers: ['github'] });
-		//   - sleep 5x pollIntervalMs to allow multiple poll ticks;
-		//   - assert kernel.__pollCount() > 0 (precondition gate let the poll loop through);
-		//   - banner.dispose().
-		void makeMockKernel;
+	it('Plan 10-02 (POLISH-02): polls mcp.getSchemaDriftReport when at least one provider configured', async () => {
+		const kernel = makeMockKernel({ providers: ['github'] });
+		const banner = new SchemaDriftBanner(kernel, { pollIntervalMs: 200 });
+		// Wait 5x pollIntervalMs — bootstrap's initial poll + at least 1 interval tick.
+		await sleep(1000);
+		const pollCount = kernel.__pollCount();
+		banner.dispose();
+		assert.ok(pollCount > 0, `expected pollCount > 0, got ${pollCount}`);
 	});
 });
