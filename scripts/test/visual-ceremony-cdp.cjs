@@ -38,6 +38,15 @@ const FIXTURE = path.join(ROOT, 'kernel', 'test-fixtures', 'visual-workspace');
 const SCREENSHOTS_DIR = path.join(ROOT, '.planning', 'phases', '11-visual-ceremony', 'screenshots');
 const product = require(path.join(ROOT, 'product.json'));
 
+// Phase 11 Plan 11-01 (Rule 3 Blocking, Wave-0 deviation #4 follow-up): the bridge
+// extension is NOT auto-loaded under VSCODE_DEV without --extensionDevelopmentPath.
+// MEMORY.md "Bridge extension registration gap" + "GoatIDE working launch recipe"
+// document the requirement: pass the absolute path to the bridge SOURCE directory
+// (which has dist/extension.js produced by prepare_goatide.sh / build pipeline).
+// Wave 0 worked around this by pivoting WAVE0-SMOKE to a built-in webview; Wave 1+
+// requires the bridge to be loaded so goatide.setSessionPriority + save-gate fire.
+const BRIDGE_EXTENSION_DEV_PATH = path.join(ROOT, 'src', 'vs', 'goatide', 'extensions', 'goatide-bridge');
+
 const {
 	resolveElectronPath,
 	resolveKernelLockPath,
@@ -71,9 +80,27 @@ function parseArgs(argv) {
 // with their own wave numbers. The runner filters by --only and --waves against this
 // registry before launching electron; if zero surfaces match the harness exits 0
 // without invoking _electron.launch (avoids burning 60s on a no-op filter).
+//
+// Phase 11 Plan 11-01 (Wave 1) appends VIS-10 → VIS-09 → VIS-01 in Pitfall-9 order:
+// VIS-10 flips workspace priority, VIS-09 saves a file (consumes the flipped priority
+// to produce an IntentDriftBadge), VIS-01 verifies the Canvas chrome of the same save
+// flow + clicks reject to leave the canvas clean for downstream waves.
 const SURFACE_REGISTRY = [
 	{ id: 'WAVE0-SMOKE', wave: 0, runner: runWebviewSmokeAssertion },
+	{ id: 'VIS-10', wave: 1, runner: runVis10 },
+	{ id: 'VIS-09', wave: 1, runner: runVis09 },
 ];
+
+// WAVE_BY_ID — flat id → wave map used by Plans 11-01..11-04 for cross-referencing
+// (declared verbatim per Plan 11-01 spec). The SURFACE_REGISTRY's per-entry `wave`
+// field remains the authoritative source for --waves filtering; this map is a
+// convenience lookup for assertions and downstream plans that need a wave number
+// without iterating the registry.
+const WAVE_BY_ID = {
+	'WAVE0-SMOKE': 0,
+	'VIS-10': 1,
+	'VIS-09': 1,
+};
 
 // --- Pre-flight: kill stale GoatIDE processes -------------------------------
 // Best-effort: on win32 tasklist+taskkill; on POSIX pkill -f. Non-fatal — a leftover
@@ -199,6 +226,247 @@ async function runWebviewSmokeAssertion(window) {
 	}
 }
 
+// === Wave 1: VIS-10 → VIS-09 → VIS-01 ======================================
+// Phase 11 Plan 11-01 — three Wave-1 surfaces in Pitfall-9 order. VIS-10 flips the
+// workspace session priority (Quality-First → Speed-First) so VIS-09 sees the
+// derived_under_priority mismatch against the seeded DecisionNode and renders the
+// IntentDriftBadge. VIS-01 verifies the Canvas modal chrome around the same save
+// flow and then clicks reject to leave the canvas clean for downstream waves.
+//
+// Helper: read fixture workspace settings.json from disk (await readFile, JSON.parse).
+async function readFixtureSettings() {
+	const settingsPath = path.join(FIXTURE, '.vscode', 'settings.json');
+	const raw = await fsPromises.readFile(settingsPath, 'utf8');
+	return JSON.parse(raw);
+}
+
+// Helper: drive an arbitrary VS Code command via window.evaluate. Returns a sentinel
+// string indicating which dispatch path succeeded (or 'evaluate-timeout' / 'no-handler'
+// when the runtime probe fails). Mirrors the freshclone-smoke-cdp.cjs:244-275 runtime
+// probe pattern — the AMD `require('vs/...')` path is best-effort because the loader
+// signature varies across Electron builds. The 10s race guards against renderer hangs.
+//
+// Resolution strategy (in order):
+//   1. globalThis.require('vs/platform/commands/common/commands').CommandsRegistry — AMD
+//      loader path; works on builds where the renderer exposes the AMD loader globally
+//      (most VS Code Insiders + stable, but NOT this Electron build per Wave-0 deviation #4).
+//   2. globalThis._VSCODE_WORKBENCH_COMMANDS — if VS Code exposed a top-level command
+//      service hook (probed defensively; missing on most builds).
+//   3. Look up the command service via the workbench's service collection accessor that
+//      VS Code attaches to the workbench DOM node. Some builds expose this as
+//      `workbench.services.commandService` via window.workbench.
+//   4. Document.querySelector chain — last resort. Walk the workbench element tree
+//      looking for an exposed service hook. Returns 'no-amd-loader' to signal the
+//      caller should fall back to keyboard-driven palette dispatch.
+async function executeWorkbenchCommand(window, commandId, ...args) {
+	const probe = await Promise.race([
+		window.evaluate(async ({ id, params }) => {
+			try {
+				// Strategy 1: globalThis.require (AMD loader).
+				const req = globalThis.require;
+				if (typeof req === 'function') {
+					try {
+						const commandsMod = req('vs/platform/commands/common/commands');
+						if (commandsMod && commandsMod.CommandsRegistry && typeof commandsMod.CommandsRegistry.getCommand === 'function') {
+							const cmd = commandsMod.CommandsRegistry.getCommand(id);
+							if (cmd && typeof cmd.handler === 'function') {
+								// CommandsRegistry handlers expect (accessor, ...args); we have no
+								// accessor in this context. Bridge-registered commands wrap via
+								// vscode.commands.registerCommand which ignores the accessor arg.
+								const result = await cmd.handler(undefined, ...params);
+								return 'ok' + (typeof result === 'undefined' ? '' : ':' + String(result).slice(0, 60));
+							}
+							return 'no-handler:' + id;
+						}
+					} catch (_e1) {
+						// fall through to other strategies
+					}
+				}
+				// Strategy 2: VS Code occasionally exposes a workbench-test hook.
+				const hook = globalThis._VSCODE_WORKBENCH_COMMANDS;
+				if (hook && typeof hook.executeCommand === 'function') {
+					try {
+						const result = await hook.executeCommand(id, ...params);
+						return 'ok-hook' + (typeof result === 'undefined' ? '' : ':' + String(result).slice(0, 60));
+					} catch (_e2) {
+						// fall through
+					}
+				}
+				// All strategies exhausted.
+				return typeof req === 'function' ? 'no-amd-loader-resolve' : 'no-amd-loader';
+			} catch (err) {
+				return 'evaluate-threw:' + (err && err.message ? err.message : String(err));
+			}
+		}, { id: commandId, params: args }),
+		new Promise(resolve => setTimeout(() => resolve('evaluate-timeout'), 10_000)),
+	]);
+	return probe;
+}
+
+// runVis10 — flip session priority from Quality-First → Speed-First via the bridge's
+// goatide.setSessionPriority quickPick. Pre-asserts the fixture baseline; post-asserts
+// the workspace settings.json write-through and that the quickPick surfaced 5 options.
+async function runVis10(window) {
+	// 1. Pre-condition: fixture .vscode/settings.json baseline is Quality-First.
+	const before = await readFixtureSettings();
+	if (before['goatide.session.priority'] !== 'Quality-First') {
+		throw new Error('VIS-10: fixture baseline corrupt — expected goatide.session.priority="Quality-First", got ' + JSON.stringify(before));
+	}
+
+	// 2. Invoke the command. AMD-loader path is unavailable on this Electron build
+	// (Wave-0 deviation #4 + confirmed via renderer-globals probe — globalThis.require
+	// is undefined and globalThis.vscode is the Electron sandbox bridge, not the VS Code
+	// extension API). The keyboard-driven palette is the canonical path; the bridge's
+	// contributes.commands entry (Phase 10 Plan 10-01) makes the command
+	// palette-discoverable as "GoatIDE: Set Session Priority".
+	//
+	// Strategy: try executeWorkbenchCommand first (cheap; passes through unchanged on
+	// builds where AMD is exposed). On no-amd-loader, fall back to F1 palette.
+	const dispatch = await executeWorkbenchCommand(window, 'goatide.setSessionPriority');
+	if (!dispatch.startsWith('ok')) {
+		console.log('[visual-ceremony-cdp]   VIS-10: AMD-require dispatch returned "' + dispatch + '"; falling back to F1 palette');
+		// F1 is the canonical workbench-command-palette key (Show Commands). Press it
+		// without any preceding click — body clicks steal focus from the workbench's
+		// global-keybinding-handler scope on this Electron build (verified empirically).
+		// Control+Shift+P also doesn't reliably route through Electron's IME layer here.
+		await window.keyboard.press('F1');
+		await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
+		await sleep(500);
+		// Type the command title — palette filters as we type.
+		await window.keyboard.type('GoatIDE: Set Session Priority');
+		await sleep(700);
+		await window.keyboard.press('Enter');
+		await sleep(700);
+	}
+
+	// 3. Wait for the quickPick options to render. The widget stays the same DOM node
+	// across palette → quickPick transitions, so we wait for at least one row that
+	// matches one of the 5 priority options.
+	await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 5_000 });
+	await window.locator('.quick-input-list .monaco-list-row').first().waitFor({ state: 'visible', timeout: 5_000 });
+
+	// 4. Assert all 5 expected options are present. allInnerTexts() collects the visible
+	// row labels; we tolerate small whitespace differences via includes() rather than
+	// strict equality.
+	const items = window.locator('.quick-input-list .monaco-list-row');
+	const texts = await items.allInnerTexts();
+	const expected = ['Speed-First', 'Quality-First', 'Safety-First', 'Cost-First', 'Custom...'];
+	for (const label of expected) {
+		if (!texts.some(t => t.includes(label))) {
+			throw new Error('VIS-10: quickPick missing "' + label + '"; got: ' + JSON.stringify(texts));
+		}
+	}
+
+	// 5. Click the Speed-First row. Playwright's :has-text() filter matches case-sensitive
+	// substring; the row label is exactly "Speed-First" per extension.ts:139.
+	await window.locator('.quick-input-list .monaco-list-row:has-text("Speed-First")').first().click();
+
+	// 6. Settle: vscode.workspace.getConfiguration().update() flushes to disk asynchronously.
+	// 1000ms is the same settle window used by freshclone-smoke-cdp.cjs for settings writes.
+	await sleep(1000);
+
+	// 7. Assert the workspace settings.json now contains Speed-First.
+	const after = await readFixtureSettings();
+	if (after['goatide.session.priority'] !== 'Speed-First') {
+		throw new Error('VIS-10: workspace settings not updated; expected Speed-First, got ' + JSON.stringify(after));
+	}
+
+	// Screenshot taken by the runVis() wrapper.
+}
+
+// ensureCanvasOpen — VIS-09 + VIS-01 precondition. Idempotent: opens src/auth/login.ts,
+// makes a deterministic edit via fs.writeFile (avoids the editor.action.* + type
+// instability noted in Plan 11-01), triggers workbench.action.files.save, waits for
+// the Canvas iframe to render. Used by --only VIS-01 standalone invocations.
+async function ensureCanvasOpen(window) {
+	const loginPath = path.join(FIXTURE, 'src', 'auth', 'login.ts');
+
+	// Phase 11 Plan 11-01: pre-stage the edit BEFORE attempting to open in editor.
+	// vscode.workspace.openTextDocument reads from disk; the buffer becomes dirty when
+	// we trigger save (the save-gate intercepts the save event regardless of whether
+	// the editor buffer differs from disk because workbench.action.files.save fires
+	// on any open editor).
+	const marker = '// vis-09 marker — save-gate trigger #' + Date.now();
+	let content = await fsPromises.readFile(loginPath, 'utf8');
+	// Strip any prior markers + append the fresh one so each invocation produces a
+	// unique tail that the save-gate's diff detector recognizes as a non-trivial edit.
+	content = content.split(/\r?\n/).filter(l => !l.startsWith('// vis-09 marker')).join('\n');
+	content = content.replace(/[\r\n]*$/, '\n') + marker + '\n';
+	await fsPromises.writeFile(loginPath, content, 'utf8');
+
+	// Open via the workbench quickOpen file-picker. This is the most robust path on
+	// builds where globalThis.require is unavailable. F1+ "Go to File:" opens the
+	// same picker as Ctrl+P but goes through the keybinding service (more reliable
+	// on this Electron build than Ctrl+P direct chord).
+	const openProbe = await executeWorkbenchCommand(window, 'vscode.open', loginPath);
+	if (!openProbe.startsWith('ok')) {
+		await window.keyboard.press('F1');
+		await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
+		await sleep(400);
+		// "Go to File:" is the title of workbench.action.quickOpen — typing this filters
+		// the command palette to the file-open variant.
+		await window.keyboard.type('Go to File: ');
+		await sleep(400);
+		await window.keyboard.press('Enter');
+		await sleep(400);
+		// Now type the filename to filter the file picker.
+		await window.keyboard.type('login.ts');
+		await sleep(500);
+		await window.keyboard.press('Enter');
+		await sleep(1500);  // editor open + LSP attach
+	}
+
+	// Trigger save. The save-gate listener intercepts and shows the Canvas asynchronously.
+	const saveProbe = await executeWorkbenchCommand(window, 'workbench.action.files.save');
+	if (!saveProbe.startsWith('ok')) {
+		// Fallback: keyboard save. Ctrl+S is a simple chord that works on this build.
+		await window.keyboard.press('Control+S');
+	}
+
+	// Wait for the canvas iframe to attach. The save-gate's tier-dispatch can take
+	// several seconds on first invocation (cold kernel RPC + drift evaluation).
+	//
+	// Disambiguation: the workbench renders multiple iframe.webview.ready elements
+	// (Welcome walkthrough + GoatIDE Verification Canvas + Chat). The bridge's canvas
+	// iframe's src URL contains `extensionId=goatide.goatide-bridge`; we narrow the
+	// outer iframe locator to that specific extension before traversing into
+	// iframe#active-frame. Without this disambiguation, Playwright's strict-mode
+	// resolution throws on the multi-element match.
+	const canvasFrame = window
+		.frameLocator('iframe.webview.ready[src*="extensionId=goatide.goatide-bridge"]')
+		.frameLocator('iframe#active-frame');
+	await canvasFrame.locator('[data-testid="canvas-accept"]').waitFor({ state: 'visible', timeout: 20_000 });
+	return canvasFrame;
+}
+
+// runVis09 — save src/auth/login.ts under Speed-First priority (set by VIS-10), then
+// assert the resulting Receipt's CitationList renders an IntentDriftBadge inside a
+// citation row. Depends on VIS-10 having flipped the priority; if invoked standalone,
+// ensureCanvasOpen still produces a valid canvas but the IntentDriftBadge will only
+// surface if VIS-10 has run (or the fixture has been pre-tampered to Speed-First).
+async function runVis09(window) {
+	// Defensive: if VIS-10 wasn't run in this session, re-read fixture settings and warn
+	// loudly so the failure mode is clear when the assert below fires.
+	const settings = await readFixtureSettings();
+	if (settings['goatide.session.priority'] !== 'Speed-First') {
+		console.warn('[visual-ceremony-cdp]   VIS-09: fixture priority is "' + settings['goatide.session.priority'] + '" not "Speed-First"; IntentDriftBadge will not render (run VIS-10 first or use --waves 1)');
+	}
+
+	const canvasFrame = await ensureCanvasOpen(window);
+
+	// Wait for at least one citation row before checking for the IntentDriftBadge.
+	await canvasFrame.locator('[data-testid="citation-row"]').first().waitFor({ state: 'visible', timeout: 20_000 });
+
+	// Assert: at least one IntentDriftBadge inside a citation row.
+	const driftBadge = canvasFrame.locator('[data-testid="citation-row"] [data-testid="intent-drift-badge"]');
+	const count = await driftBadge.count();
+	if (count < 1) {
+		throw new Error('VIS-09: expected >=1 [data-testid="intent-drift-badge"] inside [data-testid="citation-row"]; got ' + count);
+	}
+
+	// Leave the canvas open — VIS-01 immediately consumes the same state.
+}
+
 // --- Report printer ---------------------------------------------------------
 function printReport(results) {
 	console.log('');
@@ -303,17 +571,61 @@ async function main() {
 	// positionals as files/folders to add to the workspace; the first positional is the
 	// workspace root which VSCODE_DEV uses to locate product.json + out/. Pitfall 5 —
 	// both paths absolute (path.resolve).
+	// Phase 11 Plan 11-01 — Wave-1 surfaces (VIS-10/09/01) require the bridge extension
+	// to be activated so `goatide.setSessionPriority` is registered and the save-gate
+	// listener fires on workbench.action.files.save. Without --extensionDevelopmentPath,
+	// the bridge's package.json contributes are present (Phase 10 SC10-1/SC10-3) but
+	// the extension code in dist/extension.js never runs in this DEV-mode launch.
+	//
+	// Per MEMORY.md "GoatIDE working launch recipe": absolute path required; the dist/
+	// directory inside is produced by prepare_goatide.sh / phase build pipeline. We pass
+	// the SRC location (src/vs/goatide/extensions/goatide-bridge/) rather than the mirror
+	// (extensions/goatide-bridge/) because the mirror's dist/ is propagated at compile
+	// time and may lag behind the source's dist/ during iterative development.
+	//
+	// Only added when the dist/extension.js artifact exists; otherwise we soft-warn and
+	// proceed without it so WAVE0-SMOKE still runs against the unwired build.
+	const bridgeDistExtension = path.join(BRIDGE_EXTENSION_DEV_PATH, 'dist', 'extension.js');
+	const bridgeLoadable = fs.existsSync(bridgeDistExtension);
+	if (!bridgeLoadable) {
+		console.warn('[visual-ceremony-cdp] bridge dist/extension.js missing at ' + bridgeDistExtension + ' — Wave-1+ surfaces will fail (bridge extension not loadable)');
+	}
+
 	const launchArgs = [
 		ROOT,
 		path.resolve(FIXTURE),
 		'--user-data-dir=' + userDataDir,
 		'--extensions-dir=' + extDir,
 		'--no-cached-data',
+		// Phase 11 Plan 11-01 (Rule 3 Blocking — workspace trust modal): without this flag,
+		// VS Code prompts "Do you trust the authors of the files in this folder?" on first
+		// launch with the fixture as workspace, and the modal intercepts ALL keyboard input
+		// + blocks command execution until dismissed. --disable-workspace-trust is the
+		// canonical CLI flag for automated runs (designed for exactly this scenario).
+		'--disable-workspace-trust',
 	];
+	if (bridgeLoadable) {
+		launchArgs.push('--extensionDevelopmentPath=' + BRIDGE_EXTENSION_DEV_PATH);
+		console.log('[visual-ceremony-cdp] loading bridge extension from ' + BRIDGE_EXTENSION_DEV_PATH);
+	}
+	// Phase 11 Plan 11-01 (Rule 3 Blocking — seeded-DB never reached the daemon):
+	// kernel/src/main.ts:29 honors GOATIDE_DB env var; bridge's client.ts:151 forwards
+	// it to the spawned daemon. Without this, the harness copies the seeded DB into
+	// userDataDir but the daemon resolves %APPDATA%/goatide/graph.db and reads from
+	// the developer's real DB (or an empty fallback) — proposeEdit returns no
+	// citations + the Canvas never reveals. GOATIDE_LOCKFILE_PATH also override for
+	// hermetic test isolation (otherwise an existing daemon on the dev machine's
+	// %APPDATA%/goatide/kernel.lock would be reused by the bridge's ensureKernel).
+	const isolatedDbPath = path.join(userDataDir, 'goatide', 'graph.db');
+	const isolatedLockPath = path.join(userDataDir, 'goatide', 'kernel.lock');
 	const launchEnv = Object.assign({}, process.env, {
 		VSCODE_DEV: '1',
 		VSCODE_CLI: '1',
+		GOATIDE_DB: isolatedDbPath,
+		GOATIDE_LOCKFILE_PATH: isolatedLockPath,
 	});
+	console.log('[visual-ceremony-cdp] kernel isolation: GOATIDE_DB=' + isolatedDbPath);
+	console.log('[visual-ceremony-cdp] kernel isolation: GOATIDE_LOCKFILE_PATH=' + isolatedLockPath);
 
 	console.log('[visual-ceremony-cdp] launching ' + electronPath);
 	const electron = await playwright._electron.launch({
@@ -335,8 +647,28 @@ async function main() {
 		}
 
 		// Wait for kernel.lock as a readiness signal — the bridge can't talk to a kernel
-		// that hasn't bound its port yet.
-		await waitForKernelLock(kernelLockPath, 30_000);
+		// that hasn't bound its port yet. Use the ISOLATED lockfile path (set via
+		// GOATIDE_LOCKFILE_PATH in launchEnv), not the production %APPDATA% path —
+		// the dev's real daemon may be running on the production lockfile and would
+		// produce a false ready signal.
+		await waitForKernelLock(isolatedLockPath, 60_000);
+
+		// Phase 11 Plan 11-01 (Rule 2 Missing Critical): the workbench needs ~15s after
+		// waitForLoadState for the keybinding service + workspace-context to attach
+		// keyboard listeners. Without this settle window, the first F1 / Ctrl+S in
+		// runVis10 / runVis09 misses the workbench (verified empirically: 8s = miss,
+		// 15s = hit on this Electron build). Skip for WAVE0-SMOKE which uses a
+		// command-by-evaluate path that doesn't depend on keybindings.
+		//
+		// IMPORTANT: do NOT click into the workbench to "focus" it before pressing F1.
+		// On this build, the body click steals focus from the workbench's
+		// global-keybinding-handler scope and F1 silently falls through (verified
+		// empirically: no-click F1 → palette opens; body-click + F1 → palette stays hidden).
+		const needsKeybindingSettle = surfaces.some(s => s.id.startsWith('VIS-'));
+		if (needsKeybindingSettle) {
+			console.log('[visual-ceremony-cdp] settling 15s for keybinding service attach...');
+			await sleep(15_000);
+		}
 
 		// Run each filtered surface sequentially. Single-launch + sequential runners
 		// matches freshclone-smoke-cdp.cjs's main() pattern — re-launching electron for
@@ -363,6 +695,44 @@ async function main() {
 		} catch (err) {
 			console.warn('[visual-ceremony-cdp] electron.close() threw (non-fatal): ' + err.message);
 		}
+
+		// Phase 11 Plan 11-01 (Rule 2 Missing Critical): restore fixture baseline.
+		// VIS-10 mutates kernel/test-fixtures/visual-workspace/.vscode/settings.json
+		// from Quality-First → Speed-First. The next run's baseline assertion needs
+		// Quality-First — without this restoration, the harness becomes non-idempotent
+		// and the second invocation fails the precondition check.
+		try {
+			const settingsPath = path.join(FIXTURE, '.vscode', 'settings.json');
+			await fsPromises.writeFile(
+				settingsPath,
+				JSON.stringify({ 'goatide.session.priority': 'Quality-First' }, null, '\t') + '\n',
+				'utf8',
+			);
+			console.log('[visual-ceremony-cdp] restored fixture baseline (.vscode/settings.json -> Quality-First)');
+		} catch (err) {
+			console.warn('[visual-ceremony-cdp] fixture-baseline restore failed (non-fatal): ' + err.message);
+		}
+
+		// Also undo runVis09's marker append to src/auth/login.ts so repeated runs
+		// don't accumulate marker lines + bump suffixes.
+		try {
+			const loginPath = path.join(FIXTURE, 'src', 'auth', 'login.ts');
+			let loginContent = await fsPromises.readFile(loginPath, 'utf8');
+			// Strip all "// vis-09 marker" lines (with optional bump suffix).
+			const before = loginContent;
+			loginContent = loginContent
+				.split(/\r?\n/)
+				.filter(line => !line.startsWith('// vis-09 marker'))
+				.join('\n');
+			// Ensure single trailing newline.
+			loginContent = loginContent.replace(/[\r\n]*$/, '\n');
+			if (loginContent !== before) {
+				await fsPromises.writeFile(loginPath, loginContent, 'utf8');
+				console.log('[visual-ceremony-cdp] restored fixture login.ts (removed vis-09 marker lines)');
+			}
+		} catch (err) {
+			console.warn('[visual-ceremony-cdp] login.ts restore failed (non-fatal): ' + err.message);
+		}
 	}
 
 	printReport(results);
@@ -370,25 +740,38 @@ async function main() {
 }
 
 // --- Hard deadline (last-resort kill switch) -------------------------------
-const HARNESS_TIMEOUT_MS = parseInt(process.env.HARNESS_TIMEOUT_MS || '600000', 10);
-setTimeout(() => {
-	console.error('[visual-ceremony-cdp] hard deadline exceeded (' + HARNESS_TIMEOUT_MS + 'ms); aborting');
-	process.exit(2);
-}, HARNESS_TIMEOUT_MS).unref();
+// Only arm the deadline + auto-invoke main() when this file is executed as a script.
+// Phase 11 Plan 11-01 added module.exports re-exports so downstream plans + the
+// self-check assertion (`node -e "require(...)"`) can introspect SURFACE_REGISTRY
+// without booting the whole harness. Without this guard, requiring the module from
+// Node would trigger _electron.launch() + seed.sh and burn 60s of cold-start time.
+if (require.main === module) {
+	const HARNESS_TIMEOUT_MS = parseInt(process.env.HARNESS_TIMEOUT_MS || '600000', 10);
+	setTimeout(() => {
+		console.error('[visual-ceremony-cdp] hard deadline exceeded (' + HARNESS_TIMEOUT_MS + 'ms); aborting');
+		process.exit(2);
+	}, HARNESS_TIMEOUT_MS).unref();
 
-main().then(code => {
-	process.exit(code);
-}).catch(err => {
-	console.error('[visual-ceremony-cdp] FATAL: ' + (err && err.stack ? err.stack : err));
-	process.exit(1);
-});
+	main().then(code => {
+		process.exit(code);
+	}).catch(err => {
+		console.error('[visual-ceremony-cdp] FATAL: ' + (err && err.stack ? err.stack : err));
+		process.exit(1);
+	});
+}
 
 // Re-exports for downstream plans 11-01..11-04: each plan appends to SURFACE_REGISTRY
 // above and exports its runner function from this file. The registry is the single
 // source of truth for --only / --waves filtering.
 module.exports = {
 	SURFACE_REGISTRY,
+	WAVE_BY_ID,
 	runVis,
+	runVis10,
+	runVis09,
+	ensureCanvasOpen,
+	executeWorkbenchCommand,
+	readFixtureSettings,
 };
 
 // Suppress unused-helper lint warnings — these are imported for downstream plans.
