@@ -32,6 +32,12 @@ const SHOW_DRIFT_COMMAND = 'goatide.mcp.showSchemaDrift';
 export interface SchemaDriftKernelClient {
 	mcpGetSchemaDriftReport: () => Promise<{ providers: McpSchemaDriftReportEntry[] }>;
 	mcpAcceptProviderSchemaDrift: (params: { provider: McpProviderNameWire }) => Promise<{ accepted: boolean }>;
+	/**
+	 * Plan 10-02 (POLISH-02) — precondition gate. Empty `providers` array means "no MCP
+	 * providers configured", which causes `bootstrap()` to skip setting up the 30s
+	 * drift-report poll loop entirely.
+	 */
+	mcpListProviders: () => Promise<{ providers: McpProviderNameWire[] }>;
 }
 
 export interface SchemaDriftBannerOpts {
@@ -40,7 +46,12 @@ export interface SchemaDriftBannerOpts {
 
 export class SchemaDriftBanner implements vscode.Disposable {
 	private readonly item: vscode.StatusBarItem;
-	private readonly timer: NodeJS.Timeout;
+	/**
+	 * Plan 10-02 (POLISH-02) — nullable. Initial poll + setInterval are deferred to
+	 * `bootstrap()`, which only schedules them when at least one MCP provider is
+	 * configured. `dispose()` guards the clearInterval with an undefined check.
+	 */
+	private timer: NodeJS.Timeout | undefined;
 	private readonly commandSub: vscode.Disposable;
 	private latestPaused: McpSchemaDriftReportEntry[] = [];
 	private disposed = false;
@@ -55,6 +66,35 @@ export class SchemaDriftBanner implements vscode.Disposable {
 
 		this.commandSub = vscode.commands.registerCommand(SHOW_DRIFT_COMMAND, () => this.showDriftQuickPick());
 
+		void this.bootstrap(kernel, opts);
+	}
+
+	/**
+	 * Plan 10-02 (POLISH-02) — async precondition gate for the 30s drift-report poll.
+	 *
+	 * Calls `kernel.mcpListProviders()` once at startup; if the result is `{providers: []}`
+	 * (no MCP providers configured) OR the banner has already been disposed, returns early
+	 * WITHOUT scheduling the initial poll or the setInterval. This eliminates the dominant
+	 * renderer.log `[error]` source identified in 10-RESEARCH SC#5 audit — without this
+	 * gate, the banner sent mcp.getSchemaDriftReport every 30s and received MethodNotFound
+	 * -32601 responses when no providers were configured (Path A from research; Path B's
+	 * catch-and-suppress cannot satisfy the "no RPC sent within 60s" SC#2 condition).
+	 *
+	 * On precondition-check failure (transient kernel restart, RPC timeout, etc.), logs
+	 * via `console.warn` (NOT `console.error`; Pitfall 6 — the failure is recoverable and
+	 * does not warrant an `[error]` line in renderer.log) and returns. The next bridge
+	 * activation cycle re-runs bootstrap from a fresh extension load.
+	 */
+	private async bootstrap(kernel: SchemaDriftKernelClient, opts: SchemaDriftBannerOpts): Promise<void> {
+		try {
+			const { providers } = await kernel.mcpListProviders();
+			if (providers.length === 0 || this.disposed) {
+				return;
+			}
+		} catch (err) {
+			console.warn('[goatide-bridge] SchemaDriftBanner precondition check failed; skipping pollers', err);
+			return;
+		}
 		const intervalMs = opts.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
 		void this.poll();
 		this.timer = setInterval(() => { void this.poll(); }, intervalMs);
@@ -160,7 +200,13 @@ export class SchemaDriftBanner implements vscode.Disposable {
 			return;
 		}
 		this.disposed = true;
-		try { clearInterval(this.timer); } catch { /* best-effort */ }
+		// Plan 10-02 (POLISH-02): timer is now nullable — guard the clearInterval. When
+		// bootstrap()'s precondition gate suppressed poll-setup (no providers configured or
+		// RPC failure), this.timer is undefined and there is nothing to clear.
+		if (this.timer !== undefined) {
+			try { clearInterval(this.timer); } catch { /* best-effort */ }
+			this.timer = undefined;
+		}
 		try { this.commandSub.dispose(); } catch { /* best-effort */ }
 		try { this.item.dispose(); } catch { /* best-effort */ }
 	}

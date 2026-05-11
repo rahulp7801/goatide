@@ -46,6 +46,7 @@ import {
 	GetDailyMetricsRequest,
 	McpGetProviderStateRequest,
 	McpGetSchemaDriftReportRequest,
+	McpListProvidersRequest,
 	McpAcceptProviderSchemaDriftRequest,
 	McpReconnectProviderRequest,
 	RunDriftAndLockRequest,
@@ -64,6 +65,7 @@ import {
 	type GetDailyMetricsParams, type GetDailyMetricsResult,
 	type McpGetProviderStateParams, type McpGetProviderStateResult,
 	type McpGetSchemaDriftReportResult,
+	type McpListProvidersResult,
 	type McpAcceptProviderSchemaDriftParams, type McpAcceptProviderSchemaDriftResult,
 	type McpReconnectProviderParams, type McpReconnectProviderResult,
 	type RunDriftAndLockParams, type RunDriftAndLockResult,
@@ -373,6 +375,17 @@ export class KernelClient {
 	}
 	mcpGetSchemaDriftReport(): Promise<McpGetSchemaDriftReportResult> {
 		return this.sendWithTimeout(McpGetSchemaDriftReportRequest, {});
+	}
+	/**
+	 * Plan 10-02 (POLISH-02) — precondition gate for SchemaDriftBanner's 30s poll loop.
+	 * Empty `providers` array signals "no MCP providers configured", in which case the
+	 * banner suppresses its mcp.getSchemaDriftReport poll entirely. The handler is
+	 * registered unconditionally in kernel/src/rpc/server.ts so this RPC never produces
+	 * a MethodNotFound -32601 response (Pitfall 2 mitigation — that error class was the
+	 * dominant renderer.log [error] noise source identified in 10-RESEARCH SC#5 audit).
+	 */
+	mcpListProviders(): Promise<McpListProvidersResult> {
+		return this.sendWithTimeout(McpListProvidersRequest, {});
 	}
 	mcpAcceptProviderSchemaDrift(params: McpAcceptProviderSchemaDriftParams): Promise<McpAcceptProviderSchemaDriftResult> {
 		return this.sendWithTimeout(McpAcceptProviderSchemaDriftRequest, params);

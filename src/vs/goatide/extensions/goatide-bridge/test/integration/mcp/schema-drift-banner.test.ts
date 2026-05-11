@@ -155,7 +155,10 @@ describe('MCP-07: schema-drift banner polls + renders + offers user actions', ()
 	});
 
 	it('MCP-07: banner polls mcp.getSchemaDriftReport on the configured interval and stays hidden when no providers are paused', async () => {
-		const kernel = makeMockKernel();
+		// Plan 10-02 (POLISH-02): SchemaDriftBanner now precondition-gates poll setup on
+		// mcpListProviders() returning a non-empty providers array. Seed the mock with the
+		// providers this test reports on so bootstrap() proceeds into the poll loop.
+		const kernel = makeMockKernel({ providers: ['github', 'slack'] });
 		kernel.__setReport([
 			{ provider: 'github', paused: false },
 			{ provider: 'slack', paused: false },
@@ -182,7 +185,9 @@ describe('MCP-07: schema-drift banner polls + renders + offers user actions', ()
 	});
 
 	it('MCP-07: renders errorBackground when any provider is paused_drift', async () => {
-		const kernel = makeMockKernel();
+		// Plan 10-02 (POLISH-02): seed `providers` so bootstrap()'s precondition gate
+		// proceeds into the poll loop (empty array now suppresses polling entirely).
+		const kernel = makeMockKernel({ providers: ['github', 'slack'] });
 		// Initial: clean.
 		kernel.__setReport([{ provider: 'github', paused: false }]);
 		const banner = new SchemaDriftBanner(kernel, { pollIntervalMs: 30 });
@@ -221,7 +226,11 @@ describe('MCP-07: schema-drift banner polls + renders + offers user actions', ()
 	});
 
 	it('MCP-07: click → quickPick offers Accept / Pause / View-diff actions; Accept invokes acceptProviderSchemaDrift; View opens drift_summary doc', async () => {
-		const kernel = makeMockKernel();
+		// Plan 10-02 (POLISH-02): seed `providers` so bootstrap()'s precondition gate
+		// proceeds into the poll loop. The latestPaused state that showDriftQuickPick
+		// reads from is populated by the first poll() invocation; bootstrap suppresses
+		// that initial poll when providers is empty.
+		const kernel = makeMockKernel({ providers: ['slack', 'jira'] });
 		kernel.__setReport([
 			{ provider: 'slack', paused: true, drift_summary: 'slack drift summary text' },
 			{ provider: 'jira', paused: true, drift_summary: 'jira drift summary text' },
