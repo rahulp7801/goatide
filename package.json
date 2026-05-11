@@ -19,7 +19,7 @@
     "check-cyclic-dependencies": "node build/lib/checkCyclicDependencies.ts out",
     "preinstall": "node build/npm/preinstall.ts",
     "postinstall": "node build/npm/postinstall.ts",
-    "compile": "npm run build-bridge && npm run gulp compile",
+    "compile": "npm run build-bridge && npm run gulp compile && npm run transpile-client",
     "build-bridge": "cd src/vs/goatide/extensions/goatide-bridge && npm install && npm run build && cd ../../../../.. && bash scripts/prepare_goatide.sh",
     "compile-check-ts-native": "tsgo --project ./src/tsconfig.json --noEmit --skipLibCheck",
     "watch": "npm-run-all2 -lp watch-client-transpile watch-client watch-extensions watch-copilot",
