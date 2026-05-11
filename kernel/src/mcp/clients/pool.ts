@@ -91,6 +91,14 @@ export class McpClientPool {
 	private readonly backoff: BackoffOptions | undefined;
 	private readonly stdioFactory: (args: { cfg: McpProviderConfig; onError: (err: Error) => void; onClose?: () => void }) => Promise<StdioClientHandle>;
 	private readonly entries: Map<McpProviderName, InternalEntry> = new Map();
+	/**
+	 * Plan 10-02 (POLISH-02) — names of providers known to this pool. Sourced from
+	 * `configs.map(c => c.provider)` at pool construction time. DOES NOT reflect runtime
+	 * connection state; a provider listed here may currently be disconnected, reconnecting,
+	 * or paused on schema drift. Consumed by the always-registered `mcp.listProviders` RPC
+	 * handler so the bridge SchemaDriftBanner can gate its 30s poll loop on the empty case.
+	 */
+	private readonly providerNames: readonly McpProviderName[];
 	private closed = false;
 
 	constructor(args: McpClientPoolArgs) {
@@ -104,6 +112,17 @@ export class McpClientPool {
 			}
 			this.entries.set(cfg.provider, { cfg, state: 'connecting', generation: 0, supervisorRunning: false });
 		}
+		this.providerNames = args.configs.map(c => c.provider);
+	}
+
+	/**
+	 * Plan 10-02 (POLISH-02) — returns the provider names configured at pool-construction
+	 * time. Returns a defensive copy so callers may not mutate the pool by mutating the
+	 * result. Does NOT reflect runtime connection state — providers in any lifecycle phase
+	 * (connecting, connected, paused_drift, restarting, closed) are all returned.
+	 */
+	listProviders(): McpProviderName[] {
+		return [...this.providerNames];
 	}
 
 	/**

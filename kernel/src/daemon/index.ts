@@ -274,6 +274,12 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 			getSchemaDriftReport: () => mcpClientPool.getSchemaDriftReport(),
 			acceptProviderSchemaDrift: (p) => mcpClientPool.acceptProviderSchemaDrift(p),
 			reconnect: (p) => mcpClientPool.reconnect(p),
+			// Plan 10-02 (POLISH-02) — delegates to the pool's configured provider list. The
+			// server.ts handler is registered unconditionally; when mcpClientPool is null
+			// (no env vars / no providers configured) the entire mcpControl is undefined and
+			// the handler nullish-coalesces to `{providers: []}` — exactly the empty-array
+			// signal the bridge SchemaDriftBanner needs to suppress its 30s poll loop.
+			listProviders: () => mcpClientPool.listProviders(),
 		}
 		: undefined;
 	createTcpRpcServer(server, (socket, connection) => {

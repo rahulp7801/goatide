@@ -44,6 +44,7 @@ import {
 	GetDailyMetricsRequest,
 	McpGetProviderStateRequest,
 	McpGetSchemaDriftReportRequest,
+	McpListProvidersRequest,
 	McpAcceptProviderSchemaDriftRequest,
 	McpReconnectProviderRequest,
 	RunDriftAndLockRequest,
@@ -63,6 +64,7 @@ import {
 	type GetDailyMetricsResult,
 	type McpGetProviderStateResult,
 	type McpGetSchemaDriftReportResult,
+	type McpListProvidersResult,
 	type McpAcceptProviderSchemaDriftResult,
 	type McpReconnectProviderResult,
 	type RunDriftAndLockResult,
@@ -114,6 +116,15 @@ export interface McpControlSurface {
 	getSchemaDriftReport: () => Array<{ provider: McpProviderName; paused: boolean; drift_summary?: string }>;
 	acceptProviderSchemaDrift: (provider: McpProviderName) => Promise<boolean>;
 	reconnect: (provider: McpProviderName) => Promise<void>;
+	/**
+	 * Plan 10-02 (POLISH-02) — names of providers configured for this pool. Sourced from
+	 * the daemon's `McpClientPool.listProviders()` (configs.map(c => c.provider) at pool
+	 * construction time). The wrapping `mcp.listProviders` RPC handler is registered
+	 * UNCONDITIONALLY (outside the `if (mcpControl)` gate) so the bridge always receives a
+	 * structured response — when no providers are configured, the handler returns
+	 * `{providers: []}` via the `mcpControl?.listProviders() ?? []` nullish-coalesce.
+	 */
+	listProviders: () => McpProviderName[];
 }
 
 interface HandlerContext {
@@ -459,6 +470,23 @@ function bindHandlers(
 		pid: process.pid,
 		db_path: ctx.dbPath,
 		uptime_ms: Date.now() - ctx.startMs,
+	})));
+
+	// Phase 10 Plan 10-02 (POLISH-02) — mcp.listProviders.
+	//
+	// Registered UNCONDITIONALLY (alongside the graph.* family, NOT inside the `if (mcpControl)`
+	// block below). The bridge SchemaDriftBanner uses this as a precondition gate before
+	// scheduling its 30s mcp.getSchemaDriftReport poll loop; when no MCP providers are
+	// configured the handler returns `{providers: []}` and the bridge suppresses the poll,
+	// eliminating the dominant renderer.log [error] line (Pitfall 2 mitigation — if this were
+	// gated behind mcpControl, the empty-providers case would emit MethodNotFound -32601 and
+	// BRIDGE-POLISH-02 would fail).
+	//
+	// Registered on TCP path only (mcp.* family precedent — see existing mcp.* handlers in the
+	// `if (mcpControl)` gate below). Stdio path returns MethodNotFound if invoked, but no
+	// current stdio caller does — the bridge talks to the daemon over TCP exclusively.
+	connection.onRequest(McpListProvidersRequest, requireAuth((): McpListProvidersResult => ({
+		providers: mcpControl?.listProviders() ?? [],
 	})));
 
 	// Phase 5 Plan 05-03 — harvester.submitObservation. Skipped when harvesterDeps is

@@ -202,4 +202,27 @@ describe('MCP-01: client pool starts and supervises 4 stdio MCP clients', () => 
 			await pool.close();
 		}
 	}, 15_000);
+
+	it('Plan 10-02 POLISH-02: listProviders() returns the configured provider names (defensive copy)', () => {
+		// No start() — the field is initialized in the constructor from configs.map(c => c.provider).
+		const registry = new ToolRegistry();
+		const pool = new McpClientPool({
+			configs: fourProviderConfigs(),
+			registry,
+			onObservation: async () => undefined,
+		});
+		const first = pool.listProviders();
+		// Mutating the returned array must not affect a subsequent listProviders() call.
+		first.push('github');
+		const second = pool.listProviders();
+		expect({
+			first: first.slice(0, 4).sort(),
+			second: second.slice().sort(),
+			defensiveCopy: second.length === 4,
+		}).toEqual({
+			first: ['github', 'jira', 'linear', 'slack'],
+			second: ['github', 'jira', 'linear', 'slack'],
+			defensiveCopy: true,
+		});
+	});
 });
