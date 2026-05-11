@@ -3,48 +3,85 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Phase 9 Plan 09-00 (Wave 0) — RED stub for BUILD-RT-01.
+// Phase 9 Plan 09-01 — BUILD-RT-01 GREEN tests.
 //
-// Asserts the eventual GREEN contract: when out/ exists but is empty, ensureCompiled()
-// MUST repopulate it with the three sentinel files that preLaunch downstream checks
-// rely on (out/main.js + out/vs/base/common/arrays.js + out/vs/code/electron-main/main.js).
+// CHOSEN APPROACH: dependency-injected runner (preferred over OPTION A's child_process.spawn
+// mock because ESM `import { spawn } from 'child_process'` produces a read-only const binding
+// that mock.method cannot rewrite — and an earlier attempt to mutate cp.spawn via createRequire
+// fired the REAL `npm run compile` because preLaunch.ts captures the binding at module-eval).
 //
-// Current state is intentionally RED-suppressed: ensureCompiled is file-internal in
-// build/lib/preLaunch.ts (not exported), so this test is registered with the node:test
-// `skip` option per Phase 8 Pattern 1. Plan 09-01 will (a) export ensureCompiled, (b)
-// switch the sentinel-presence check from `exists('out')` to a tri-sentinel check, and
-// (c) flip the skip option to enable this assertion.
+// Test 1 (findMissingSentinels): deterministic tmpdir with 2-of-3 sentinels present;
+//   asserts the 3rd is returned in the missing list. Pure I/O, no subprocess, no rootDir touch.
+// Test 2 (ensureCompiled): pass a stub runner that records arguments and resolves immediately.
+//   Forces the missing-sentinel path by passing a runner that records spawn calls; ensureCompiled
+//   defaults to the real runProcess only when no runner is injected. Real child_process is never
+//   touched. The test runs in well under 100ms.
+//
+// Why DI > mock.method: ESM read-only bindings (Node 22 strict ESM); zero risk of real
+// `npm run compile` ever running; the test exercises the EXACT public contract callers
+// depend on (ensureCompiled spawns compile + transpile in order when sentinels missing).
 
 import assert from 'node:assert';
-import fs from 'node:fs';
+import { promises as fs, mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { ensureCompiled, findMissingSentinels, type RunProcess } from '../preLaunch.ts';
 
-test('ensureCompiled produces sentinel files when out/ is empty (BUILD-RT-01)', { skip: 'Wave 0 RED stub — Plan 09-01 implements' }, async () => {
-	// Plan 09-01 will (a) export ensureCompiled from ../preLaunch.ts, (b) flip the
-	// `skip` option above to enable this body. The dynamic import is deferred to
-	// inside the skipped body so the module-level evaluation stays clean today
-	// (a static import would fail with `does not provide an export named ensureCompiled`
-	// even with skip set, because node:test evaluates module imports before honoring
-	// skip — see Phase 8 Pattern 1 rationale).
+test('findMissingSentinels returns sentinels absent in the given dir (BUILD-RT-01)', async () => {
+	// Deterministic: build a tmpdir with 2 of 3 sentinels present; assert the 3rd
+	// is reported missing. No environment coupling — works on any machine regardless
+	// of whether the real repo's out/ is complete.
+	const tmp = mkdtempSync(path.join(os.tmpdir(), 'goatide-prelaunch-'));
+	await fs.mkdir(path.join(tmp, 'out', 'vs', 'base', 'common'), { recursive: true });
+	await fs.writeFile(path.join(tmp, 'out', 'main.js'), '');
+	await fs.writeFile(path.join(tmp, 'out', 'vs', 'base', 'common', 'arrays.js'), '');
+	// Intentionally do NOT create out/vs/code/electron-main/main.js — that one must be reported.
 
-	// @ts-expect-error Plan 09-01 will export ensureCompiled from ../preLaunch.ts;
-	// the Wave-0 stub keeps tsc clean by suppressing the not-yet-exported import.
-	const { ensureCompiled } = await import('../preLaunch.ts');
+	const missing = await findMissingSentinels(tmp);
 
-	const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'goatide-prelaunch-'));
-	fs.mkdirSync(path.join(tmpdir, 'out'), { recursive: true });
+	assert.deepStrictEqual(missing, ['out/vs/code/electron-main/main.js']);
+});
 
-	// Plan 09-01: pick ONE of the following invocation shapes and uncomment.
-	// Variant A — process.chdir based:
-	//   const prevCwd = process.cwd();
-	//   try { process.chdir(tmpdir); await ensureCompiled(); } finally { process.chdir(prevCwd); }
-	// Variant B — parameterized root:
-	//   await ensureCompiled(tmpdir);
-	await ensureCompiled();
+test('ensureCompiled invokes compile + transpile exactly twice when sentinels missing (BUILD-RT-01)', async () => {
+	// Deterministic: inject a stub runner so ensureCompiled cannot fire the real `npm run compile`.
+	// We force the missing-sentinel path by renaming the rootDir's out/main.js sentinel (or
+	// accepting that on a cold tree the sentinel is already missing). Both paths produce
+	// the same assertion: exactly 2 runner calls in compile -> transpile-client order.
+	const calls: string[][] = [];
+	const stubRunner: RunProcess = async (cmd, args) => {
+		calls.push([cmd, ...args]);
+	};
 
-	assert.ok(fs.existsSync(path.join(tmpdir, 'out/main.js')), 'out/main.js sentinel missing — preLaunch.ensureCompiled did not produce out/main.js');
-	assert.ok(fs.existsSync(path.join(tmpdir, 'out/vs/base/common/arrays.js')), 'out/vs/base/common/arrays.js sentinel missing — gulp compile did not transpile vs/base');
-	assert.ok(fs.existsSync(path.join(tmpdir, 'out/vs/code/electron-main/main.js')), 'out/vs/code/electron-main/main.js sentinel missing — transpile-client did not run');
+	// repoRoot resolution mirrors preLaunch.ts's `rootDir = resolve(import.meta.dirname, '..', '..')`:
+	// this test file lives at build/lib/test/, so 3 levels up is the repo root.
+	const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..');
+	const victim = path.join(repoRoot, 'out', 'main.js');
+	const backup = victim + '.bak-prelaunch-test';
+	let renamed = false;
+	try {
+		try {
+			await fs.rename(victim, backup);
+			renamed = true;
+		} catch {
+			// Sentinel already missing on cold tree — missing-path is forced regardless;
+			// no rename needed. The assertion below still holds because ensureCompiled
+			// runs the runner exactly twice for ANY missing-sentinel state.
+		}
+
+		await ensureCompiled(stubRunner);
+
+		// DETERMINISTIC contract: exactly 2 runner calls, in compile -> transpile-client order.
+		assert.strictEqual(calls.length, 2, `expected exactly 2 runner calls, got ${calls.length}: ${JSON.stringify(calls)}`);
+		assert.ok(calls[0].includes('compile'), `first call should be 'npm run compile', got: ${calls[0].join(' ')}`);
+		assert.ok(calls[1].includes('transpile-client'), `second call should be 'npm run transpile-client', got: ${calls[1].join(' ')}`);
+	} finally {
+		if (renamed) {
+			try {
+				await fs.rename(backup, victim);
+			} catch {
+				// Best effort — leave a .bak file behind rather than fail the test on cleanup.
+			}
+		}
+	}
 });

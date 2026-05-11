@@ -60,14 +60,16 @@ export async function findMissingSentinels(baseDir: string = rootDir): Promise<s
 	return missing;
 }
 
-export async function ensureCompiled() {
+export type RunProcess = (command: string, args: ReadonlyArray<string>) => Promise<void>;
+
+export async function ensureCompiled(runner: RunProcess = runProcess) {
 	const missing = await findMissingSentinels();
 	if (missing.length > 0) {
 		console.log(`[preLaunch] Build incomplete (missing: ${missing.join(', ')}). Running compile + transpile...`);
-		await runProcess(npm, ['run', 'compile']);
+		await runner(npm, ['run', 'compile']);
 		// After BUILD-RT-02 lands (`npm run compile` chains `transpile-client`), this becomes a no-op.
 		// Keep explicit for belt-and-suspenders + clarity in error messages.
-		await runProcess(npm, ['run', 'transpile-client']);
+		await runner(npm, ['run', 'transpile-client']);
 	}
 }
 
