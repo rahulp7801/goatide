@@ -433,38 +433,52 @@ async function ensureCanvasOpen(window) {
 	// builds where globalThis.require is unavailable. F1+ "Go to File:" opens the
 	// same picker as Ctrl+P but goes through the keybinding service (more reliable
 	// on this Electron build than Ctrl+P direct chord).
+	//
+	// DEFERRED-11-01-A flake fix: when running in a full sweep after VIS-10 (which writes
+	// to .vscode/settings.json via getConfiguration().update()), the F1 quick-input widget
+	// occasionally doesn't accept keyboard input on the first attempt — settings-change
+	// notifications cause the workbench to briefly defocus the palette. The active-editor
+	// post-check would then fail because login.ts never opened. Retry the F1 → Go-to-File
+	// flow up to 3 times, each time asserting the active tab landed before proceeding.
 	const openProbe = await executeWorkbenchCommand(window, 'vscode.open', loginPath);
-	if (!openProbe.startsWith('ok')) {
-		await window.keyboard.press('F1');
-		await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
-		await sleep(400);
-		// "Go to File:" is the title of workbench.action.quickOpen — typing this filters
-		// the command palette to the file-open variant.
-		await window.keyboard.type('Go to File: ');
-		await sleep(400);
-		await window.keyboard.press('Enter');
-		await sleep(400);
-		// Now type the filename to filter the file picker.
-		await window.keyboard.type('login.ts');
-		await sleep(500);
-		await window.keyboard.press('Enter');
-		await sleep(1500);  // editor open + LSP attach
+	let active = openProbe.startsWith('ok');
+	if (active) {
+		try {
+			await window.locator('.tab.active').filter({ hasText: 'login.ts' }).first()
+				.waitFor({ state: 'visible', timeout: 5_000 });
+		} catch (_e) {
+			active = false;
+		}
 	}
+	for (let attempt = 0; !active && attempt < 3; attempt++) {
+		if (attempt > 0) {
+			console.log('[visual-ceremony-cdp]   ensureCanvasOpen: login.ts did not land as active tab on attempt ' + attempt + '; retrying F1 → Go to File');
+			await sleep(1000);
+		}
+		try {
+			await window.keyboard.press('Escape');   // dismiss any stuck widget from a prior attempt
+			await sleep(200);
+			await window.keyboard.press('F1');
+			await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
+			await sleep(400);
+			await window.keyboard.type('Go to File: ');
+			await sleep(400);
+			await window.keyboard.press('Enter');
+			await sleep(400);
+			await window.keyboard.type('login.ts');
+			await sleep(500);
+			await window.keyboard.press('Enter');
+			await sleep(1500);  // editor open + LSP attach
 
-	// DEFERRED-11-01-A: assert that login.ts actually landed as the active editor
-	// before triggering save. On cold extension-host startup, the F1 → Go-to-File flow
-	// occasionally fails to open the file (palette not yet keyboard-responsive); without
-	// this check the subsequent Ctrl+S fires on the Walkthrough webview / wrong editor
-	// and the save-gate's onWillSave never sees a `login.ts` save — modal canvas never
-	// reveals — and the test times out 90s later with no useful diagnostic. Asserting
-	// the tab label here surfaces the open-failure mode in 5s with a clear error.
-	try {
-		await window
-			.locator('.tab.active').filter({ hasText: 'login.ts' })
-			.first()
-			.waitFor({ state: 'visible', timeout: 5_000 });
-	} catch (_e) {
-		throw new Error('ensureCanvasOpen: login.ts did not land as the active editor tab within 5s after F1 → Go to File — workbench keyboard-handling may still be settling. Bump the post-launch bridge-ready wait if this recurs.');
+			await window.locator('.tab.active').filter({ hasText: 'login.ts' }).first()
+				.waitFor({ state: 'visible', timeout: 8_000 });
+			active = true;
+		} catch (_e) {
+			// fall through to next attempt
+		}
+	}
+	if (!active) {
+		throw new Error('ensureCanvasOpen: login.ts did not land as the active editor tab after 3 F1 → Go to File attempts. Workbench keyboard handling is stuck — likely a settings-update notification interaction with the quick-input widget. Bump the post-VIS-10 settle time if this recurs.');
 	}
 
 	// Trigger save. The save-gate listener intercepts and shows the Canvas asynchronously.
@@ -496,17 +510,26 @@ async function ensureCanvasOpen(window) {
 	return canvasFrame;
 }
 
-// runVis09 — save src/auth/login.ts under Speed-First priority (set by VIS-10), then
-// assert the resulting Receipt's CitationList renders an IntentDriftBadge inside a
-// citation row. Depends on VIS-10 having flipped the priority; if invoked standalone,
-// ensureCanvasOpen still produces a valid canvas but the IntentDriftBadge will only
-// surface if VIS-10 has run (or the fixture has been pre-tampered to Speed-First).
+// runVis09 — save src/auth/login.ts under Speed-First priority, then assert the
+// resulting Receipt's CitationList renders an IntentDriftBadge inside a citation row.
+//
+// Self-sufficient invocation (`--only VIS-09`): if fixture priority isn't Speed-First,
+// VIS-09 writes Speed-First directly to .vscode/settings.json and waits for VS Code's
+// file watcher to propagate the change. Previously this code only warned and proceeded,
+// which guaranteed an empty IntentDriftBadge assertion failure on `--only VIS-09`.
+// The harness's main()-level snapshot-restore captures the committed baseline at start,
+// so this in-test mutation is reset on exit.
 async function runVis09(window) {
-	// Defensive: if VIS-10 wasn't run in this session, re-read fixture settings and warn
-	// loudly so the failure mode is clear when the assert below fires.
 	const settings = await readFixtureSettings();
 	if (settings['goatide.session.priority'] !== 'Speed-First') {
-		console.warn('[visual-ceremony-cdp]   VIS-09: fixture priority is "' + settings['goatide.session.priority'] + '" not "Speed-First"; IntentDriftBadge will not render (run VIS-10 first or use --waves 1)');
+		console.log('[visual-ceremony-cdp]   VIS-09: fixture priority is "' + settings['goatide.session.priority'] + '"; setting Speed-First for IntentDrift evaluation');
+		const settingsPath = path.join(FIXTURE, '.vscode', 'settings.json');
+		const next = Object.assign({}, settings, { 'goatide.session.priority': 'Speed-First' });
+		await fsPromises.writeFile(settingsPath, JSON.stringify(next, null, '\t') + '\n', 'utf8');
+		// Give VS Code's file watcher + getConfiguration cache a beat to pick up the
+		// change. Empirically 1.5s is the floor for the bridge's next-save proposeEdit to
+		// see the new sessionPriority value on this Electron build; 2.5s adds margin.
+		await sleep(2500);
 	}
 
 	const canvasFrame = await ensureCanvasOpen(window);
@@ -807,20 +830,68 @@ async function prepareDriftSave(window) {
 		throw new Error('VIS-06/07/08: fixture baseline corrupt — contracts/auth-security.md already contains the DROP TABLE auth_session marker; previous run did not clean up');
 	}
 
-	// 1. Open the contract markdown file. Same F1 + Go to File flow used by ensureCanvasOpen.
-	const openProbe = await executeWorkbenchCommand(window, 'vscode.open', filePath);
-	if (!openProbe.startsWith('ok')) {
-		await window.keyboard.press('F1');
-		await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
+	// DEFERRED-11-01-A Wave-3 single-launch fix: by the time Wave-3 starts in a full sweep, the
+	// workbench has accumulated multiple editor groups from Wave-1 (login.ts) and Wave-2
+	// (migration.ts). The harness's F1 → Go-to-File flow opens auth-security.md in SOME group
+	// but the cursor focus + the keyboard input target editor may be a DIFFERENT group's tab.
+	// Net effect: Ctrl+G + 14 + type "DROP TABLE auth_session" land in the wrong file (often
+	// migration.ts or login.ts), the save fires for that wrong file, drift_findings comes back
+	// empty (the diff path doesn't match the contract's anchor.file), and only the destructive
+	// modal fires (the DROP TABLE substring is enough on its own).
+	//
+	// IMPORTANT — what NOT to do: `View: Merge All Editor Groups` and `View: Close All Editors`
+	// both DISPOSE the bridge's CanvasPanel webview (VS Code can't transfer webviews between
+	// groups, so merge disposes them; close obviously closes them). Once the panel is disposed,
+	// the next save-gate-driven panel.show() fails silently and the save proceeds to disk
+	// without modal intercept (verified empirically — exthost log shows `panel.showAndAwait
+	// failed: CanvasPanel disposed before decision` after merge, followed by NO onWillSave log
+	// for the next save's URI). Avoid both commands; instead rely on tab-click to force focus.
+
+	// 1. Open the contract markdown file via F1 → Go to File (skip vscode.open since it's
+	//    no-amd-loader on this build anyway). Active-tab sanity check + retry mirrors the
+	//    DEFERRED-11-01-A pattern from ensureCanvasOpen.
+	let active = false;
+	for (let attempt = 0; !active && attempt < 3; attempt++) {
+		if (attempt > 0) {
+			console.log('[visual-ceremony-cdp]   prepareDriftSave: auth-security.md did not land as active tab on attempt ' + attempt + '; retrying F1 → Go to File');
+			await sleep(1000);
+		}
+		try {
+			await window.keyboard.press('Escape');
+			await sleep(200);
+			await window.keyboard.press('F1');
+			await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
+			await sleep(400);
+			await window.keyboard.type('Go to File: ');
+			await sleep(400);
+			await window.keyboard.press('Enter');
+			await sleep(400);
+			await window.keyboard.type('auth-security.md');
+			await sleep(500);
+			await window.keyboard.press('Enter');
+			await sleep(1500);
+
+			await window.locator('.tab.active').filter({ hasText: 'auth-security.md' }).first()
+				.waitFor({ state: 'visible', timeout: 8_000 });
+			active = true;
+		} catch (_e) {
+			// fall through to next attempt
+		}
+	}
+	if (!active) {
+		throw new Error('prepareDriftSave: auth-security.md did not land as the active editor tab after 3 F1 → Go to File attempts.');
+	}
+
+	// 1b. Belt-and-braces: directly click the auth-security.md tab to force-focus the group
+	//     containing it (covers the case where multiple groups have separate tabs with the
+	//     same filename). The click() also dismisses any lingering hover state from earlier
+	//     palette interactions.
+	try {
+		await window.locator('.tab').filter({ hasText: 'auth-security.md' }).first()
+			.click({ timeout: 5_000 });
 		await sleep(400);
-		await window.keyboard.type('Go to File: ');
-		await sleep(400);
-		await window.keyboard.press('Enter');
-		await sleep(400);
-		await window.keyboard.type('auth-security.md');
-		await sleep(500);
-		await window.keyboard.press('Enter');
-		await sleep(1500);  // editor open + markdown LSP attach
+	} catch (_clickErr) {
+		console.warn('[visual-ceremony-cdp]   prepareDriftSave: tab-click on auth-security.md failed (non-fatal): ' + _clickErr.message);
 	}
 
 	// 2. Explicitly focus the active editor group (Plan 11-02 pattern: Welcome walkthrough
@@ -968,8 +1039,41 @@ async function runVis06(window) {
 	const ctx = await prepareDriftSave(window);
 	const { canvasFrame } = ctx;
 
-	// Assert drift-findings section is visible.
-	await canvasFrame.locator('[data-testid="drift-findings"]').waitFor({ state: 'visible', timeout: 10_000 });
+	// Assert drift-findings section is visible. On failure, dump:
+	//   1. Canvas top-level testIDs (proves which panels rendered — confirmation-phrase here would
+	//      mean we got a destructive-tier modal instead of a lock-tier modal)
+	//   2. prepareDriftSave's per-test consoleBuf (captures since the save fired — relevant to
+	//      whether the bridge ran proposeEdit + runDriftAndLock and what it returned)
+	try {
+		await canvasFrame.locator('[data-testid="drift-findings"]').waitFor({ state: 'visible', timeout: 10_000 });
+	} catch (err) {
+		try {
+			// FrameLocator.evaluate is not a thing; evaluate via a locator that the frame is
+			// guaranteed to have, then operate on document inside the page eval.
+			const testIds = await canvasFrame.locator('body').evaluate((bodyEl) => {
+				return Array.from(bodyEl.ownerDocument.querySelectorAll('[data-testid]'))
+					.map(el => el.getAttribute('data-testid'))
+					.filter((v, i, a) => a.indexOf(v) === i);
+			});
+			console.error('[visual-ceremony-cdp]   VIS-06: canvas testIDs present at FAIL: ' + JSON.stringify(testIds));
+		} catch (probeErr) {
+			console.error('[visual-ceremony-cdp]   VIS-06: testID probe failed: ' + probeErr.message);
+		}
+		// Per-test buffer (since prepareDriftSave fired the save) is the relevant scope.
+		if (Array.isArray(ctx.consoleBuf)) {
+			const filtered = ctx.consoleBuf.filter(l => /goatide-bridge|save-gate|kernel|drift|lock|propose|canvas|tier|dispatch|runDriftAndLock|registry|SaveDeferred|ReceiptRefusal|hydrate|classify/i.test(l) && !/DeprecationWarning|punycode|CSP|nonce/i.test(l));
+			console.error('[visual-ceremony-cdp]   VIS-06: prepareDriftSave console buffer (filtered, last 100):\n' + filtered.slice(-100).join('\n'));
+			console.error('[visual-ceremony-cdp]   VIS-06: prepareDriftSave console buffer (UNFILTERED size=' + ctx.consoleBuf.length + ', last 30):\n' + ctx.consoleBuf.slice(-30).join('\n'));
+		}
+		// Also dump the global early buffer to see if save-gate logs ARE being forwarded
+		// but just landing in the early buffer instead of the per-test buffer.
+		const early = globalThis.__visualCeremonyEarlyConsole;
+		if (Array.isArray(early)) {
+			const earlyFiltered = early.filter(l => /goatide-bridge|save-gate|onWillSave|panel\.show|drift_findings|lock_trigger/i.test(l));
+			console.error('[visual-ceremony-cdp]   VIS-06: early buffer (bridge-filtered, last 50):\n' + earlyFiltered.slice(-50).join('\n'));
+		}
+		throw err;
+	}
 
 	// Assert >=1 drift-finding-row.
 	const rows = canvasFrame.locator('[data-testid="drift-finding-row"]');

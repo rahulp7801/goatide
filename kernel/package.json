@@ -13,8 +13,9 @@
     "build": "tsc -p . && node -e \"const fs=require('node:fs');fs.cpSync('src/graph/migrations','dist/graph/migrations',{recursive:true,force:true});\"",
     "watch": "tsc -p . --watch",
     "start": "node dist/main.js",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "node scripts/run-vitest-electron.cjs run",
+    "test:watch": "node scripts/run-vitest-electron.cjs",
+    "test:node": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },

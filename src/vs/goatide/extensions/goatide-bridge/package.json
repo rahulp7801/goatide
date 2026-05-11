@@ -82,7 +82,7 @@
 	"private": true,
 	"scripts": {
 		"build": "tsc -p . && node esbuild.config.mjs",
-		"test": "mocha"
+		"test": "node scripts/run-mocha-electron.cjs"
 	},
 	"dependencies": {
 		"@monaco-editor/react": "^4.6",

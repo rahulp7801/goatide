@@ -55,7 +55,12 @@ export function registerSaveGate(
 	queue: PendingAttemptsQueue,
 ): vscode.Disposable {
 	const sub = vscode.workspace.onWillSaveTextDocument((event) => {
+		// DEFERRED-11-01-A diagnostic: log every fire so we can verify the listener is
+		// actually subscribed when Wave-3 saves in a full sweep. This will be useful
+		// permanently — save-gate silent-failures are the worst kind of bug to debug.
+		console.log('[goatide-bridge] onWillSaveTextDocument reason=' + event.reason + ' uri=' + event.document.uri.fsPath);
 		if (event.reason !== vscode.TextDocumentSaveReason.Manual) {
+			console.log('[goatide-bridge]   skipping non-Manual save (auto-save / format-on-save / shutdown)');
 			return;   // skip auto-save / format-on-save (data-integrity carveout)
 		}
 		const doc = event.document;
