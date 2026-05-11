@@ -305,13 +305,37 @@ async function main() {
 		}
 		console.log('[freshclone-smoke-cdp] SC10-1/SC10-3: all 6 bridge commands declared in contributes.commands');
 
-		// === SC10-5 — Plan 10-04 will fill this in ===
-		// Meta-test: 40s settle wait + filesystem grep of renderer.log for [error] from
-		// goatide-bridge. Placeholder is a no-op so the harness keeps running until 10-04
-		// lands the wait + readFile + filter logic. Helpers `sleep` (line ~62) and
-		// `fsPromises` (added in this plan, near imports) are already in scope.
-		const SC10_5_PLACEHOLDER = true;
-		if (!SC10_5_PLACEHOLDER) { /* unreachable — 10-04 owns */ }
+		// === SC10-5: renderer.log [error]-line meta-test (BRIDGE-POLISH-05 closure) ===
+		// After the IDE launches and the existing 4 Phase-9 SC#5 assertions + Phase-10 SC10-1/3
+		// checks complete, wait one full 30s SchemaDriftBanner poll cycle plus margin (40s total)
+		// so any reachability errors land in the log. Then read the renderer.log file on disk and
+		// assert zero `[error]` lines mentioning `goatide-bridge`. This validates Plan 10-02's
+		// SchemaDriftBanner async bootstrap fix at the IDE-launch boundary (W3 absorbed truth).
+		//
+		// Helpers used (all pre-staged at Wave-0 per Plan 10-00 Task 3):
+		//   - sleep(ms)         — file-scoped at line ~67
+		//   - fsPromises        — top-of-file `require('node:fs/promises')` (Plan 10-00 staging)
+		//   - userDataDir       — main()-scoped above (this code runs inside main()'s try block)
+		//   - path              — top-of-file `require('node:path')`
+		//
+		// Log path: ${userDataDir}/logs/<session-timestamp>/window1/renderer.log
+		// (verified via src/vs/workbench/services/environment/electron-browser/environmentService.ts:106)
+		await sleep(40_000);
+		const logsRoot = path.join(userDataDir, 'logs');
+		const sessions = await fsPromises.readdir(logsRoot);
+		const session = sessions.sort().reverse()[0];  // most-recent session
+		const windowDir = path.join(logsRoot, session, 'window1');
+		const rendererLog = path.join(windowDir, 'renderer.log');
+		const contents = await fsPromises.readFile(rendererLog, 'utf8');
+		const bridgeErrorLines = contents.split('\n').filter(line =>
+			/\[error\]/.test(line) && /goatide-bridge/.test(line)
+		);
+		if (bridgeErrorLines.length > 0) {
+			throw new Error('SC10-5 FAIL: ' + bridgeErrorLines.length
+				+ ' [error] lines from goatide-bridge in renderer.log: '
+				+ bridgeErrorLines.slice(0, 3).join(' | '));
+		}
+		console.log('[freshclone-smoke-cdp] SC10-5: renderer.log clean (zero [error] from goatide-bridge over 40s steady-state)');
 	} finally {
 		// Pitfall 6: do NOT force-kill the kernel daemon; it persists per Mandate-A.
 		// Pitfall 7 (this plan): electron.close() can hang indefinitely if the renderer is
