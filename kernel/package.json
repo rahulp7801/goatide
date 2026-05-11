@@ -9,6 +9,7 @@
     "goatide-cli": "./bin/goatide-cli"
   },
   "scripts": {
+    "postinstall": "node scripts/install-electron-prebuild.cjs",
     "build": "tsc -p . && node -e \"const fs=require('node:fs');fs.cpSync('src/graph/migrations','dist/graph/migrations',{recursive:true,force:true});\"",
     "watch": "tsc -p . --watch",
     "start": "node dist/main.js",
