@@ -151,6 +151,34 @@ export interface MockTextDocument {
 const onDidSaveTextDocumentEmitter = new EventEmitterStub<MockTextDocument>();
 const onDidChangeTextDocumentEmitter = new EventEmitterStub<{ document: MockTextDocument }>();
 
+// Phase 12 Plan 12-01 — onWillSaveTextDocument emitter so save-gate listeners can be
+// driven from mocha integration tests. The shape mirrors VS Code's
+// TextDocumentWillSaveEvent: { document, reason, waitUntil(thenable) }. Listeners call
+// waitUntil(...) synchronously inside the handler; the stub captures the thenable on
+// the event object so tests can assert on the veto promise.
+export interface MockWillSaveEvent {
+	readonly document: MockTextDocument;
+	readonly reason: number;
+	readonly waitUntilCalls: PromiseLike<unknown>[];
+	waitUntil(thenable: PromiseLike<unknown>): void;
+}
+
+const onWillSaveTextDocumentEmitter = new EventEmitterStub<MockWillSaveEvent>();
+
+export function fireWillSaveTextDocument(document: MockTextDocument, reason: number): MockWillSaveEvent {
+	const waitUntilCalls: PromiseLike<unknown>[] = [];
+	const event: MockWillSaveEvent = {
+		document,
+		reason,
+		waitUntilCalls,
+		waitUntil(thenable: PromiseLike<unknown>): void {
+			waitUntilCalls.push(thenable);
+		},
+	};
+	onWillSaveTextDocumentEmitter.fire(event);
+	return event;
+}
+
 export function fireDidSaveTextDocument(doc: MockTextDocument): void {
 	onDidSaveTextDocumentEmitter.fire(doc);
 }
@@ -164,6 +192,7 @@ export function resetEditorEventEmitters(): void {
 	onDidChangeTextDocumentEmitter.dispose();
 	onDidStartTerminalShellExecutionEmitter.dispose();
 	onDidEndTerminalShellExecutionEmitter.dispose();
+	onWillSaveTextDocumentEmitter.dispose();
 }
 
 interface MockGitRepository {
@@ -236,7 +265,11 @@ const vscodeStub = {
 		onDidEndTerminalShellExecution: onDidEndTerminalShellExecutionEmitter.event,
 	},
 	workspace: {
-		onWillSaveTextDocument: (): DisposableLike => ({ dispose: () => undefined }),
+		// Phase 12 Plan 12-01 — real onWillSaveTextDocument emitter. Tests fire mock
+		// TextDocumentWillSaveEvent via fireWillSaveTextDocument(doc, reason); listeners
+		// registered via registerSaveGate() get invoked synchronously and may call
+		// event.waitUntil(thenable) which the stub records on event.waitUntilCalls.
+		onWillSaveTextDocument: onWillSaveTextDocumentEmitter.event,
 		// Phase-5 TELE-02 — editor save/change emitters. registerEditorEventWatcher subscribes
 		// here; tests fire via fireDidSaveTextDocument/fireDidChangeTextDocument helpers.
 		onDidSaveTextDocument: onDidSaveTextDocumentEmitter.event,
