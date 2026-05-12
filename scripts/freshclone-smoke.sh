@@ -100,5 +100,16 @@ fi
 echo "[freshclone-smoke] Step 4: CDP smoke harness (budget ${CDP_TIMEOUT_S}s)"
 run_with_timeout "$CDP_TIMEOUT_S" node "$ROOT/scripts/test/freshclone-smoke-cdp.cjs"
 
-echo "[freshclone-smoke] OK — all 4 SC#5 assertions PASS"
+# --- Step 5 (Phase 12 Plan 12-06): VSCODE_DEV-less launch produces workbench-dev.html
+# The sibling harness in Step 4 injects VSCODE_DEV=1 via Playwright `env:` — so it
+# would PASS even without a source-level default. This stage strips VSCODE_DEV
+# (and VSCODE_CLI) from the environment before invoking the companion harness,
+# which exercises the `src/main.ts` Task 12-06-01 default. If the default is
+# missing or its dev-vs-prod heuristic fails, the workbench will load
+# `workbench.html` (production shape) instead of `workbench-dev.html` and this
+# stage exits non-zero.
+echo "[freshclone-smoke] Step 5 (Plan 12-06): VSCODE_DEV-less launch produces workbench-dev.html (budget ${CDP_TIMEOUT_S}s)"
+run_with_timeout "$CDP_TIMEOUT_S" env -u VSCODE_DEV -u VSCODE_CLI node "$ROOT/scripts/test/freshclone-smoke-vscode-dev-default.cjs"
+
+echo "[freshclone-smoke] OK — all 4 SC#5 assertions PASS + Plan 12-06 VSCODE_DEV default verified"
 exit 0
