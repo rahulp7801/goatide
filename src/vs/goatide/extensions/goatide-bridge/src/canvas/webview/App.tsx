@@ -93,37 +93,45 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 		rpc.postCitationExplain(node_id);
 	}, [rpc]);
 
+	const friendlyFile = formatFileUri(payload.file_uri);
+
 	return (
 		<div className={`goatide-canvas goatide-canvas-${payload.tier}${payload.destructive ? ' goatide-canvas-destructive' : ''}`}>
 			<header className="goatide-canvas-header">
-				<span className="goatide-canvas-title">Verification Canvas - {payload.tier}</span>
-				<span className="goatide-canvas-file">{payload.file_uri}</span>
+				<span className="goatide-canvas-title">Verification Canvas</span>
+				<span className={`goatide-canvas-tier-badge ${payload.tier}`}>{payload.tier}</span>
+				<span className="goatide-canvas-file" title={payload.file_uri}>{friendlyFile}</span>
+				{payload.destructive ? (
+					<span className="goatide-canvas-destructive-flag">Destructive</span>
+				) : null}
 			</header>
-			{/* Phase 7 Plan 07-07 — DriftFindings rendered above diff pane when present. */}
-			{payload.drift_findings && payload.drift_findings.length > 0 ? (
-				<DriftFindings findings={payload.drift_findings} rpc={rpc} />
-			) : null}
-			{/* Phase 7 Plan 07-07 — ComplianceReport above diff pane when lock_trigger fires. */}
-			{payload.lock_trigger ? (
-				<ComplianceReportView
-					report={payload.compliance_report ?? null}
-					overrideProps={{
-						rpc,
-						changeId: payload.change_id,
-						lockTrigger: payload.lock_trigger,
-					}}
-				/>
-			) : null}
-			<section className="goatide-canvas-diff">
-				<Diff
-					original={payload.original_content}
-					modified={payload.modified_content}
-					language={payload.language}
-				/>
-			</section>
-			<section className="goatide-canvas-citations">
-				<CitationList citations={payload.citations} onExplain={onCitationExplain} />
-			</section>
+			<div className="goatide-canvas-body">
+				{/* Phase 7 Plan 07-07 — DriftFindings rendered above diff pane when present. */}
+				{payload.drift_findings && payload.drift_findings.length > 0 ? (
+					<DriftFindings findings={payload.drift_findings} rpc={rpc} />
+				) : null}
+				{/* Phase 7 Plan 07-07 — ComplianceReport above diff pane when lock_trigger fires. */}
+				{payload.lock_trigger ? (
+					<ComplianceReportView
+						report={payload.compliance_report ?? null}
+						overrideProps={{
+							rpc,
+							changeId: payload.change_id,
+							lockTrigger: payload.lock_trigger,
+						}}
+					/>
+				) : null}
+				<section className="goatide-canvas-diff">
+					<Diff
+						original={payload.original_content}
+						modified={payload.modified_content}
+						language={payload.language}
+					/>
+				</section>
+				<section className="goatide-canvas-citations">
+					<CitationList citations={payload.citations} onExplain={onCitationExplain} />
+				</section>
+			</div>
 			{payload.destructive && payload.confirmation_phrase ? (
 				<section className="goatide-canvas-confirm">
 					<ConfirmationPhrase
@@ -177,4 +185,18 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 			</footer>
 		</div>
 	);
+}
+
+function formatFileUri(uri: string): string {
+	try {
+		const decoded = decodeURIComponent(uri);
+		const withoutScheme = decoded.replace(/^file:\/+/, '');
+		const normalised = withoutScheme.replace(/\\/g, '/');
+		const trimmed = normalised.startsWith('/') && /^\/[a-zA-Z]:/.test(normalised)
+			? normalised.slice(1)
+			: normalised;
+		return trimmed;
+	} catch {
+		return uri;
+	}
 }

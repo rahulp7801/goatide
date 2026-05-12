@@ -292,11 +292,15 @@ export class CanvasPanel {
 		const indexJsUri = this.panel.webview
 			.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'canvas', 'index.js'))
 			.toString();
-		// Substitute placeholders. The HTML uses ${webview.cspSource}/index.js for the script src;
-		// we replace that prefix with the asWebviewUri-converted URL (which already contains cspSource).
+		const indexCssUri = this.panel.webview
+			.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'canvas', 'index.css'))
+			.toString();
+		// Substitute placeholders. The HTML uses ${webview.cspSource}/index.js (and /index.css)
+		// for asset URIs; we swap those to the asWebviewUri-converted URLs that the renderer can load.
 		return template
 			.replaceAll('${nonce}', nonce)
 			.replaceAll('${webview.cspSource}/index.js', indexJsUri)
+			.replaceAll('${webview.cspSource}/index.css', indexCssUri)
 			.replaceAll('${webview.cspSource}', cspSource);
 	}
 }

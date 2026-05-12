@@ -3,131 +3,453 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-/* src/canvas/webview/styles.css - Phase 4 (Plan 04-03) Canvas styles using VS Code theme tokens. */
+/* src/canvas/webview/styles.css - Verification Canvas styles. Uses VS Code theme tokens
+ * throughout; fallbacks are dark-theme defaults only — host theme wins in production. */
 
-body {
+html, body {
 	margin: 0;
 	padding: 0;
-	font-family: sans-serif;
+	height: 100%;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
 	font-size: 13px;
 	color: var(--vscode-foreground, #cccccc);
 	background-color: var(--vscode-editor-background, #1e1e1e);
 }
 
+button {
+	font-family: inherit;
+	font-size: inherit;
+}
+
+/* ========================================================================================
+ * Top-level shell
+ * ====================================================================================== */
+
 .goatide-canvas {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
-	padding: 12px;
+	height: 100vh;
+	box-sizing: border-box;
 }
 
 .goatide-canvas-modal {
-	border: 2px solid var(--vscode-statusBarItem-errorBackground, #5a1d1d);
+	border-top: 2px solid var(--vscode-inputValidation-errorBorder, #be1100);
 }
 
-.goatide-canvas-destructive .goatide-canvas-header {
-	background-color: var(--vscode-statusBarItem-errorBackground, #5a1d1d);
-	color: var(--vscode-statusBarItem-errorForeground, #fff);
+.goatide-canvas-inline {
+	border-top: 2px solid var(--vscode-inputValidation-warningBorder, #b89500);
 }
+
+/* ========================================================================================
+ * Header
+ * ====================================================================================== */
 
 .goatide-canvas-header {
 	display: flex;
-	justify-content: space-between;
-	padding: 8px 12px;
-	background-color: var(--vscode-titleBar-activeBackground, #3c3c3c);
+	align-items: center;
+	gap: 10px;
+	padding: 8px 16px;
+	background-color: var(--vscode-sideBarSectionHeader-background, #00000040);
+	border-bottom: 1px solid var(--vscode-panel-border, #2b2b2b);
+	flex-shrink: 0;
+}
+
+.goatide-canvas-title {
+	font-weight: 600;
+	font-size: 13px;
+	color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground, #cccccc));
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.goatide-canvas-tier-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 8px;
+	border-radius: 9px;
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	background-color: var(--vscode-badge-background, #4d4d4d);
+	color: var(--vscode-badge-foreground, #ffffff);
+}
+
+.goatide-canvas-tier-badge.modal {
+	background-color: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+	color: var(--vscode-inputValidation-errorForeground, #ffffff);
+	border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+.goatide-canvas-tier-badge.inline {
+	background-color: var(--vscode-inputValidation-warningBackground, #5a4a1d);
+	color: var(--vscode-inputValidation-warningForeground, #ffffff);
+	border: 1px solid var(--vscode-inputValidation-warningBorder, #b89500);
+}
+
+.goatide-canvas-file {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-family: var(--monaco-monospace-font, ui-monospace, SFMono-Regular, Consolas, monospace);
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	direction: rtl;          /* keep filename visible when truncating */
+	text-align: left;
+	unicode-bidi: plaintext;
+}
+
+.goatide-canvas-destructive-flag {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 600;
+	background-color: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+	color: var(--vscode-errorForeground, #f48771);
+}
+
+.goatide-canvas-destructive-flag::before {
+	content: '⚠';
+	font-size: 12px;
+}
+
+/* ========================================================================================
+ * Body — scrollable region containing diff + citations
+ * ====================================================================================== */
+
+.goatide-canvas-body {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	padding: 14px 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.goatide-canvas-diff {
+	border: 1px solid var(--vscode-panel-border, #2b2b2b);
+	border-radius: 4px;
+	overflow: hidden;
+	background-color: var(--vscode-editor-background, #1e1e1e);
 }
 
 .goatide-canvas-citations {
-	border-top: 1px solid var(--vscode-panel-border, #2b2b2b);
-	padding-top: 8px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
 }
 
-.goatide-citation-section + .goatide-citation-section {
-	margin-top: 12px;
+/* ========================================================================================
+ * Citations
+ * ====================================================================================== */
+
+.goatide-citation-section {
+	border: 1px solid var(--vscode-panel-border, #2b2b2b);
+	border-radius: 4px;
+	padding: 8px 12px;
+	background-color: var(--vscode-editorWidget-background, #252526);
+}
+
+.goatide-citation-title {
+	margin: 0 0 6px 0;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
+}
+
+.goatide-citation-rows {
+	list-style: none;
+	margin: 0;
+	padding: 0;
 }
 
 .goatide-citation-row {
 	display: grid;
-	grid-template-columns: 1fr 2fr 80px auto auto;
-	gap: 8px;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) 64px auto auto;
+	gap: 12px;
 	padding: 6px 0;
-	border-bottom: 1px dotted var(--vscode-panel-border, #2b2b2b);
+	border-bottom: 1px dashed var(--vscode-panel-border, #2b2b2b);
 	align-items: baseline;
+	font-size: 12px;
+}
+
+.goatide-citation-row:last-child {
+	border-bottom: none;
 }
 
 .goatide-citation-breadcrumb {
-	font-family: monospace;
-	color: var(--vscode-descriptionForeground, #999);
+	font-family: var(--monaco-monospace-font, ui-monospace, Consolas, monospace);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .goatide-citation-snippet {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	color: var(--vscode-foreground, #cccccc);
+}
+
+.goatide-citation-id {
+	font-family: var(--monaco-monospace-font, ui-monospace, Consolas, monospace);
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
 }
 
 .goatide-citation-superseded {
-	color: var(--vscode-editorWarning-foreground, #ffb454);
+	color: var(--vscode-editorWarning-foreground, #cca700);
+	font-size: 11px;
+	font-style: italic;
+}
+
+.goatide-citation-explain {
+	background: transparent;
+	border: 1px solid var(--vscode-button-border, transparent);
+	color: var(--vscode-textLink-foreground, #3794ff);
+	padding: 2px 8px;
+	border-radius: 3px;
+	cursor: pointer;
 	font-size: 11px;
 }
 
-.goatide-canvas-actions {
+.goatide-citation-explain:hover {
+	background-color: var(--vscode-toolbar-hoverBackground, #5a5d5e);
+	color: var(--vscode-textLink-activeForeground, #4daafc);
+}
+
+/* Empty-citations info banner (degraded-kernel state) */
+.goatide-citation-empty {
 	display: flex;
+	align-items: center;
 	gap: 8px;
-	padding-top: 12px;
+	padding: 10px 14px;
+	border-radius: 4px;
+	background-color: var(--vscode-editorInfo-background, #063b49);
+	border: 1px solid var(--vscode-editorInfo-foreground, #3794ff);
+	color: var(--vscode-foreground, #cccccc);
+	font-size: 12px;
+	line-height: 1.5;
 }
 
-.goatide-canvas-actions button {
-	padding: 6px 16px;
-	background-color: var(--vscode-button-background, #0e639c);
-	color: var(--vscode-button-foreground, #ffffff);
-	border: none;
-	cursor: pointer;
+.goatide-citation-empty::before {
+	content: '\24D8';
+	color: var(--vscode-editorInfo-foreground, #3794ff);
+	font-size: 14px;
+	flex-shrink: 0;
 }
 
-.goatide-canvas-actions button:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
-}
+/* ========================================================================================
+ * Confirmation Phrase (destructive saves)
+ * ====================================================================================== */
 
-.goatide-canvas-reject {
-	background-color: var(--vscode-button-secondaryBackground, #3a3d41) !important;
-}
-
-.goatide-degraded-banner {
-	padding: 8px 16px;
-	background-color: var(--vscode-statusBarItem-errorBackground, #5a1d1d);
-	color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+.goatide-canvas-confirm {
+	padding: 0 16px;
+	flex-shrink: 0;
 }
 
 .goatide-confirm-phrase {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	padding: 8px;
-	border: 1px dashed var(--vscode-statusBarItem-errorBackground, #5a1d1d);
+	display: grid;
+	grid-template-columns: 1fr auto;
+	grid-template-areas:
+		"label  label"
+		"input  button";
+	gap: 8px 10px;
+	padding: 12px 14px;
+	border-radius: 4px;
+	background-color: var(--vscode-inputValidation-errorBackground, rgba(190, 17, 0, 0.12));
+	border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
 }
 
-/* ===========================================================================================
- * Phase 7 Plan 07-07 — DRIFT-01 / DRIFT-04 / DRIFT-06 surfaces.
- *
- * All colors use vscode-elements ThemeColor variables (--vscode-*) per the Plan 04-03 / 07-07
- * styling convention. No hardcoded hex values outside fallback defaults (defensive only —
- * the host theme is always the source of truth in production).
- * =========================================================================================== */
+.goatide-confirm-phrase label {
+	grid-area: label;
+	font-size: 12px;
+	color: var(--vscode-foreground, #cccccc);
+}
+
+.goatide-confirm-phrase code {
+	display: inline-block;
+	padding: 0 6px;
+	margin: 0 2px;
+	border-radius: 3px;
+	background-color: var(--vscode-textCodeBlock-background, #1e1e1e);
+	color: var(--vscode-errorForeground, #f48771);
+	font-family: var(--monaco-monospace-font, ui-monospace, Consolas, monospace);
+	font-weight: 600;
+}
+
+.goatide-confirm-phrase input[type="text"] {
+	grid-area: input;
+	padding: 5px 8px;
+	font-family: var(--monaco-monospace-font, ui-monospace, Consolas, monospace);
+	font-size: 12px;
+	background-color: var(--vscode-input-background, #3c3c3c);
+	color: var(--vscode-input-foreground, #cccccc);
+	border: 1px solid var(--vscode-input-border, transparent);
+	border-radius: 3px;
+	outline: none;
+}
+
+.goatide-confirm-phrase input[type="text"]:focus {
+	border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.goatide-confirm-phrase input[type="text"]:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.goatide-confirm-phrase button {
+	grid-area: button;
+	padding: 5px 14px;
+	background-color: var(--vscode-button-background, #0e639c);
+	color: var(--vscode-button-foreground, #ffffff);
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 3px;
+	cursor: pointer;
+	font-weight: 500;
+	min-width: 88px;
+	transition: background-color 120ms ease;
+}
+
+.goatide-confirm-phrase button:hover:not(:disabled) {
+	background-color: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.goatide-confirm-phrase button:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+/* ========================================================================================
+ * Action footer (Accept / Reject / Reject with Note)
+ * ====================================================================================== */
+
+.goatide-canvas-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 12px 16px;
+	background-color: var(--vscode-sideBar-background, var(--vscode-editor-background, #1e1e1e));
+	border-top: 1px solid var(--vscode-panel-border, #2b2b2b);
+	flex-shrink: 0;
+}
+
+.goatide-canvas-actions button {
+	padding: 6px 18px;
+	min-width: 96px;
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 3px;
+	cursor: pointer;
+	font-weight: 500;
+	transition: background-color 120ms ease;
+}
+
+.goatide-canvas-actions button:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.goatide-canvas-accept {
+	background-color: var(--vscode-button-background, #0e639c);
+	color: var(--vscode-button-foreground, #ffffff);
+}
+
+.goatide-canvas-accept:hover:not(:disabled) {
+	background-color: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.goatide-canvas-reject {
+	background-color: var(--vscode-button-secondaryBackground, #3a3d41);
+	color: var(--vscode-button-secondaryForeground, #ffffff);
+}
+
+.goatide-canvas-reject:hover:not(:disabled) {
+	background-color: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.goatide-canvas-reject-note {
+	background-color: transparent;
+	color: var(--vscode-foreground, #cccccc);
+	border: 1px solid var(--vscode-button-secondaryBackground, #3a3d41);
+}
+
+.goatide-canvas-reject-note:hover:not(:disabled) {
+	background-color: var(--vscode-toolbar-hoverBackground, #5a5d5e);
+}
+
+.goatide-canvas-reject-form {
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 8px;
+	padding: 12px;
+	background-color: var(--vscode-editorWidget-background, #252526);
+	border: 1px solid var(--vscode-panel-border, #2b2b2b);
+	border-radius: 4px;
+}
+
+.goatide-canvas-reject-form textarea {
+	padding: 6px 8px;
+	background-color: var(--vscode-input-background, #3c3c3c);
+	color: var(--vscode-input-foreground, #cccccc);
+	border: 1px solid var(--vscode-input-border, transparent);
+	border-radius: 3px;
+	font-family: sans-serif;
+	font-size: 12px;
+	resize: vertical;
+	outline: none;
+}
+
+.goatide-canvas-reject-form textarea:focus {
+	border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.goatide-canvas-reject-form button {
+	align-self: flex-start;
+	min-width: 140px;
+}
+
+/* ========================================================================================
+ * Degraded banner (no kernel)
+ * ====================================================================================== */
+
+.goatide-degraded-banner {
+	padding: 10px 16px;
+	background-color: var(--vscode-editorWarning-background, #5a4a1d);
+	color: var(--vscode-editorWarning-foreground, #cca700);
+	border-left: 3px solid var(--vscode-editorWarning-foreground, #cca700);
+	font-size: 12px;
+}
+
+/* ========================================================================================
+ * Phase 7 Plan 07-07 — Drift findings + compliance report (existing surfaces)
+ * ====================================================================================== */
 
 .drift-findings {
-	border: 1px solid var(--vscode-editorWarning-foreground, #ffb454);
-	background-color: var(--vscode-editorWarning-background, #5a4a1d);
-	padding: 8px 12px;
-	border-radius: 3px;
-	margin-bottom: 8px;
+	border: 1px solid var(--vscode-editorWarning-foreground, #cca700);
+	background-color: var(--vscode-editorWarning-background, rgba(204, 167, 0, 0.10));
+	padding: 10px 12px;
+	border-radius: 4px;
 }
 
 .drift-findings-title {
 	margin: 0 0 8px 0;
-	font-size: 13px;
-	color: var(--vscode-editorWarning-foreground, #ffb454);
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
 .drift-findings-list {
@@ -139,68 +461,76 @@ body {
 .drift-findings-row {
 	display: grid;
 	grid-template-columns: auto 1fr auto;
-	gap: 8px;
+	gap: 10px;
 	padding: 4px 0;
 	border-bottom: 1px dotted var(--vscode-panel-border, #2b2b2b);
 	align-items: baseline;
+	font-size: 12px;
+}
+
+.drift-findings-row:last-child {
+	border-bottom: none;
 }
 
 .drift-findings-jump {
-	font-family: monospace;
+	font-family: var(--monaco-monospace-font, ui-monospace, Consolas, monospace);
 	background: none;
 	border: none;
 	color: var(--vscode-textLink-foreground, #3794ff);
 	cursor: pointer;
 	padding: 0;
 	text-decoration: underline;
-	font-size: 12px;
+	font-size: 11px;
 }
 
 .drift-findings-jump:hover {
-	color: var(--vscode-textLink-activeForeground, #3794ff);
+	color: var(--vscode-textLink-activeForeground, #4daafc);
 }
 
 .drift-findings-pattern-kind {
-	font-family: monospace;
-	font-size: 11px;
-	color: var(--vscode-descriptionForeground, #999);
+	font-family: var(--monaco-monospace-font, ui-monospace, Consolas, monospace);
+	font-size: 10px;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
 }
 
 .compliance-report {
-	border: 2px solid var(--vscode-statusBarItem-errorBackground, #5a1d1d);
-	background-color: var(--vscode-editor-background, #1e1e1e);
+	border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+	background-color: var(--vscode-editorWidget-background, #252526);
 	padding: 12px;
-	border-radius: 3px;
-	margin-bottom: 12px;
+	border-radius: 4px;
 }
 
 .compliance-report-title {
-	margin: 0 0 12px 0;
-	font-size: 14px;
-	color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+	margin: 0 0 10px 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--vscode-errorForeground, #f48771);
 }
 
 .compliance-report-bucket {
-	margin-bottom: 12px;
-	padding: 8px;
+	margin-bottom: 10px;
+	padding: 8px 10px;
 	border-radius: 3px;
 }
 
 .compliance-report-bucket-title {
 	margin: 0 0 6px 0;
-	font-size: 12px;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
 }
 
 .compliance-report-definitely,
 .compliance-bucket-definitely {
-	background-color: var(--vscode-statusBarItem-errorBackground, #5a1d1d);
-	color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+	background-color: var(--vscode-inputValidation-errorBackground, rgba(190, 17, 0, 0.18));
+	color: var(--vscode-errorForeground, #f48771);
 }
 
 .compliance-report-potentially,
 .compliance-bucket-potentially {
-	background-color: var(--vscode-editorWarning-background, #5a4a1d);
-	color: var(--vscode-editorWarning-foreground, #ffb454);
+	background-color: var(--vscode-inputValidation-warningBackground, rgba(184, 149, 0, 0.18));
+	color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
 .compliance-report-rows {
@@ -212,35 +542,34 @@ body {
 .compliance-report-row {
 	display: grid;
 	grid-template-columns: 100px 1fr 2fr auto;
-	gap: 8px;
+	gap: 10px;
 	padding: 3px 0;
 	font-size: 12px;
-	transition: opacity 200ms ease-in;
 }
 
 .compliance-report-empty {
-	color: var(--vscode-descriptionForeground, #999);
+	color: var(--vscode-descriptionForeground, #9d9d9d);
 	font-style: italic;
 	font-size: 12px;
 }
 
 .compliance-report-loading {
 	padding: 8px;
-	color: var(--vscode-descriptionForeground, #999);
+	color: var(--vscode-descriptionForeground, #9d9d9d);
 	font-style: italic;
 	font-size: 12px;
 }
 
 .compliance-report-truncated {
 	padding: 6px 8px;
-	color: var(--vscode-editorWarning-foreground, #ffb454);
+	color: var(--vscode-editorWarning-foreground, #cca700);
 	font-size: 11px;
 	font-style: italic;
 }
 
 .compliance-report-footer {
 	margin-top: 12px;
-	padding-top: 12px;
+	padding-top: 10px;
 	border-top: 1px solid var(--vscode-panel-border, #2b2b2b);
 }
 
@@ -252,36 +581,49 @@ body {
 
 .override-textarea-label {
 	font-size: 11px;
-	color: var(--vscode-descriptionForeground, #999);
+	color: var(--vscode-descriptionForeground, #9d9d9d);
 }
 
 .override-textarea {
-	font-family: monospace;
+	font-family: var(--monaco-monospace-font, ui-monospace, Consolas, monospace);
 	font-size: 12px;
-	padding: 6px;
+	padding: 6px 8px;
 	min-height: 60px;
 	background-color: var(--vscode-input-background, #3c3c3c);
 	color: var(--vscode-input-foreground, #cccccc);
-	border: 1px solid var(--vscode-input-border, #5a1d1d);
+	border: 1px solid var(--vscode-input-border, transparent);
+	border-radius: 3px;
+	resize: vertical;
+}
+
+.override-textarea:focus {
+	outline: none;
+	border-color: var(--vscode-focusBorder, #007fd4);
 }
 
 .override-button-row {
 	display: flex;
-	gap: 12px;
+	gap: 10px;
 	align-items: center;
 }
 
 .override-button {
-	padding: 6px 16px;
-	background-color: var(--vscode-statusBarItem-errorBackground, #5a1d1d);
-	color: var(--vscode-statusBarItem-errorForeground, #ffffff);
-	border: none;
+	padding: 6px 14px;
+	background-color: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+	color: var(--vscode-errorForeground, #f48771);
+	border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+	border-radius: 3px;
 	cursor: pointer;
-	font-weight: 600;
+	font-weight: 500;
+}
+
+.override-button:hover:not(:disabled) {
+	background-color: var(--vscode-inputValidation-errorBorder, #be1100);
+	color: var(--vscode-button-foreground, #ffffff);
 }
 
 .override-button:disabled {
-	opacity: 0.4;
+	opacity: 0.45;
 	cursor: not-allowed;
 }
 
@@ -291,10 +633,13 @@ body {
 }
 
 .intent-drift-badge {
+	display: inline-block;
 	font-size: 10px;
-	padding: 2px 6px;
-	border-radius: 3px;
-	background-color: var(--vscode-editorWarning-background, #5a4a1d);
-	color: var(--vscode-editorWarning-foreground, #ffb454);
+	padding: 2px 7px;
+	border-radius: 9px;
+	background-color: var(--vscode-editorWarning-background, rgba(204, 167, 0, 0.18));
+	color: var(--vscode-editorWarning-foreground, #cca700);
+	border: 1px solid var(--vscode-editorWarning-foreground, #cca700);
 	cursor: help;
+	font-weight: 500;
 }
