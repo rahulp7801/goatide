@@ -3,6 +3,29 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+// Plan 12-06: default VSCODE_DEV=1 for first-time-launch ergonomics.
+// scripts/code.sh and scripts/code.bat already export VSCODE_DEV=1 before
+// spawning the Electron binary, but a user (or downstream tool) that invokes
+// the compiled binary directly — e.g. double-clicking .build/electron/GoatIDE.exe
+// from a fresh checkout — bypasses those shells and loses the default, which
+// makes the workbench load the production-shaped index.html instead of
+// workbench-dev.html and renders a blank window.
+//
+// The heuristic below defaults VSCODE_DEV=1 only when this file is being
+// loaded from a development checkout (out/ on disk, NOT inside an asar
+// archive). Production builds package out/ inside resources/app.asar/, so
+// import.meta.dirname contains '.asar' and the default does not apply —
+// shipped binaries retain their production behaviour. This matches the
+// dev-vs-prod signal used elsewhere in the bootstrap (e.g. configurePortable
+// in bootstrap-node.ts inspects appRoot for the asar marker).
+if (typeof process.env['VSCODE_DEV'] === 'undefined' || process.env['VSCODE_DEV'] === '') {
+	const entryDir = import.meta.dirname;
+	const isLikelyDevCheckout = entryDir.includes('out') && !entryDir.includes('.asar');
+	if (isLikelyDevCheckout) {
+		process.env['VSCODE_DEV'] = '1';
+	}
+}
+
 import * as path from 'node:path';
 import * as fs from 'original-fs';
 import * as os from 'node:os';
