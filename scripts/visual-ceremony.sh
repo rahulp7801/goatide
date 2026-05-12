@@ -2,19 +2,27 @@
 #
 # scripts/visual-ceremony.sh — Phase 11 Plan 11-00 Task 2 top-level driver.
 #
-# Two modes:
-#   1. Filtered invocation (--only <id> or --waves <list>): delegate to the .cjs harness
-#      with the filter; runs in a single Electron launch.
-#   2. Unfiltered (full sweep): run each wave (0..4) in a SEPARATE Electron launch.
-#      Per-wave isolation is the accepted closure mechanism per ROADMAP SC #3 and
-#      11-EVIDENCE.md — single-launch full sweep historically hit Wave-3 cross-state
-#      interference (auth-security.md saves not routing through the save-gate in
-#      multi-group multi-webview state). Per-wave invocation works deterministically.
+# DEFAULT MODE (Phase 13 CLOSE-02 closure): single Electron launch across all waves.
+#   `bash scripts/visual-ceremony.sh`   — runs all 11 surfaces in one Electron launch.
+#   This is the mode measured by refusal-close-02-single-launch-ceremony-meta.sh.
+#
+# The per-wave isolation workaround (--waves N per launch) was introduced in Phase 11
+# commit 540bd120618 as a workaround for Wave-3 cross-state interference: VS Code's
+# active-editor detection became inconsistent in multi-group multi-webview state, causing
+# the auth-security.md save to never route through onWillSaveTextDocument. Phase 12-03
+# (H1 dispose-on-reject + H2 ViewColumn.Active) partially fixed this. Phase 13 Plan 13-02
+# (CLOSE-02) identified the root cause — save-command routing targets the *active* editor,
+# not just the dirty one — and added a tab-active-before-save guard in prepareDriftSave
+# so auth-security.md is pinned as the active editor immediately before the save fires.
+# The workaround flag is retained for opt-in per-wave isolation (e.g. CI environments
+# that need hermetic wave-level isolation) but is no longer the default.
 #
 # Usage:
-#   bash scripts/visual-ceremony.sh                    # full sweep (per-wave launches)
+#   bash scripts/visual-ceremony.sh                    # full sweep (single Electron launch)
 #   bash scripts/visual-ceremony.sh --only VIS-09      # single-surface filter
-#   bash scripts/visual-ceremony.sh --waves 1,2        # wave-number filter
+#   bash scripts/visual-ceremony.sh --waves 1,2        # wave-number filter (single launch)
+#   bash scripts/visual-ceremony.sh --waves 3 --per-wave-isolation
+#                                                      # opt-in per-wave launch (legacy mode)
 #   HARNESS_TIMEOUT_MS=300000 bash scripts/visual-ceremony.sh ...
 
 set -euo pipefail
@@ -24,50 +32,71 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$ROOT"
 
-# Detect filtered vs unfiltered invocation. Any --only or --waves arg means single-launch.
-IS_FILTERED=0
+# Detect per-wave-isolation opt-in flag.
+PER_WAVE_ISOLATION=0
+PASS_THROUGH_ARGS=()
 for arg in "$@"; do
 	case "$arg" in
-		--only|--only=*|--waves|--waves=*)
-			IS_FILTERED=1
+		--per-wave-isolation)
+			PER_WAVE_ISOLATION=1
+			;;
+		*)
+			PASS_THROUGH_ARGS+=("$arg")
 			;;
 	esac
 done
 
-if [[ "$IS_FILTERED" == "1" ]]; then
-	exec node scripts/test/visual-ceremony-cdp.cjs "$@"
-fi
+if [[ "$PER_WAVE_ISOLATION" == "1" ]]; then
+	# Legacy per-wave isolation mode: run each specified wave in its own Electron launch.
+	# Parse --waves from pass-through args; default to all waves if absent.
+	WAVES=(0 1 2 3 4)
+	for i in "${!PASS_THROUGH_ARGS[@]}"; do
+		if [[ "${PASS_THROUGH_ARGS[$i]}" == "--waves" ]]; then
+			IFS=',' read -ra WAVES <<< "${PASS_THROUGH_ARGS[$((i+1))]}"
+			unset 'PASS_THROUGH_ARGS[i]'
+			unset 'PASS_THROUGH_ARGS[$((i+1))]'
+			PASS_THROUGH_ARGS=("${PASS_THROUGH_ARGS[@]}")
+			break
+		fi
+	done
 
-# Unfiltered full sweep: run each wave in its own Electron launch. Accumulate
-# pass/fail tallies and exit non-zero if any wave failed.
-WAVES=(0 1 2 3 4)
-TOTAL_PASS=0
-TOTAL_FAIL=0
-FAILED_WAVES=()
-ANY_FAIL=0
+	TOTAL_PASS=0
+	TOTAL_FAIL=0
+	FAILED_WAVES=()
+	ANY_FAIL=0
 
-for wave in "${WAVES[@]}"; do
+	for wave in "${WAVES[@]}"; do
+		echo ""
+		echo "====================================================="
+		echo " VISUAL-CEREMONY > WAVE $wave (isolated Electron launch)"
+		echo "====================================================="
+		if node scripts/test/visual-ceremony-cdp.cjs --waves "$wave" "${PASS_THROUGH_ARGS[@]}"; then
+			echo "  WAVE $wave PASSED"
+		else
+			echo "  WAVE $wave FAILED"
+			ANY_FAIL=1
+			FAILED_WAVES+=("$wave")
+		fi
+	done
+
 	echo ""
 	echo "====================================================="
-	echo " VISUAL-CEREMONY > WAVE $wave (isolated Electron launch)"
+	echo " VISUAL-CEREMONY > PER-WAVE SWEEP COMPLETE"
 	echo "====================================================="
-	if node scripts/test/visual-ceremony-cdp.cjs --waves "$wave" "$@"; then
-		echo "  WAVE $wave PASSED"
+	if [[ "$ANY_FAIL" == "0" ]]; then
+		echo "All ${#WAVES[@]} waves PASSED (per-wave isolation mode)"
+		exit 0
 	else
-		echo "  WAVE $wave FAILED"
-		ANY_FAIL=1
-		FAILED_WAVES+=("$wave")
+		echo "Failed waves: ${FAILED_WAVES[*]}"
+		exit 1
 	fi
-done
+fi
 
+# Default: single Electron launch with all surfaces. Phase 13 CLOSE-02 closure — the
+# tab-active-before-save fix in prepareDriftSave makes this deterministic.
+# --only and --waves filters pass through to the harness as-is (single-launch always).
 echo ""
 echo "====================================================="
-echo " VISUAL-CEREMONY > FULL SWEEP COMPLETE"
+echo " VISUAL-CEREMONY > SINGLE-LAUNCH FULL SWEEP (CLOSE-02)"
 echo "====================================================="
-if [[ "$ANY_FAIL" == "0" ]]; then
-	echo "All ${#WAVES[@]} waves PASSED"
-	exit 0
-else
-	echo "Failed waves: ${FAILED_WAVES[*]}"
-	exit 1
-fi
+exec node scripts/test/visual-ceremony-cdp.cjs "$@"
