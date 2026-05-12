@@ -167,31 +167,45 @@ export function registerSaveGate(
 			console.log('[goatide-bridge]   gating non-Manual save (destructive=' + isDestructive + ' highImpact=' + citesHighImpact + ')');
 		}
 
-		// Phase 11 Plan 11-01 (Rule 1 Bug — VS Code API contract violation): the previous
-		// implementation `await fsp.readFile(...)` BEFORE `event.waitUntil(...)`, which
-		// violates VS Code's onWillSaveTextDocument contract (waitUntil must be called
-		// synchronously or within the same microtask as the listener invocation). On cold
-		// starts the await took >1750ms and VS Code logged `Illegal state: waitUntil can
-		// not be called async`, aborting the save-gate before the canvas could reveal.
+		// Phase 12 Plan 12-02 (P0 1750ms budget vulnerability): the previous implementation
+		// wrapped readFile + handleProposedSave INSIDE the vetoPromise async IIFE. Under high
+		// I/O load `await fsp.readFile(...)` could exceed 1750ms, at which point
+		// mainThreadSaveParticipant.ts (renderer) aborts the listener with
+		// `Aborted onWillSaveTextDocument-event after 1750ms` BEFORE the vetoPromise rejects.
+		// VS Code then proceeds with the save — the bypass.
 		//
-		// Fix: call waitUntil() FIRST, passing a Promise that does the readFile inside it.
-		// The Promise still rejects with SaveDeferredError to veto the save; the file-read +
-		// handleProposedSave happens inside the Promise's async chain so VS Code's
-		// extension-host scheduler sees a single synchronous waitUntil call.
-		const vetoPromise = (async () => {
+		// Phase 11 Plan 11-01 already moved waitUntil() BEFORE any await (fixed the
+		// `Illegal state: waitUntil can not be called async` contract violation). Plan 12-02
+		// goes one step further: pass a SYNCHRONOUSLY-CONSTRUCTED `Promise.reject(...)` to
+		// waitUntil so the rejection fires in a microtask, far inside the 1750ms budget,
+		// regardless of how long readFile takes. The heavy work (readFile +
+		// handleProposedSave) runs in a separate fire-and-forget IIFE that the listener does
+		// NOT await — its result is discarded via `void`.
+		//
+		// API legality: extHostDocumentSaveParticipant.ts:115-120 wraps the argument via
+		// `Promise.resolve(p)` and pushes onto a frozen-after promises array. A
+		// fully-constructed Promise.reject(...) at sync-call time is legal; vscode.d.ts:13513
+		// confirms `waitUntil(thenable: Thenable<any>)` accepts any thenable.
+		event.waitUntil(Promise.reject(new SaveDeferredError(doc.uri.toString())));
+
+		// Fire-and-forget: readFile + handleProposedSave run AFTER the listener returns and
+		// AFTER the vetoPromise has already rejected. The IIFE catches its own errors so an
+		// exception inside readFile / handleProposedSave does NOT become an unhandled promise
+		// rejection (extHostDocumentSaveParticipant has no reporter for it — it'd surface as
+		// `(node:###) UnhandledPromiseRejectionWarning` in the extension-host log only).
+		void (async () => {
 			let original: string;
 			try {
 				original = await fsp.readFile(doc.uri.fsPath, 'utf8');
 			} catch {
 				original = '';   // new file
 			}
-			// Fire-and-forget the proposal flow; do NOT await it inside the veto Promise
-			// because the 1.5s budget applies to the waitUntil Promise resolution.
-			void handleProposedSave(kernel, getPanel(), doc, original, modified, queue);
-			// Reject so the save is vetoed (cancel-then-redo pattern).
-			throw new SaveDeferredError(doc.uri.toString());
+			try {
+				await handleProposedSave(kernel, getPanel(), doc, original, modified, queue);
+			} catch (err) {
+				console.error('[goatide-bridge] handleProposedSave failed', err);
+			}
 		})();
-		event.waitUntil(vetoPromise);
 	});
 	ctx.subscriptions.push(sub);
 	return sub;
