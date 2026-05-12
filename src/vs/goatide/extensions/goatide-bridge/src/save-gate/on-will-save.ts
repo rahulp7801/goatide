@@ -30,8 +30,42 @@ import { ulid } from 'ulid';
 import type { KernelClient } from '../kernel/client.js';
 import type { CanvasPanel } from '../canvas/panel.js';
 import { dispatchTier } from './tier-dispatch.js';
-import { getCanvasModule } from './canvas-module.js';
+import { getCanvasModule, getCanvasModuleSync } from './canvas-module.js';
 import type { PendingAttemptsQueue, PendingAttemptRecord } from './pending-attempts.js';
+
+/**
+ * Phase 12 Plan 12-01 (CONTEXT.md Option B): synchronous high-impact-contract detection
+ * for the onWillSaveTextDocument listener.
+ *
+ * The listener body must call `event.waitUntil(...)` synchronously per VS Code's
+ * save-participant contract — `await` inside the listener body is forbidden. We can't
+ * call `kernel.queryNodes(...)` to hydrate citation details + run the kernel-side
+ * citesHighImpactContract predicate from a sync context. Instead, we match the
+ * workspace-settings `goatide.contracts.highImpactAllowlist` substrings against the
+ * file's fsPath directly — the same workspace-settings allowlist that
+ * tier-dispatch.ts:188 reads via vscode.workspace.getConfiguration. This mirrors the
+ * post-DEFERRED-11-01-A pattern: substring containment over normalized paths
+ * (backslashes folded to forward slashes; rooted-with-`/`).
+ *
+ * This is a SOUND OVER-APPROXIMATION: any file whose path matches the allowlist is
+ * gated, even if the actual save doesn't cite any high-impact ContractNode. That is the
+ * intent — the bridge can't tell synchronously if the proposed save cites a high-impact
+ * contract (citations come from the kernel-side proposeEdit receipt, which is async).
+ * Routing all saves against high-impact paths to the canvas is the same trade-off Plan
+ * 04-08 baked into the AnchorResultCache's 60s TTL.
+ */
+function normalizeForMatch(p: string): string {
+	const slashed = p.replace(/\\/g, '/');
+	return slashed.startsWith('/') ? slashed : `/${slashed}`;
+}
+
+function citesHighImpactPath(fsPath: string, allowlist: readonly string[]): boolean {
+	if (allowlist.length === 0) {
+		return false;
+	}
+	const normalized = normalizeForMatch(fsPath);
+	return allowlist.some((entry) => normalized.includes(normalizeForMatch(entry)));
+}
 
 export class SaveDeferredError extends Error {
 	constructor(uri: string) {
@@ -59,13 +93,79 @@ export function registerSaveGate(
 		// actually subscribed when Wave-3 saves in a full sweep. This will be useful
 		// permanently — save-gate silent-failures are the worst kind of bug to debug.
 		console.log('[goatide-bridge] onWillSaveTextDocument reason=' + event.reason + ' uri=' + event.document.uri.fsPath);
-		if (event.reason !== vscode.TextDocumentSaveReason.Manual) {
-			console.log('[goatide-bridge]   skipping non-Manual save (auto-save / format-on-save / shutdown)');
-			return;   // skip auto-save / format-on-save (data-integrity carveout)
-		}
+
 		const doc = event.document;
 		// Capture modified content synchronously (in-memory; cheap).
 		const modified = doc.getText();
+
+		// Phase 12 Plan 12-01 (CONTEXT.md Option B): close the P0 auto-save bypass at
+		// on-will-save.ts:60-65 (pre-Plan-12-01). Previously the listener unconditionally
+		// early-returned on `event.reason !== Manual`, which let destructive content
+		// (`DROP TABLE x`) and high-impact-contract saves reach disk under
+		// `files.autoSave: afterDelay` / `onFocusChange` without ever showing the
+		// ConfirmationPhrase modal. TextDocumentSaveReason has only 3 values:
+		// Manual=1, AfterDelay=2, FocusOut=3 (per vscode.d.ts:13472-13489 — there is no
+		// format-on-save / shutdown reason, despite the misleading pre-Plan-12-01 comment).
+		//
+		// New gate semantics:
+		//   - reason === Manual                              → ALWAYS fall through to the
+		//                                                       proposal flow (preserve the
+		//                                                       Phase-4 baseline; pinned by
+		//                                                       the Task 12-01-04 regression
+		//                                                       fence in save-gate-auto-save.test.ts).
+		//   - reason !== Manual AND destructive content      → gate (block disk write).
+		//   - reason !== Manual AND high-impact-citation     → gate (block disk write).
+		//   - reason !== Manual AND silent-tier (trivial)    → early-return (preserve
+		//                                                       auto-save UX — CONTEXT.md
+		//                                                       Option B trade-off).
+		//
+		// Synchronous classification is required because event.waitUntil(...) must be called
+		// within the synchronous listener body (extHostDocumentSaveParticipant.ts:111-131 —
+		// the promises array is frozen AFTER the synchronous listener call). We use:
+		//   1. getCanvasModuleSync() to call the kernel-side detectDestructive(diff, fsPath)
+		//      on a synthetic "all-added" diff. The module is pre-warmed during activate()
+		//      (extension.ts: `await getCanvasModule()` before `registerSaveGate`).
+		//   2. citesHighImpactPath() — substring match of the workspace-settings
+		//      `goatide.contracts.highImpactAllowlist` against doc.uri.fsPath. This is the
+		//      same allowlist tier-dispatch.ts:188 reads when running the kernel-side
+		//      classifyTier post-receipt. The sync version is a sound over-approximation:
+		//      saves against any file matching the allowlist gate even if the proposed save
+		//      wouldn't actually cite a high-impact ContractNode.
+		//
+		// Defense-in-depth: handleProposedSave still runs the FULL kernel-side detection
+		// (proposeEdit receipt + classifyTier) on every save that reaches it. The
+		// sync-classification step here only gates non-Manual saves; it never DEMOTES the
+		// existing Manual path.
+		const isManual = event.reason === vscode.TextDocumentSaveReason.Manual;
+		let isDestructive = false;
+		let citesHighImpact = false;
+		if (!isManual) {
+			const canvasMod = getCanvasModuleSync();
+			if (canvasMod !== undefined) {
+				// Build a synthetic "all-added" unified diff against an empty original — the
+				// kernel's destructive regexes (DESTRUCTIVE_DIFF_PATTERNS) anchor on /^[+-]/
+				// per-line, so feeding every line of `modified` prefixed with `+` triggers a
+				// match if any added line is destructive. detectDestructive also checks the
+				// fsPath against DESTRUCTIVE_PATH_PATTERNS (.env, /migrations/...).
+				const syntheticDiff = createPatch(doc.uri.fsPath, '', modified, '', '');
+				isDestructive = canvasMod.detectDestructive(syntheticDiff, doc.uri.fsPath);
+			}
+			// Read the workspace-settings allowlist via the same key tier-dispatch.ts uses.
+			// Fall back to kernel-side DEFAULT_HIGH_IMPACT_CONTRACT_PREFIXES if the module is
+			// pre-warmed; otherwise leave the allowlist empty (cite-high-impact check no-ops).
+			const defaultAllowlist = canvasMod?.DEFAULT_HIGH_IMPACT_CONTRACT_PREFIXES ?? [];
+			const allowlist = vscode.workspace
+				.getConfiguration('goatide')
+				.get<readonly string[]>('contracts.highImpactAllowlist', defaultAllowlist);
+			citesHighImpact = citesHighImpactPath(doc.uri.fsPath, allowlist);
+		}
+		if (!isManual && !isDestructive && !citesHighImpact) {
+			console.log('[goatide-bridge]   skipping non-Manual silent-tier save (destructive=false highImpact=false)');
+			return;   // CONTEXT.md Option B: preserve auto-save UX for trivial saves.
+		}
+		if (!isManual) {
+			console.log('[goatide-bridge]   gating non-Manual save (destructive=' + isDestructive + ' highImpact=' + citesHighImpact + ')');
+		}
 
 		// Phase 11 Plan 11-01 (Rule 1 Bug — VS Code API contract violation): the previous
 		// implementation `await fsp.readFile(...)` BEFORE `event.waitUntil(...)`, which

@@ -16,6 +16,7 @@ import { KernelClient } from './kernel/client.js';
 import { HeartbeatPoller } from './kernel/heartbeat.js';
 import { CanvasPanel } from './canvas/panel.js';
 import { registerSaveGate } from './save-gate/on-will-save.js';
+import { getCanvasModule } from './save-gate/canvas-module.js';
 import { scanForOrphanStagingFiles } from './save-gate/recovery-scan.js';
 import { PendingAttemptsQueue } from './save-gate/pending-attempts.js';
 import { KernelDegradedBanner } from './status-bar/kernel-degraded.js';
@@ -117,6 +118,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// we wire the new save-gate listener (which would create more staging files).
 	await scanForOrphanStagingFiles(context, kernel).catch((e) => {
 		console.error('[goatide-bridge] recovery scan failed', e);
+	});
+
+	// Phase 12 Plan 12-01 (CONTEXT.md Option B): pre-warm the kernel canvas module so the
+	// synchronous onWillSaveTextDocument listener can call detectDestructive +
+	// citesHighImpactContract BEFORE the `event.reason !== Manual` early-return without
+	// triggering the dynamic-import on the hot path. Async pre-warm during activation; the
+	// listener accesses the cached value via getCanvasModuleSync().
+	await getCanvasModule().catch((e) => {
+		console.error('[goatide-bridge] canvas module pre-warm failed (save-gate destructive detection will fall back to silent-pass)', e);
 	});
 
 	registerSaveGate(context, kernel, getPanel, queue);

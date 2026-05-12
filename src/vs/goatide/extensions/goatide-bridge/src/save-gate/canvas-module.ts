@@ -191,3 +191,21 @@ export async function getCanvasModule(): Promise<CanvasModule> {
 	cachedCanvasModule = mod as unknown as CanvasModule;
 	return cachedCanvasModule;
 }
+
+/**
+ * Phase 12 Plan 12-01 — synchronous accessor for the canvas module.
+ *
+ * Returns `undefined` if `getCanvasModule()` has never resolved yet (i.e. activation
+ * hasn't pre-warmed the cache). on-will-save.ts uses this from the synchronous
+ * onWillSaveTextDocument listener body to call `detectDestructive` BEFORE the
+ * `event.reason !== Manual` check — `await getCanvasModule()` is not viable inside the
+ * listener because the listener must call `event.waitUntil(...)` synchronously per the
+ * VS Code save-participant contract (extHostDocumentSaveParticipant.ts:111-131).
+ *
+ * extension.ts MUST call `await getCanvasModule()` during activate() to pre-warm this
+ * cache. Once warmed, every subsequent listener invocation gets the loaded module
+ * synchronously.
+ */
+export function getCanvasModuleSync(): CanvasModule | undefined {
+	return cachedCanvasModule;
+}
