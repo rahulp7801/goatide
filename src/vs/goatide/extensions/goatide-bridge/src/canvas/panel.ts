@@ -86,10 +86,15 @@ export class CanvasPanel {
 		if (CanvasPanel.instance && !CanvasPanel.isDisposed(CanvasPanel.instance.panel)) {
 			return CanvasPanel.instance;
 		}
+		// Plan 12-03 H2: ViewColumn.Active (not Beside). `Beside` creates a new editor group
+		// adjacent to the active one; over a multi-wave ceremony this accumulates editor groups
+		// and breaks active-editor detection in Wave-3. `Active` keeps the canvas in the same
+		// group as the just-modified file, avoiding focus accumulation. See 12-RESEARCH.md
+		// "Per-Issue Current-State Verification 12-03" for the empirical fix rationale.
 		const panel = vscode.window.createWebviewPanel(
 			VIEW_TYPE,
 			'GoatIDE Verification Canvas',
-			vscode.ViewColumn.Beside,
+			vscode.ViewColumn.Active,
 			{
 				enableScripts: true,
 				enableCommandUris: false,
@@ -149,7 +154,8 @@ export class CanvasPanel {
 	/** Show the canvas + wait for a decision from the developer. */
 	async showAndAwait(payload: CanvasShowPayload, options?: { timeoutMs?: number }): Promise<CanvasDecision> {
 		const timeoutMs = options?.timeoutMs ?? 10 * 60 * 1000;  // 10 min default
-		this.panel.reveal(vscode.ViewColumn.Beside, false);
+		// Plan 12-03 H2: reveal in ViewColumn.Active (paired with createWebviewPanel above).
+		this.panel.reveal(vscode.ViewColumn.Active, false);
 		await this.rpc.show(payload);
 		return new Promise<CanvasDecision>((resolve, reject) => {
 			const t = setTimeout(() => {

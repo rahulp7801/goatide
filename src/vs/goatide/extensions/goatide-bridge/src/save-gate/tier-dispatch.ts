@@ -368,6 +368,15 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		return;
 	}
 
+	// Plan 12-03 H1: switch accept/reject/reject_with_note branches from `panel.hide()` to
+	// `panel.dispose()`. `hide()` only posts a `canvas.hide` message while the iframe stays
+	// in the DOM under `retainContextWhenHidden: true`; across a multi-wave ceremony this
+	// accumulates undisposed Verification Canvas tabs which break Wave-3 active-editor
+	// detection. `dispose()` tears down the webview cleanly; CanvasPanel.getOrCreate
+	// recreates a fresh panel on the next save (DEFERRED-11-01-A panel-recreate guard
+	// landed in commit c8f34eb4ada; panel-recreate.test.ts pins the invariant). Note:
+	// CanvasPanel.dispose() is synchronous (returns void); awaiting a non-Promise is a
+	// no-op so the surrounding async/await call shape stays intact for diff minimality.
 	if (decision.kind === 'accept') {
 		await applyEditAtomically(inputs.kernel, {
 			target_path: inputs.doc.uri.fsPath,
@@ -379,9 +388,9 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 			body: `accepted ${tier} save of ${inputs.doc.uri.fsPath}`,
 			anchor: { file: inputs.doc.uri.fsPath },
 		});
-		await inputs.panel.hide();
+		await inputs.panel.dispose();
 	} else if (decision.kind === 'reject') {
-		await inputs.panel.hide();
+		await inputs.panel.dispose();
 	} else if (decision.kind === 'reject_with_note') {
 		await inputs.kernel.recordRejection({
 			receipt_id: inputs.receipt.id,
@@ -390,7 +399,7 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		}).catch((e) => {
 			console.error('[goatide-bridge] recordRejection failed', e);
 		});
-		await inputs.panel.hide();
+		await inputs.panel.dispose();
 	}
 }
 
