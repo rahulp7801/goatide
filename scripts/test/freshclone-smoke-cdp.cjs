@@ -336,6 +336,92 @@ async function main() {
 				+ bridgeErrorLines.slice(0, 3).join(' | '));
 		}
 		console.log('[freshclone-smoke-cdp] SC10-5: renderer.log clean (zero [error] from goatide-bridge over 40s steady-state)');
+
+		// === SC13-4 kernel-health gate (SKIPPED — Phase 13 Plan 13-04 will flip live) ===
+		//
+		// Wave-0 placeholder: locked in by Plan 13-00 Task 4 so Wave-1..3 don't need to
+		// remember to add this surface. Plan 13-04 (CLOSE-04 / phase-verify) enables it.
+		//
+		// Assertions (when live):
+		//   (a) No "NODE_MODULE_VERSION mismatch" substring in the renderer DevTools console log.
+		//   (b) No "kernel-degraded" banner present in the workbench DOM.
+		//   (c) Both `goatide.setSessionPriority` AND `goatide.kernel.reconnect` appear in the
+		//       command palette (static + runtime probe, same pattern as SC#5 assertion 4).
+		//
+		// When Plan 13-04 flips this live:
+		//   1. Remove the SC13_4_SKIP guard below.
+		//   2. Move the three assertions out of the comment block into live code.
+		//   3. Increment assertionsPassed for each passing sub-assertion (or use a single
+		//      compound assertion that counts as 1 toward the assertionsPassed total).
+		//   4. Update the assertionsPassed !== 4 guard at the bottom of main() to !== 5.
+		//
+		// Pattern: Phase 9 BUILD-RT-* / Phase 10 SC10-* placeholder blocks (same file).
+		const SC13_4_SKIP = true;
+		if (!SC13_4_SKIP) {
+			// (a) No ABI mismatch in renderer console log.
+			// The CDP console log is captured via window.on('console', ...) in the surrounding
+			// harness. Access it via the `contents` variable already in scope from SC10-5.
+			const abiMismatchInLog = contents.split('\n').some(line =>
+				/NODE_MODULE_VERSION mismatch/.test(line)
+			);
+			if (abiMismatchInLog) {
+				throw new Error('SC13-4 FAIL (a): NODE_MODULE_VERSION mismatch found in renderer.log — kernel ABI gap not closed (CLOSE-01)');
+			}
+			console.log('[freshclone-smoke-cdp] SC13-4 (a): no NODE_MODULE_VERSION mismatch in renderer.log PASS');
+
+			// (b) No "kernel-degraded" banner in workbench DOM.
+			const kernelDegradedBanner = await Promise.race([
+				window.evaluate(() => {
+					const banner = document.querySelector('[data-testid="kernel-degraded-banner"], .kernel-degraded-banner, [aria-label*="kernel-degraded"]');
+					return banner ? banner.textContent || 'present' : null;
+				}),
+				new Promise(resolve => setTimeout(() => resolve('evaluate-timeout'), 5_000)),
+			]);
+			if (kernelDegradedBanner && kernelDegradedBanner !== 'evaluate-timeout') {
+				throw new Error('SC13-4 FAIL (b): kernel-degraded banner present in workbench DOM: ' + kernelDegradedBanner);
+			}
+			console.log('[freshclone-smoke-cdp] SC13-4 (b): no kernel-degraded banner in workbench DOM PASS');
+
+			// (c) Both goatide.setSessionPriority AND goatide.kernel.reconnect appear in the
+			// command palette. Static precondition: package.json already asserts these via
+			// SC10-1/SC10-3 above (lines ~287-306). Runtime probe mirrors SC#5 assertion 4.
+			const sc13CmdsToCheck = ['goatide.setSessionPriority', 'goatide.kernel.reconnect'];
+			let sc13RuntimeProbe = 'soft-skip';
+			try {
+				sc13RuntimeProbe = await Promise.race([
+					window.evaluate(() => {
+						try {
+							const req = globalThis.require;
+							if (typeof req !== 'function') { return 'no-amd-loader'; }
+							const mod = req('vs/platform/commands/common/commands');
+							if (mod && mod.CommandsRegistry && typeof mod.CommandsRegistry.getCommands === 'function') {
+								const all = mod.CommandsRegistry.getCommands();
+								if (all && typeof all.has === 'function') {
+									const hasPriority = all.has('goatide.setSessionPriority');
+									const hasReconnect = all.has('goatide.kernel.reconnect');
+									if (hasPriority && hasReconnect) { return 'both-hit'; }
+									if (hasPriority && !hasReconnect) { return 'missing-reconnect'; }
+									if (!hasPriority && hasReconnect) { return 'missing-setSessionPriority'; }
+									return 'both-miss';
+								}
+							}
+							return 'no-commands-module';
+						} catch (_err) { return 'evaluate-threw'; }
+					}),
+					new Promise(resolve => setTimeout(() => resolve('evaluate-timeout'), 10_000)),
+				]);
+			} catch (_err) {
+				sc13RuntimeProbe = 'evaluate-error';
+			}
+			if (sc13RuntimeProbe === 'missing-reconnect' || sc13RuntimeProbe === 'missing-setSessionPriority' || sc13RuntimeProbe === 'both-miss') {
+				throw new Error('SC13-4 FAIL (c): command palette probe result: ' + sc13RuntimeProbe);
+			}
+			console.log('[freshclone-smoke-cdp] SC13-4 (c): command palette probe = ' + sc13RuntimeProbe + ' (static precondition already verified by SC10-1/SC10-3)');
+
+			void sc13CmdsToCheck; // referenced above
+		} else {
+			console.log('[freshclone-smoke-cdp] SC13-4: SKIPPED (Plan 13-04 will flip live — kernel-health gate placeholder)');
+		}
 	} finally {
 		// Pitfall 6: do NOT force-kill the kernel daemon; it persists per Mandate-A.
 		// Pitfall 7 (this plan): electron.close() can hang indefinitely if the renderer is
