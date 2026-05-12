@@ -254,12 +254,81 @@ function ensureRootSqliteBinary(): void {
 	}
 }
 
+// ------------------------------------------------------------------
+// Plan 12-07 — Electron binary provisioning for test runners.
+// Without this, `run-vitest-electron.cjs` and `run-mocha-electron.cjs`
+// fall back to process.execPath, breaking better-sqlite3 (Electron 39
+// ABI 140 vs Node 22 ABI 127). Closes P3 test-infrastructure-hygiene.
+//
+// Hoisted ABOVE the isUpToDate() short-circuit (mirroring BUILD-RT-03's
+// Plan 09-06 phase-verify lesson): if .build/electron/ is wiped (disk
+// hygiene, fresh-clone smoke, manual delete) the install-state hash
+// hasn't changed, so the up-to-date guard would otherwise prevent
+// re-provisioning. The platform-binary existence check below is the
+// idempotency guard — when the binary is present, this is a no-op.
+//
+// Plan 12-07 (CASE B per FRESH-INSTALL-EVIDENCE.md): postinstall does
+// NOT itself download the Electron binary; only `npm run electron`
+// (`node build/lib/electron.ts`) does. This helper chains that script
+// into the postinstall flow so fresh clones get a usable .build/electron/
+// without a manual `npm run electron` step. BUILD-RT-04 closure
+// (kernel/scripts/install-electron-prebuild.cjs) is preserved — it
+// already prebuilds better-sqlite3 for Electron ABI; Plan 12-07 layers
+// the ROOT-side binary provisioning on top of that.
+// ------------------------------------------------------------------
+function ensureElectronBinary(): void {
+	const electronDir = path.join(root, '.build', 'electron');
+	const platformBinaryByOS: Record<string, string> = {
+		win32: path.join(electronDir, 'GoatIDE.exe'),
+		darwin: path.join(electronDir, 'GoatIDE.app', 'Contents', 'MacOS', 'GoatIDE'),
+		linux: path.join(electronDir, 'goatide'),
+	};
+	const platformBinary = platformBinaryByOS[process.platform];
+
+	if (!platformBinary) {
+		log('.', `Plan 12-07: unsupported platform ${process.platform} — skipping Electron binary provisioning`);
+		return;
+	}
+
+	if (fs.existsSync(platformBinary)) {
+		// Idempotent skip — binary already provisioned (manual `npm run electron`
+		// or prior postinstall). No work needed.
+		return;
+	}
+
+	log('.', `Plan 12-07: .build/electron/ missing platform binary (${path.basename(platformBinary)}); invoking 'node build/lib/electron.ts' to provision`);
+	const electronScript = path.join(root, 'build', 'lib', 'electron.ts');
+	try {
+		child_process.execSync(`node ${JSON.stringify(electronScript)}`, {
+			stdio: 'inherit',
+			cwd: root,
+		});
+	} catch (err) {
+		log('.', `Plan 12-07: electron provisioning failed: ${(err as Error).message}`);
+		log('.', `Plan 12-07: test runners will fall back to plain node (better-sqlite3 ABI tests will fail). Run 'npm run electron' manually to recover.`);
+		// Non-fatal: don't break `npm install` over this. Test runners' own
+		// fallback path warns at test time. Leaving postinstall green keeps
+		// the rest of the install chain (sqlite3, kernel prebuild, harness
+		// symlinks, copilot-sdk patch) intact.
+		return;
+	}
+
+	if (!fs.existsSync(platformBinary)) {
+		log('.', `Plan 12-07: WARN — electron script exited 0 but ${platformBinary} still missing. Inspect .build/electron/ for partial extract.`);
+	} else {
+		log('.', `Plan 12-07: Provisioned ${path.basename(platformBinary)}`);
+	}
+}
+
 async function main() {
 	if (!process.env['VSCODE_FORCE_INSTALL'] && isUpToDate()) {
 		log('.', 'All dependencies up to date, skipping postinstall.');
 		// BUILD-RT-03: still ensure the root sqlite3 binary is in place, even when
 		// the install-state hash short-circuits the full postinstall flow.
 		ensureRootSqliteBinary();
+		// Plan 12-07: same hoisting rationale — provision the Electron binary
+		// when .build/electron/ has been wiped, regardless of install-state hash.
+		ensureElectronBinary();
 		child_process.execSync('git config pull.rebase merges');
 		child_process.execSync('git config blame.ignoreRevsFile .git-blame-ignore-revs');
 		return;
@@ -338,6 +407,13 @@ async function main() {
 	// so the up-to-date short-circuit at the top of main() also restores the binary
 	// when missing.
 	ensureRootSqliteBinary();
+
+	// Plan 12-07: provision .build/electron/ for test runners that require
+	// Electron-ABI native modules. Runs AFTER the per-dir npm installs so
+	// build/node_modules/ is hydrated with the deps that build/lib/electron.ts
+	// transitively requires (@vscode/gulp-electron, vinyl-fs, gulp-filter,
+	// gulp-json-editor). Idempotent — skips when platform binary already exists.
+	ensureElectronBinary();
 
 	child_process.execSync('git config pull.rebase merges');
 	child_process.execSync('git config blame.ignoreRevsFile .git-blame-ignore-revs');
