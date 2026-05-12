@@ -22,7 +22,7 @@
 // surface. The destructive-block error message is the bridge's "modal" equivalent under degraded
 // state; the live-kernel modal path is covered by the existing save-gate.test.ts Manual baseline.
 
-import { describe, it, beforeEach, afterEach } from 'mocha';
+import { describe, it, before, beforeEach, afterEach } from 'mocha';
 import { strict as assert } from 'node:assert';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -35,9 +35,11 @@ import type { KernelClient } from '../../src/kernel/client.js';
 import type { CanvasPanel } from '../../src/canvas/panel.js';
 import {
 	fireWillSaveTextDocument,
+	setWorkspaceConfigurationValue,
 	type MockTextDocument,
 	type MockWillSaveEvent,
 } from '../setup/vscode-stub.js';
+import { getCanvasModule } from '../../src/save-gate/canvas-module.js';
 
 interface VscodeTestStub {
 	__test_showErrorMessageSpy: { calls: unknown[][]; respondWith: string | undefined };
@@ -123,6 +125,16 @@ describe('save-gate-auto-save', () => {
 	let saveGateDisposable: vscode.Disposable | undefined;
 	let spy: { calls: unknown[][]; respondWith: string | undefined };
 
+	// Pre-warm the canvas module ONCE for the whole describe block. The Task 12-01-05
+	// refactor moved canvas-module loading into activate() — for hermetic mocha tests we
+	// call getCanvasModule() ourselves so getCanvasModuleSync() inside the listener has a
+	// hot cache. Task 12-01-04 (Manual path) doesn't need the pre-warm because Manual
+	// skips the sync-classification block entirely; the other 3 tests do.
+	before(async function () {
+		this.timeout(15_000);
+		await getCanvasModule();
+	});
+
 	beforeEach(() => {
 		workDir = path.join(os.tmpdir(), `goatide-12-01-${ulid()}`);
 		fs.mkdirSync(workDir, { recursive: true });
@@ -139,27 +151,100 @@ describe('save-gate-auto-save', () => {
 		try { fs.rmSync(workDir, { recursive: true, force: true }); } catch { /* ignore */ }
 	});
 
-	it('AfterDelay-destructive vetoes save and reveals canvas', () => {
+	it('AfterDelay-destructive vetoes save and reveals canvas', async () => {
 		// 12-01-01 — auto-save (TextDocumentSaveReason.AfterDelay) on a destructive change
-		// (e.g., file body contains `DROP TABLE`) must invoke event.waitUntil(Promise.reject(...))
-		// and reveal the Verification Canvas, NOT short-circuit the way `event.reason !== Manual`
-		// currently does at on-will-save.ts:62-65.
-		assert.fail('NOT IMPLEMENTED — Plan 12-01 Task 01');
+		// (file body contains `DROP TABLE`) must invoke event.waitUntil(rejecting-Promise)
+		// and reach the destructive-block surface, NOT short-circuit on the
+		// `event.reason !== Manual` early-return that existed pre-Plan-12-01 at
+		// on-will-save.ts:62-65. Asserts vetoed === true, error instanceof SaveDeferredError,
+		// the kernel-degraded showErrorMessage spy fires, and the disk content is preserved.
+		const target = path.join(workDir, 'migration.ts');
+		const doc = makeMockDoc(target, {
+			onDisk: 'const m = "";\n',
+			inMemory: 'const m = "DROP TABLE x";\n',
+		});
+		const kernel = makeDisconnectedKernelStub();
+		const { panel } = makePanelStub();
+		saveGateDisposable = registerSaveGate(context, kernel, () => panel, queue);
+
+		const event = fireWillSaveTextDocument(doc, vscode.TextDocumentSaveReason.AfterDelay);
+		const { vetoed, error } = await settleVeto(event);
+		await drainMicrotasks();
+
+		assert.equal(vetoed, true, 'AfterDelay destructive must be vetoed (pre-Plan-12-01 bypass closed)');
+		assert.ok(error instanceof SaveDeferredError, `expected SaveDeferredError, got ${error?.constructor?.name}`);
+		assert.ok(spy.calls.length >= 1, `expected showErrorMessage to surface; spy.calls=${spy.calls.length}`);
+		const firstMessage = spy.calls[0][0] as string;
+		assert.match(firstMessage, /destructive save blocked/i);
+		assert.equal(fs.readFileSync(target, 'utf8'), 'const m = "";\n');
 	});
 
-	it('AfterDelay-silent-passes through without veto', () => {
-		// 12-01-02 — auto-save on a silent-tier change (no destructive markers, no high-impact
-		// contract citation) must STILL pass through without a veto (CONTEXT.md Option B
-		// explicitly preserves auto-save UX for trivial changes — only destructive + high-impact
-		// saves are gated regardless of reason).
-		assert.fail('NOT IMPLEMENTED — Plan 12-01 Task 02');
+	it('AfterDelay-silent-passes through without veto', async () => {
+		// 12-01-02 — auto-save on a trivial (non-destructive, non-high-impact) change must
+		// preserve the existing pass-through (CONTEXT.md Option B explicitly preserves
+		// auto-save UX for silent-tier saves). The listener early-returns BEFORE calling
+		// waitUntil, so event.waitUntilCalls.length === 0 and no showErrorMessage fires.
+		const target = path.join(workDir, 'trivial.ts');
+		const doc = makeMockDoc(target, {
+			onDisk: 'const x = 0;\n',
+			inMemory: 'const x = 1;\n',
+		});
+		const kernel = makeDisconnectedKernelStub();
+		const { panel, recorder } = makePanelStub();
+		saveGateDisposable = registerSaveGate(context, kernel, () => panel, queue);
+
+		const event = fireWillSaveTextDocument(doc, vscode.TextDocumentSaveReason.AfterDelay);
+		const { vetoed } = await settleVeto(event);
+		await drainMicrotasks();
+
+		assert.equal(vetoed, false, 'silent-tier AfterDelay must pass through (no veto)');
+		assert.equal(event.waitUntilCalls.length, 0, 'event.waitUntil must NOT be called for silent-tier non-Manual saves');
+		assert.equal(spy.calls.length, 0, 'showErrorMessage must NOT surface for silent-tier saves');
+		assert.equal(recorder.showAndAwaitCalls.length, 0, 'panel.showAndAwait must NOT be called for silent-tier saves');
 	});
 
-	it('FocusOut-high-impact opens modal', () => {
-		// 12-01-03 — TextDocumentSaveReason.FocusOut on a save citing a high-impact contract
-		// anchor (e.g., a path matching `goatide.contracts.highImpactAllowlist`) must open the
-		// modal Verification Canvas tier, NOT pass through.
-		assert.fail('NOT IMPLEMENTED — Plan 12-01 Task 03');
+	it('FocusOut-high-impact opens modal', async () => {
+		// 12-01-03 — TextDocumentSaveReason.FocusOut on a save against a file whose
+		// fsPath contains a workspace-settings goatide.contracts.highImpactAllowlist
+		// substring must fall through to the proposal flow regardless of reason.
+		//
+		// Under kernel-degraded + non-destructive the proposal lands in
+		// handleKernelDegradedSave's non-destructive branch which writes the file directly
+		// + queues a kernel_degraded Attempt. CRITICALLY, the veto still fires because the
+		// canvas WOULD have shown the modal in connected mode — the bridge under degraded
+		// mode trades the modal for an immediate write + queued replay. We assert: (a) the
+		// veto fires (proves the listener fell through past the silent-tier early-return),
+		// and (b) the queue has the kernel_degraded record (proves handleProposedSave ran).
+		setWorkspaceConfigurationValue('goatide', 'contracts.highImpactAllowlist', [
+			'/contracts/security/',
+			'/contracts/api/',
+			'/contracts/data/',
+		]);
+		// Build a path that contains '/contracts/security/' as a substring (rooted-with-/
+		// normalization mirrors kernel/src/canvas/classifier.ts normalizeForMatch).
+		const subdir = path.join(workDir, 'contracts', 'security');
+		fs.mkdirSync(subdir, { recursive: true });
+		const target = path.join(subdir, 'auth.md');
+		const doc = makeMockDoc(target, {
+			onDisk: '# Auth contract original\n',
+			inMemory: '# Auth contract — edited paragraph\n',
+		});
+		const kernel = makeDisconnectedKernelStub();
+		const { panel } = makePanelStub();
+		saveGateDisposable = registerSaveGate(context, kernel, () => panel, queue);
+
+		const event = fireWillSaveTextDocument(doc, vscode.TextDocumentSaveReason.FocusOut);
+		const { vetoed, error } = await settleVeto(event);
+		await drainMicrotasks();
+
+		assert.equal(vetoed, true, 'FocusOut on high-impact-citation path must be vetoed (gate fires regardless of reason)');
+		assert.ok(error instanceof SaveDeferredError, `expected SaveDeferredError, got ${error?.constructor?.name}`);
+		// Queue must hold a kernel_degraded record — proves handleProposedSave reached
+		// handleKernelDegradedSave's non-destructive branch (the listener fell through).
+		const records = await queue.readAll();
+		assert.equal(records.length, 1, `expected one kernel_degraded record after high-impact non-destructive FocusOut save; got ${records.length}`);
+		assert.equal(records[0].tier, 'kernel_degraded');
+		assert.equal(records[0].target_path, target);
 	});
 
 	it('Manual-destructive-still-vetoed regression guard', async () => {
