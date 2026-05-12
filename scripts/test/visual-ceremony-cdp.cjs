@@ -905,27 +905,43 @@ async function prepareDriftSave(window) {
 		throw new Error('prepareDriftSave: auth-security.md buffer never went dirty after 3 type attempts. Keystrokes are landing outside the editor — workbench focus is stuck in a non-editor surface (chat panel, prior canvas webview, etc).');
 	}
 
-	// 4. Trigger save. Belt-and-braces: try several different save dispatch paths because
-	//    VS Code's save-command routing in a multi-group multi-webview workbench is finicky —
-	//    even with auth-security.md's tab confirmed dirty, Ctrl+S and File:Save and Save All
-	//    have all been observed to NOT fire onWillSave for the target file in single-launch
-	//    full-sweep. We try all three in sequence; the first one that triggers a save wins.
+	// 4. Guarantee auth-security.md is the ACTIVE (not just dirty) editor before saving.
+	//
+	// Root-cause insight (13-02-ROOT-CAUSE.md): `workbench.action.files.save` saves the
+	// *active* editor, not the dirty one. After Wave 1+2 webview create/dispose cycles,
+	// VS Code's active-editor pointer may drift to a non-text-editor surface even though
+	// auth-security.md's buffer is dirty. The prior dirty-check loop only confirms
+	// `.tab.dirty`, not `.tab.active.dirty`.
+	//
+	// Fix: explicitly click auth-security.md's tab to pin it as the active editor, then
+	// assert it carries both `.active` and `.dirty` classes before firing the save. This
+	// eliminates the active-editor pointer drift and makes the save route deterministically.
+	//
+	// `force: true` bypasses Playwright's pointer-event interception check (the Monaco
+	// margin overlay can intercept pointer events in certain render states).
+	try {
+		const authTab = window.locator('.tab').filter({ hasText: 'auth-security.md' }).first();
+		await authTab.waitFor({ state: 'visible', timeout: 5_000 });
+		await authTab.click({ force: true });
+		// Wait for the tab to be both active AND dirty — this is the dual-class invariant
+		// that guarantees the save command will target auth-security.md specifically.
+		await window.locator('.tab.dirty.active').filter({ hasText: 'auth-security.md' }).first()
+			.waitFor({ state: 'visible', timeout: 5_000 });
+		console.log('[visual-ceremony-cdp]   prepareDriftSave: auth-security.md tab confirmed active+dirty; proceeding to save');
+	} catch (tabClickErr) {
+		// Non-fatal: log and fall through. The save will still be attempted; if it
+		// doesn't fire onWillSave, the 25s canvas-accept timeout will surface it.
+		console.warn('[visual-ceremony-cdp]   prepareDriftSave: tab active+dirty assertion failed (' + (tabClickErr && tabClickErr.message) + '); attempting save anyway');
+	}
+
+	// Fire save immediately after the tab-click settle (no additional sleep — extra latency
+	// between tab-click and save gives async workbench events time to steal focus back).
+	// Primary path: workbench.action.files.save via AMD (fast on builds where AMD loads).
+	// Fallback: Ctrl+S keyboard chord. Save All is NOT used as a fallback here because it
+	// opens the F1 palette which steals keyboard focus from the editor surface for ~300ms.
 	const saveProbe = await executeWorkbenchCommand(window, 'workbench.action.files.save');
 	if (!saveProbe.startsWith('ok')) {
 		await window.keyboard.press('Control+S');
-		await sleep(500);
-		// Save All via F1 (Save All saves every dirty buffer regardless of active-editor).
-		try {
-			await window.keyboard.press('F1');
-			await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 5_000 });
-			await sleep(300);
-			await window.keyboard.type('Save All');
-			await sleep(400);
-			await window.keyboard.press('Enter');
-			await sleep(800);
-		} catch (_e) {
-			// fall through silently — Ctrl+S above is the primary path
-		}
 	}
 
 	// 5. Wait for the Canvas iframe to populate. tier-dispatch runs runDriftAndLock +
