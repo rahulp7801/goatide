@@ -665,10 +665,56 @@ async function runVis02(window) {
 		//    returns the buffer (with the destructive line), so createPatch produces a
 		//    diff containing `+const migration = "DROP TABLE users CASCADE";` which
 		//    matches DESTRUCTIVE_DIFF_PATTERNS[1] (/^[+-].*\bDROP\s+TABLE\b/im).
-		await window.keyboard.press('Control+End');
-		await sleep(200);
-		await window.keyboard.type('\nconst migration = "DROP TABLE users CASCADE";\n');
-		await sleep(700);
+		//
+		// VIS-02 single-launch fix (13-02 CLOSE-02): apply the same dirty-check + active-tab
+		// pin used by prepareDriftSave. After VIS-01's canvas-reject disposes the canvas panel,
+		// VS Code's active-editor pointer can drift. The focus command above covers the common
+		// case; the dirty-check + tab click below guards against post-type focus drift before
+		// the save fires — same root cause as Wave-3 (13-02-ROOT-CAUSE.md Step 3-6).
+		let vis02Dirty = false;
+		for (let attempt = 0; !vis02Dirty && attempt < 3; attempt++) {
+			if (attempt > 0) {
+				console.log('[visual-ceremony-cdp]   VIS-02: migration.ts not dirty after attempt ' + attempt + '; re-focusing and re-typing');
+				await window.keyboard.press('Escape');
+				await sleep(300);
+				// Re-focus editor group before retry.
+				await window.keyboard.press('F1');
+				await window.locator('.quick-input-widget').waitFor({ state: 'visible', timeout: 10_000 });
+				await sleep(400);
+				await window.keyboard.type('View: Focus Active Editor Group');
+				await sleep(500);
+				await window.keyboard.press('Enter');
+				await sleep(700);
+			}
+			await window.keyboard.press('Control+End');
+			await sleep(200);
+			await window.keyboard.type('\nconst migration = "DROP TABLE users CASCADE";\n');
+			await sleep(700);
+			try {
+				await window.locator('.tab.dirty').filter({ hasText: 'migration.ts' }).first()
+					.waitFor({ state: 'visible', timeout: 3_000 });
+				vis02Dirty = true;
+			} catch (_e) {
+				// fall through to next attempt
+			}
+		}
+		if (!vis02Dirty) {
+			throw new Error('VIS-02: migration.ts buffer never went dirty after 3 type attempts. Keystrokes are landing outside the editor — workbench focus is stuck.');
+		}
+
+		// 3b. Guarantee migration.ts is the ACTIVE (not just dirty) editor before saving.
+		//     Mirror of prepareDriftSave step 4: click the tab to pin it as active, then
+		//     assert both .active and .dirty before firing the save.
+		try {
+			const migTab = window.locator('.tab').filter({ hasText: 'migration.ts' }).first();
+			await migTab.waitFor({ state: 'visible', timeout: 5_000 });
+			await migTab.click({ force: true });
+			await window.locator('.tab.dirty.active').filter({ hasText: 'migration.ts' }).first()
+				.waitFor({ state: 'visible', timeout: 5_000 });
+			console.log('[visual-ceremony-cdp]   VIS-02: migration.ts tab confirmed active+dirty; proceeding to save');
+		} catch (tabClickErr) {
+			console.warn('[visual-ceremony-cdp]   VIS-02: tab active+dirty assertion failed (' + (tabClickErr && tabClickErr.message) + '); attempting save anyway');
+		}
 
 		// 4. Trigger save. workbench.action.files.save via the AMD path first (no-op on
 		//    this build but cheap to attempt); fallback Ctrl+S chord works universally.
@@ -677,14 +723,49 @@ async function runVis02(window) {
 			await window.keyboard.press('Control+S');
 		}
 
-		// 4. Wait for the bridge's Verification Canvas to reveal with the ConfirmationPhrase
-		//    component visible. Same iframe-disambiguation pattern as ensureCanvasOpen.
-		//    Modal tier rendering takes ~1-3s on this build (proposeEdit cold call +
-		//    runDriftAndLock + dispatchTier + webview React mount).
-		const canvasFrame = window
-			.frameLocator('iframe.webview.ready[src*="extensionId=goatide.goatide-bridge"]')
-			.frameLocator('iframe#active-frame');
-		await canvasFrame.locator('[data-testid="confirmation-phrase"]').waitFor({ state: 'visible', timeout: 20_000 });
+		// 5. Wait for the bridge's Verification Canvas to reveal with the ConfirmationPhrase
+		//    component visible. Primary selector: extensionId-filtered iframe. Fallback:
+		//    nth-iframe scan (matches prepareDriftSave fallback strategy). Timeout bumped
+		//    from 20s to 45s for single-launch context where prior waves left editor state.
+		let canvasFrame;
+		const vis02BridgeFiltered = window.frameLocator('iframe.webview.ready[src*="extensionId=goatide.goatide-bridge"]');
+		try {
+			await vis02BridgeFiltered.locator('body').waitFor({ state: 'attached', timeout: 4_000 });
+			canvasFrame = vis02BridgeFiltered.frameLocator('iframe#active-frame');
+		} catch (_vis02E1) {
+			// Fallback: click Verification Canvas tab to foreground it, then enumerate iframes.
+			try {
+				const tabLocator = window.locator('.tab').filter({ hasText: 'Verification Canvas' }).first();
+				await tabLocator.waitFor({ state: 'visible', timeout: 5_000 });
+				await tabLocator.click();
+				await sleep(800);
+			} catch (_clickErr) { /* non-fatal */ }
+			const allReady = window.locator('iframe.webview.ready');
+			let matched = false;
+			for (let round = 0; !matched && round < 5; round++) {
+				if (round > 0) {
+					await sleep(2000);  // allow async RPC chain to complete + iframe to appear
+				}
+				const count = await allReady.count();
+				for (let i = 0; i < count; i++) {
+					const candidate = window.frameLocator('iframe.webview.ready').nth(i).frameLocator('iframe#active-frame');
+					try {
+						await candidate.locator('[data-testid="confirmation-phrase"]').waitFor({ state: 'visible', timeout: 4_000 });
+						canvasFrame = candidate;
+						matched = true;
+						console.log('[visual-ceremony-cdp]   VIS-02: matched canvas via nth-iframe index=' + i + ' round=' + round);
+						break;
+					} catch (_innerErr) { /* try next */ }
+				}
+			}
+			if (!matched) {
+				// Final fallback: nth(1) = bridge canvas (nth(0) = Welcome).
+				// extensionId may be empty on this build; avoid the extensionId-filtered selector.
+				console.warn('[visual-ceremony-cdp]   VIS-02: nth-iframe scan found no canvas after 5 rounds; using nth(1) fallback');
+				canvasFrame = window.frameLocator('iframe.webview.ready').nth(1).frameLocator('iframe#active-frame');
+			}
+		}
+		await canvasFrame.locator('[data-testid="confirmation-phrase"]').waitFor({ state: 'visible', timeout: 45_000 });
 
 		// 5. Assert the initial state: input is enabled (developer can type), button is
 		//    disabled (typed !== expectedPhrase because nothing has been typed yet).
@@ -981,26 +1062,35 @@ async function prepareDriftSave(window) {
 			// versions
 		}
 		// Use nth-frame strategy: enumerate iframes, return the one whose body contains
-		// canvas-accept. Empirically the bridge canvas is the second iframe (Welcome first).
+		// canvas-accept. The bridge canvas is typically the second iframe (Welcome first).
+		// Retry up to ~20s (5 rounds × 4s per round) to allow the async RPC chain
+		// (proposeEdit + runDriftAndLock + dispatchTier + panel.reveal) to complete.
 		const allReady = window.locator('iframe.webview.ready');
-		const count = await allReady.count();
 		let matched = false;
-		for (let i = 0; i < count; i++) {
-			const candidate = window.frameLocator('iframe.webview.ready').nth(i).frameLocator('iframe#active-frame');
-			try {
-				await candidate.locator('[data-testid="canvas-accept"]').waitFor({ state: 'visible', timeout: 4_000 });
-				canvasFrame = candidate;
-				matched = true;
-				console.log('[visual-ceremony-cdp]   prepareDriftSave: matched canvas via nth-iframe index=' + i);
-				break;
-			} catch (_innerErr) {
-				// Try next iframe
+		for (let round = 0; !matched && round < 5; round++) {
+			if (round > 0) {
+				await sleep(2000);  // wait for new iframe to appear after async RPC chain
+			}
+			const count = await allReady.count();
+			for (let i = 0; i < count; i++) {
+				const candidate = window.frameLocator('iframe.webview.ready').nth(i).frameLocator('iframe#active-frame');
+				try {
+					await candidate.locator('[data-testid="canvas-accept"]').waitFor({ state: 'visible', timeout: 4_000 });
+					canvasFrame = candidate;
+					matched = true;
+					console.log('[visual-ceremony-cdp]   prepareDriftSave: matched canvas via nth-iframe index=' + i + ' round=' + round);
+					break;
+				} catch (_innerErr) {
+					// Try next iframe
+				}
 			}
 		}
 		if (!matched) {
-			// Final fallback to the precise selector so the error message references the
-			// expected pattern.
-			canvasFrame = bridgeFiltered.frameLocator('iframe#active-frame');
+			// Final fallback: wait for canvas-accept with a long timeout using nth(1)
+			// (second webview = bridge canvas; nth(0) = Welcome walkthrough).
+			// extensionId may be empty on this build so avoid the extensionId-filtered selector.
+			console.warn('[visual-ceremony-cdp]   prepareDriftSave: nth-iframe scan found no canvas after 5 rounds; waiting with nth(1) fallback');
+			canvasFrame = window.frameLocator('iframe.webview.ready').nth(1).frameLocator('iframe#active-frame');
 		}
 	}
 

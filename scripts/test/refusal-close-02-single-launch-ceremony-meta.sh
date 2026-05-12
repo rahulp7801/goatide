@@ -83,9 +83,10 @@ HARNESS_EC=${PIPESTATUS[0]}
 set -e
 
 # Count PASS and FAIL lines from harness output.
-# The harness prints lines like "  [PASS] WAVE0-SMOKE" or "  [FAIL] VIS-06: <reason>".
-PASS_COUNT=$(grep -c '\[PASS\]' "$HARNESS_OUTPUT_FILE" 2>/dev/null || echo 0)
-FAIL_COUNT=$(grep -c '\[FAIL\]' "$HARNESS_OUTPUT_FILE" 2>/dev/null || echo 0)
+# The harness prints lines like "  PASS  WAVE0-SMOKE" or "  FAIL  VIS-06  -> <reason>"
+# (printReport in visual-ceremony-cdp.cjs, lines prefixed with two spaces, no brackets).
+PASS_COUNT=$(grep -cE '^\s+PASS\s+' "$HARNESS_OUTPUT_FILE" 2>/dev/null || echo 0)
+FAIL_COUNT=$(grep -cE '^\s+FAIL\s+' "$HARNESS_OUTPUT_FILE" 2>/dev/null || echo 0)
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 
 echo ""
@@ -100,10 +101,10 @@ fi
 echo "META FAIL (expected RED on master): $PASS_COUNT/11 ceremony surfaces passed in single-launch mode" >&2
 echo "" >&2
 echo "Pass/Fail breakdown:" >&2
-echo "  PASS lines ($(grep '\[PASS\]' "$HARNESS_OUTPUT_FILE" 2>/dev/null | wc -l)):" >&2
-grep '\[PASS\]' "$HARNESS_OUTPUT_FILE" 2>/dev/null | sed 's/^/    /' >&2 || true
-echo "  FAIL lines ($(grep '\[FAIL\]' "$HARNESS_OUTPUT_FILE" 2>/dev/null | wc -l)):" >&2
-grep '\[FAIL\]' "$HARNESS_OUTPUT_FILE" 2>/dev/null | sed 's/^/    /' >&2 || true
+echo "  PASS lines ($(grep -cE '^\s+PASS\s+' "$HARNESS_OUTPUT_FILE" 2>/dev/null || echo 0)):" >&2
+grep -E '^\s+PASS\s+' "$HARNESS_OUTPUT_FILE" 2>/dev/null | sed 's/^/    /' >&2 || true
+echo "  FAIL lines ($(grep -cE '^\s+FAIL\s+' "$HARNESS_OUTPUT_FILE" 2>/dev/null || echo 0)):" >&2
+grep -E '^\s+FAIL\s+' "$HARNESS_OUTPUT_FILE" 2>/dev/null | sed 's/^/    /' >&2 || true
 echo "" >&2
 echo "This is the CLOSE-02 gap: Wave-3 surfaces (VIS-06/07/08) fail in single-launch mode" >&2
 echo "due to cross-state interference. Plan 13-02 fixes the root cause." >&2
