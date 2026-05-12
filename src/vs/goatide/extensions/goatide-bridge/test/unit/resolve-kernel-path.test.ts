@@ -74,8 +74,35 @@ describe('resolve-kernel-path', () => {
 	});
 
 	it('dev-then-builtin order verified via mocked statSync', () => {
-		// 12-05-02 — Plan 12-05 Task 02 (next commit). Stub remains RED until the ordering
-		// assertion lands.
-		assert.fail('NOT IMPLEMENTED — Plan 12-05 Task 02');
+		// 12-05-02 — Verify the dev (5-`..`) candidate is tried BEFORE the built-in (2-`..`)
+		// candidate. Dev-mode is the common path during local development; built-in is the
+		// fallback for shipped binaries. Static-text approach (b from the plan) is used here
+		// because `resolveKernelPath` is exported only from the TypeScript source, not from
+		// `dist/extension.js` (the compiled output inlines it inside `activate`). A future
+		// commit that swaps the array entries would be a silent semantics flip, so we anchor
+		// the order textually.
+		const distSource = fs.readFileSync(DIST_PATH, 'utf8');
+
+		const fiveDotMatch = distSource.match(FIVE_DOT_REGEX);
+		const fiveDotIndex = fiveDotMatch ? distSource.indexOf(fiveDotMatch[0]) : -1;
+		const fiveDotEnd = fiveDotIndex >= 0 ? fiveDotIndex + (fiveDotMatch?.[0].length ?? 0) : -1;
+
+		// Search for the 2-dot candidate strictly AFTER the 5-dot match ends, so the
+		// 2-dot regex cannot accidentally match the trailing `'..', '..'` substring of the
+		// 5-dot candidate itself.
+		const tailAfterFiveDot = fiveDotEnd >= 0 ? distSource.slice(fiveDotEnd) : '';
+		const twoDotIndexAfter = tailAfterFiveDot.search(TWO_DOT_REGEX);
+
+		assert.deepStrictEqual(
+			{
+				fiveDotFound: fiveDotIndex >= 0,
+				twoDotFoundAfterFiveDot: twoDotIndexAfter >= 0,
+			},
+			{
+				fiveDotFound: true,
+				twoDotFoundAfterFiveDot: true,
+			},
+			'BRIDGE-RT-01 ordering: dev-mode (5-`..`) candidate must textually precede the built-in (2-`..`) candidate in resolveKernelPath\'s candidates array. Swapping the order would silently flip the probing semantics; see .planning/phases/12-robustness-hardening/12-00-VERIFY-LOG.md.',
+		);
 	});
 });
