@@ -320,6 +320,68 @@ function ensureElectronBinary(): void {
 	}
 }
 
+// ------------------------------------------------------------------
+// Plan 13-01 — CLOSE-01: kernel better-sqlite3 ABI rebuild.
+//
+// Without this, a fresh `git clone && npm install` leaves better-sqlite3
+// compiled for Node ABI 127 (Node 22). The kernel sidecar runs under
+// Electron 39 (ABI 140), causing an ABI mismatch crash on startup.
+//
+// kernel/ is intentionally absent from dirs.ts (it is a standalone sidecar,
+// not a VS Code sub-package). Adding it to dirs.ts would install kernel deps
+// in the middle of the parallel installs, before ensureElectronBinary() runs.
+// An explicit post-electron hook here is ordering-stable: it fires after
+// build/node_modules/ is hydrated (needed by electron.ts) AND after
+// ensureElectronBinary() provisions .build/electron/ (not needed by the
+// prebuild script itself, but ensures logical sequencing).
+//
+// The script is self-idempotent: it detects when the binary is already an
+// Electron-range ABI (>= 128) and exits without downloading. Running it
+// repeatedly is safe and fast (no network request).
+// ------------------------------------------------------------------
+function ensureKernelSqlitePrebuild(): void {
+	const kernelPrebuildScript = path.join(root, 'kernel', 'scripts', 'install-electron-prebuild.cjs');
+	if (!fs.existsSync(kernelPrebuildScript)) {
+		log('.', 'CLOSE-01: kernel/scripts/install-electron-prebuild.cjs not found — skipping kernel ABI rebuild.');
+		return;
+	}
+
+	const kernelNodeModules = path.join(root, 'kernel', 'node_modules');
+	if (!fs.existsSync(kernelNodeModules)) {
+		// kernel deps not yet installed — run `npm install` inside kernel first,
+		// which will also trigger the kernel postinstall hook.
+		log('.', 'CLOSE-01: kernel/node_modules missing; running npm install in kernel/');
+		const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+		const result = child_process.spawnSync(npmCmd, ['install'], {
+			stdio: 'inherit',
+			cwd: path.join(root, 'kernel'),
+			shell: false,
+		});
+		if (result.error) {
+			log('.', `CLOSE-01: kernel npm install failed: ${result.error.message}`);
+		} else if (result.status !== 0) {
+			log('.', `CLOSE-01: kernel npm install exited with code ${result.status}`);
+		}
+		// The kernel postinstall hook has already run install-electron-prebuild.cjs,
+		// so we're done.
+		return;
+	}
+
+	// kernel/node_modules exists — just run the prebuild script explicitly
+	// (handles both fresh-install and re-install scenarios, is idempotent).
+	log('.', 'CLOSE-01: Ensuring kernel better-sqlite3 is built for Electron ABI...');
+	try {
+		child_process.execSync(`node ${JSON.stringify(kernelPrebuildScript)}`, {
+			stdio: 'inherit',
+			cwd: path.join(root, 'kernel'),
+		});
+	} catch (err) {
+		log('.', `CLOSE-01: kernel ABI rebuild failed: ${(err as Error).message}`);
+		log('.', 'CLOSE-01: Kernel sidecar will crash on require(\'better-sqlite3\'). Run `cd kernel && npm install` manually to recover.');
+		// Non-fatal: don't break `npm install`. IDE remains usable in degraded mode.
+	}
+}
+
 async function main() {
 	if (!process.env['VSCODE_FORCE_INSTALL'] && isUpToDate()) {
 		log('.', 'All dependencies up to date, skipping postinstall.');
@@ -329,6 +391,10 @@ async function main() {
 		// Plan 12-07: same hoisting rationale — provision the Electron binary
 		// when .build/electron/ has been wiped, regardless of install-state hash.
 		ensureElectronBinary();
+		// CLOSE-01: ensure kernel better-sqlite3 is Electron-ABI even on up-to-date
+		// short-circuit — kernel/node_modules/ is gitignored, so a fresh clone always
+		// needs this regardless of the install-state hash.
+		ensureKernelSqlitePrebuild();
 		child_process.execSync('git config pull.rebase merges');
 		child_process.execSync('git config blame.ignoreRevsFile .git-blame-ignore-revs');
 		return;
@@ -414,6 +480,11 @@ async function main() {
 	// transitively requires (@vscode/gulp-electron, vinyl-fs, gulp-filter,
 	// gulp-json-editor). Idempotent — skips when platform binary already exists.
 	ensureElectronBinary();
+
+	// CLOSE-01 (Plan 13-01): rebuild kernel better-sqlite3 for Electron ABI.
+	// Runs AFTER ensureElectronBinary() so logical ordering is clear.
+	// kernel/ is not in dirs.ts; this explicit call is the ordering-stable hook.
+	ensureKernelSqlitePrebuild();
 
 	child_process.execSync('git config pull.rebase merges');
 	child_process.execSync('git config blame.ignoreRevsFile .git-blame-ignore-revs');
