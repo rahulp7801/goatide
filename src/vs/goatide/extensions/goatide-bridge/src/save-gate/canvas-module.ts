@@ -13,6 +13,10 @@
 // reuse it for the kernel-degraded destructive-block check (CANV-10) without duplicating
 // the dynamic-import + cache logic.
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 export type CanvasTier = 'silent' | 'inline' | 'modal';
 
 export interface CitationDetail {
@@ -182,38 +186,45 @@ export interface CanvasModule {
 
 let cachedCanvasModule: CanvasModule | undefined;
 
+/**
+ * Resolve the absolute filesystem path of `kernel/dist/canvas/index.js`, accounting
+ * for the bridge's two possible runtime locations.
+ *
+ * Bridge can run from either:
+ *   (1) `<root>/src/vs/goatide/extensions/goatide-bridge/dist/save-gate/`   ← unit tests
+ *       (mocha-electron resolves the compiled JS at its source-tree dist).
+ *   (2) `<root>/extensions/goatide-bridge/dist/save-gate/`                  ← extension host
+ *       (the bridge-mirror produced by `scripts/prepare_goatide.sh`).
+ *
+ * Mirrors the canonical pattern in `extension.js resolveKernelPath()` (Plan 08-05
+ * BRIDGE-RT-01) for `kernel/dist/main.js`: stat each candidate, return the first
+ * that exists on disk. Throws with both attempted paths if neither resolves.
+ */
+function resolveCanvasIndexPath(): string {
+	const candidates = [
+		path.resolve(__dirname, '..', '..', '..', '..', '..', '..', '..', 'kernel', 'dist', 'canvas', 'index.js'),
+		path.resolve(__dirname, '..', '..', '..', '..', 'kernel', 'dist', 'canvas', 'index.js'),
+	];
+	for (const candidate of candidates) {
+		try {
+			fs.statSync(candidate);
+			return candidate;
+		} catch {
+			// Try next.
+		}
+	}
+	throw new Error(
+		`[goatide-bridge] canvas-module: kernel/dist/canvas/index.js not found. Tried: ${candidates.join(', ')}. ` +
+		`Run \`cd kernel && npm install && npm run build\` to provision it.`
+	);
+}
+
 export async function getCanvasModule(): Promise<CanvasModule> {
 	if (cachedCanvasModule) {
 		return cachedCanvasModule;
 	}
-	// Dynamic import bridges CJS bridge to ESM kernel/dist. Path resolved at runtime.
-	//
-	// Two valid runtime locations of this compiled module:
-	//   (1) src/vs/goatide/extensions/goatide-bridge/dist/save-gate/  ← unit tests
-	//       (mocha-electron + ts-node-style resolution). 7 `..` reaches the repo root.
-	//   (2) extensions/goatide-bridge/dist/save-gate/                 ← extension host
-	//       (the bridge-mirror produced by scripts/prepare_goatide.sh). 4 `..` reaches
-	//       the repo root.
-	// prepare_goatide.sh copies the source dist verbatim, so a single literal import
-	// string cannot be correct in both locations. Try the source-test path first; on
-	// ERR_MODULE_NOT_FOUND fall back to the mirror path. The successful path is then
-	// cached for the rest of the bridge lifetime.
-	let mod: unknown;
-	try {
-		mod = await import('../../../../../../../kernel/dist/canvas/index.js');
-	} catch (err) {
-		const code = (err as NodeJS.ErrnoException | undefined)?.code;
-		if (code === 'ERR_MODULE_NOT_FOUND') {
-			// The fallback path (4 `..`) is correct from the mirrored runtime location
-			// but does not resolve statically from the source TS location, so we build
-			// it from parts to bypass tsc's static module-resolution check. The .d.ts
-			// types are still imported via the 7-dot path above.
-			const mirrorImportPath: string = ['..', '..', '..', '..', 'kernel', 'dist', 'canvas', 'index.js'].join('/');
-			mod = await import(mirrorImportPath);
-		} else {
-			throw err;
-		}
-	}
+	const canvasPath = resolveCanvasIndexPath();
+	const mod = await import(pathToFileURL(canvasPath).href);
 	cachedCanvasModule = mod as unknown as CanvasModule;
 	return cachedCanvasModule;
 }
