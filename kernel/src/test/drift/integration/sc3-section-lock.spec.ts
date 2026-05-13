@@ -107,7 +107,18 @@ describe('Phase 7 SC #3 — enforcing-section edit triggers tri-bucket lock (DRI
 		// Seed a couple of downstream nodes so the ripple report has rows to bucket. The
 		// edges connect the ContractNode to ConstraintNodes via 'protects' (definitely)
 		// and 'references' (potentially) so the tri-bucket assertion has substance.
-		const seedTs = new Date().toISOString();
+		//
+		// CLOSE-03 fix (13-03): capture asOf AFTER all seeding completes rather than before.
+		// The original code captured seedTs = new Date() BEFORE the 4 synchronous SQLite
+		// writes, then set asOf = seedTs + 10ms. Under full-suite load (108 spec files, fork
+		// contention, OS I/O pressure) the 4 writes can take >10ms, making asOf < valid_from
+		// for the seeded nodes. The bitemporal filter then excludes them from the ripple
+		// analysis (totalRows = 0), failing the >=2 assertion. This is the order-dependent
+		// flake documented in REQUIREMENTS.md CLOSE-03.
+		//
+		// Fix: asOf is captured after the last write completes. The +1ms ensures asOf is
+		// strictly greater than all valid_from values recorded by the synchronous writes
+		// above, satisfying valid_from <= asOf unconditionally regardless of system load.
 		const protectsTarget = harness.dao.seed({
 			payload: { kind: 'ConstraintNode', body: 'auth-route handler must call requireAuth', anchor: { file: 'src/app/api/users/route.ts' } },
 			provenance: { source: 'cli', actor: 'sc3-integration', detail: { variant: 'protects' } },
@@ -118,8 +129,9 @@ describe('Phase 7 SC #3 — enforcing-section edit triggers tri-bucket lock (DRI
 		});
 		harness.dao.writeEdge({ kind: 'protects', src_id: contractId, dst_id: protectsTarget.id });
 		harness.dao.writeEdge({ kind: 'references', src_id: contractId, dst_id: referencesTarget.id });
-		// Move asOf forward to ensure the edges' valid_from is <= asOf for the bitemporal query.
-		const asOf = new Date(Date.parse(seedTs) + 10).toISOString();
+		// asOf is captured AFTER all seeding so valid_from <= asOf is always satisfied,
+		// regardless of how long the synchronous SQLite writes take under suite load.
+		const asOf = new Date(Date.now() + 1).toISOString();
 
 		// ----- (a) Cosmetic edit: ## Notes is non-enforcing → lock_trigger MUST be null.
 		// api-security.md has ## Notes at line 25 (1-indexed); a small edit there exercises
