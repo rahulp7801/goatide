@@ -102,8 +102,20 @@ for i in $(seq 1 10); do
 		STATUS="FAIL (sc3 flaked)"
 		FAIL_COUNT=$((FAIL_COUNT + 1))
 	else
-		# Suite failed for other reason — treat as pass for sc3 specifically if sc3 passed.
-		if echo "$RUN_OUTPUT" | grep -qE "(✓|PASS).*enforcing-section|enforcing-section.*(✓|PASS)"; then
+		# Suite failed for other reason. Determine sc3's status precisely:
+		# vitest reports failing FILES in its summary as "FAIL <filepath>" lines.
+		# If sc3-section-lock does NOT appear on a FAIL line, sc3 passed — another
+		# spec caused the non-zero exit. This handles Windows ANSI/Unicode grep issues
+		# where the ✓ character match may fail in the "passed" path of the verbose
+		# reporter. (Plan 13-03 fix — CLOSE-03 meta-test detection correctness.)
+		SC3_IN_FAIL_LINE=0
+		if echo "$RUN_OUTPUT" | grep -iE "^[[:space:]]*FAIL[[:space:]].*sc3-section-lock|FAIL[[:space:]]src/test/drift/integration/sc3-section-lock" > /dev/null 2>&1; then
+			SC3_IN_FAIL_LINE=1
+		fi
+		if [ "$SC3_IN_FAIL_LINE" -eq 0 ]; then
+			STATUS="PASS (sc3 passed; other spec caused suite failure)"
+			PASS_COUNT=$((PASS_COUNT + 1))
+		elif echo "$RUN_OUTPUT" | grep -qE "(✓|PASS).*enforcing-section|enforcing-section.*(✓|PASS)"; then
 			STATUS="PASS (sc3 passed; other spec failed)"
 			PASS_COUNT=$((PASS_COUNT + 1))
 		else
