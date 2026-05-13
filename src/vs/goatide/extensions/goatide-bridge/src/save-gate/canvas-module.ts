@@ -187,7 +187,33 @@ export async function getCanvasModule(): Promise<CanvasModule> {
 		return cachedCanvasModule;
 	}
 	// Dynamic import bridges CJS bridge to ESM kernel/dist. Path resolved at runtime.
-	const mod = await import('../../../../../../../kernel/dist/canvas/index.js');
+	//
+	// Two valid runtime locations of this compiled module:
+	//   (1) src/vs/goatide/extensions/goatide-bridge/dist/save-gate/  ← unit tests
+	//       (mocha-electron + ts-node-style resolution). 7 `..` reaches the repo root.
+	//   (2) extensions/goatide-bridge/dist/save-gate/                 ← extension host
+	//       (the bridge-mirror produced by scripts/prepare_goatide.sh). 4 `..` reaches
+	//       the repo root.
+	// prepare_goatide.sh copies the source dist verbatim, so a single literal import
+	// string cannot be correct in both locations. Try the source-test path first; on
+	// ERR_MODULE_NOT_FOUND fall back to the mirror path. The successful path is then
+	// cached for the rest of the bridge lifetime.
+	let mod: unknown;
+	try {
+		mod = await import('../../../../../../../kernel/dist/canvas/index.js');
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException | undefined)?.code;
+		if (code === 'ERR_MODULE_NOT_FOUND') {
+			// The fallback path (4 `..`) is correct from the mirrored runtime location
+			// but does not resolve statically from the source TS location, so we build
+			// it from parts to bypass tsc's static module-resolution check. The .d.ts
+			// types are still imported via the 7-dot path above.
+			const mirrorImportPath: string = ['..', '..', '..', '..', 'kernel', 'dist', 'canvas', 'index.js'].join('/');
+			mod = await import(mirrorImportPath);
+		} else {
+			throw err;
+		}
+	}
 	cachedCanvasModule = mod as unknown as CanvasModule;
 	return cachedCanvasModule;
 }
