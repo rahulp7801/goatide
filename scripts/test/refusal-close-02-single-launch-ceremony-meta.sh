@@ -85,8 +85,18 @@ set -e
 # Count PASS and FAIL lines from harness output.
 # The harness prints lines like "  PASS  WAVE0-SMOKE" or "  FAIL  VIS-06  -> <reason>"
 # (printReport in visual-ceremony-cdp.cjs, lines prefixed with two spaces, no brackets).
-PASS_COUNT=$(grep -cE '^\s+PASS\s+' "$HARNESS_OUTPUT_FILE" 2>/dev/null || echo 0)
-FAIL_COUNT=$(grep -cE '^\s+FAIL\s+' "$HARNESS_OUTPUT_FILE" 2>/dev/null || echo 0)
+# Notes:
+#   - grep -c returns exit code 1 when count is 0 (no matches). With set -euo pipefail,
+#     piping grep | tr and using || echo 0 is tricky: grep outputs "0" to stdout even on
+#     no-match, then || echo 0 fires (because pipefail uses grep's exit code), resulting
+#     in the $() expansion capturing "0\n0" (two lines) → arithmetic error.
+#   - Fix: use plain grep without pipefail for count extraction. Temporarily disable -e
+#     around each grep call and extract the count directly.
+_raw_pass=$(grep -cE '^\s+PASS\s+' "$HARNESS_OUTPUT_FILE" 2>/dev/null) || _raw_pass=0
+_raw_fail=$(grep -cE '^\s+FAIL\s+' "$HARNESS_OUTPUT_FILE" 2>/dev/null) || _raw_fail=0
+# Strip \r (Windows Git Bash grep may return counts with trailing \r).
+PASS_COUNT=$(printf '%s' "$_raw_pass" | tr -d '\r\n ')
+FAIL_COUNT=$(printf '%s' "$_raw_fail" | tr -d '\r\n ')
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 
 echo ""
