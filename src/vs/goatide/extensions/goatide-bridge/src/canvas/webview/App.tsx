@@ -31,6 +31,12 @@ export function App({ rpc, DiffComponent }: AppProps): React.ReactElement | null
 	const showStartMsRef = useRef<number>(0);
 
 	useEffect(() => {
+		// Signal the extension host that the webview is ready to receive canvas.show.
+		// This handshake prevents the message from being dropped when the panel is
+		// freshly created (Panel B in multi-wave ceremonies) and rpc.show() fires before
+		// React's message subscriber is established. The host waits for canvas.ready
+		// before sending canvas.show (see panel.ts showAndAwait).
+		rpc.postReady();
 		const unsubscribe = rpc.subscribe((msg) => {
 			if (msg.type === 'canvas.show') {
 				setPayload(msg.payload);

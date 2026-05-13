@@ -68,11 +68,20 @@ export class CanvasPanel {
 	private overrideHandler?: OverrideHandler;
 	private readonly subDisposable: vscode.Disposable;
 	private readonly disposeDisposable: vscode.Disposable;
+	// canvas.ready handshake (13-02 CLOSE-02): the webview posts this message when React
+	// mounts and the message listener is set up. showAndAwait waits for this promise
+	// (with a 10s timeout fallback) before posting canvas.show, preventing message loss
+	// when the webview is freshly created (Panel B in multi-wave ceremonies).
+	private readonly webviewReady: Promise<void>;
+	private resolveWebviewReady!: () => void;
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
 		private readonly extensionUri: vscode.Uri,
 	) {
+		this.webviewReady = new Promise<void>((resolve) => {
+			this.resolveWebviewReady = resolve;
+		});
 		this.rpc = new HostRpc(panel);
 		this.subDisposable = this.rpc.subscribe((msg) => this.handleMessage(msg));
 		this.disposeDisposable = this.panel.onDidDispose(() => {
@@ -156,6 +165,17 @@ export class CanvasPanel {
 		const timeoutMs = options?.timeoutMs ?? 10 * 60 * 1000;  // 10 min default
 		// Plan 12-03 H2: reveal in ViewColumn.Active (paired with createWebviewPanel above).
 		this.panel.reveal(vscode.ViewColumn.Active, false);
+		// 13-02 CLOSE-02 canvas.ready handshake: wait for the webview to signal it is ready
+		// before sending canvas.show. Without this guard, rpc.show(payload) fires before the
+		// webview's window.addEventListener('message', ...) is established (Panel B scenario:
+		// freshly-created panel where React hasn't mounted yet). Race: 10s timeout — if the
+		// webview never sends canvas.ready (e.g. script load failure), proceed anyway so
+		// tier-dispatch can surface the failure via the 25s canvas-accept wait in the harness.
+		const READY_TIMEOUT_MS = 10_000;
+		await Promise.race([
+			this.webviewReady,
+			new Promise<void>((resolve) => setTimeout(resolve, READY_TIMEOUT_MS)),
+		]);
 		await this.rpc.show(payload);
 		return new Promise<CanvasDecision>((resolve, reject) => {
 			const t = setTimeout(() => {
@@ -179,6 +199,18 @@ export class CanvasPanel {
 	}
 
 	dispose(): void {
+		// Clear the singleton BEFORE calling cleanup() + panel.dispose() so that any
+		// subsequent getOrCreate() call during the cleanup cascade sees a fresh null
+		// instance and creates a new panel rather than reusing this disposed one.
+		//
+		// Root-cause insight (13-02): cleanup() disposes `disposeDisposable` (the
+		// onDidDispose listener) BEFORE panel.dispose() fires onDidDispose. So the
+		// `CanvasPanel.instance = undefined` assignment inside the onDidDispose handler
+		// never runs — the singleton stays stale. getOrCreate()'s isDisposed() probe
+		// (accessing panel.webview) does NOT throw on this Electron build when the panel
+		// is disposed, so it incorrectly returns the stale instance. Explicitly clearing
+		// here is the authoritative singleton teardown path.
+		CanvasPanel.instance = undefined;
 		this.cleanup();
 		this.panel.dispose();
 	}
@@ -195,6 +227,12 @@ export class CanvasPanel {
 	}
 
 	private handleMessage(msg: WebviewToHost): void {
+		if (msg.type === 'canvas.ready') {
+			// Webview signals it has mounted and is ready to receive canvas.show.
+			// Resolves the handshake promise used by showAndAwait (no-op if already resolved).
+			this.resolveWebviewReady();
+			return;
+		}
 		if (msg.type === 'citation.explain') {
 			this.explainHandler?.(msg.payload.citation_node_id);
 			return;

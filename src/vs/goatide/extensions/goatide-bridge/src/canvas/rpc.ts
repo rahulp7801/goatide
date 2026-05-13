@@ -125,6 +125,17 @@ export class WebviewRpc {
 		this.vscode.postMessage(msg);
 	}
 
+	/**
+	 * Post canvas.ready to signal the extension host that the webview's message listener
+	 * is set up and ready to receive canvas.show payloads. Called from App's mount effect
+	 * to prevent the canvas.show message from being dropped when the webview loads after
+	 * rpc.show() is called (multi-wave ceremony Panel B recreation scenario).
+	 */
+	postReady(): void {
+		const msg: WebviewToHost = { type: 'canvas.ready' };
+		this.vscode.postMessage(msg);
+	}
+
 	// Phase 7 Plan 07-07 — record_override + reveal_line message senders.
 	postRecordOverride(payload: { change_id: string; contract_node_id: string; section_name: string; note: string }): void {
 		const msg: WebviewToHost = { type: 'record_override', payload };

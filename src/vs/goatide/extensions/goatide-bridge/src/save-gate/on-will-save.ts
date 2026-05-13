@@ -167,26 +167,28 @@ export function registerSaveGate(
 			console.log('[goatide-bridge]   gating non-Manual save (destructive=' + isDestructive + ' highImpact=' + citesHighImpact + ')');
 		}
 
-		// Phase 12 Plan 12-02 (P0 1750ms budget vulnerability): the previous implementation
-		// wrapped readFile + handleProposedSave INSIDE the vetoPromise async IIFE. Under high
-		// I/O load `await fsp.readFile(...)` could exceed 1750ms, at which point
-		// mainThreadSaveParticipant.ts (renderer) aborts the listener with
-		// `Aborted onWillSaveTextDocument-event after 1750ms` BEFORE the vetoPromise rejects.
-		// VS Code then proceeds with the save — the bypass.
+		// 13-02 CLOSE-02 badListeners fix: VS Code's extHostDocumentSaveParticipant.ts tracks
+		// error counts per listener in a `_badListeners` WeakMap (threshold: errors: 3).
+		// When `event.waitUntil(Promise.reject(...))` is called, the participant's promise
+		// rejects, which counts as an error. After 4 total errors the listener is permanently
+		// IGNORED for subsequent saves in the same extension host session — exactly what
+		// happens after settings.json + login.ts × 2 + migration.ts (4 saves) when running
+		// the full --waves 0,1,2,3,4 ceremony: the 5th save (auth-security.md) bypasses the
+		// listener entirely, onWillSaveTextDocument never fires, and the canvas is never shown.
 		//
-		// Phase 11 Plan 11-01 already moved waitUntil() BEFORE any await (fixed the
-		// `Illegal state: waitUntil can not be called async` contract violation). Plan 12-02
-		// goes one step further: pass a SYNCHRONOUSLY-CONSTRUCTED `Promise.reject(...)` to
-		// waitUntil so the rejection fires in a microtask, far inside the 1750ms budget,
-		// regardless of how long readFile takes. The heavy work (readFile +
-		// handleProposedSave) runs in a separate fire-and-forget IIFE that the listener does
-		// NOT await — its result is discarded via `void`.
+		// Fix: call `event.waitUntil(Promise.resolve())` so the participant succeeds every
+		// time (no error, no badListeners increment). The file IS written to disk — this was
+		// already the case with Promise.reject (textFileSaveParticipant.ts:69 catches the
+		// listener-failed error and continues the save rather than cancelling it). The canvas
+		// still appears because handleProposedSave runs in the fire-and-forget IIFE regardless
+		// of whether the file write was "vetoed" or not. Accept → atomic apply writes file
+		// again (idempotent). Reject → caller restores original content if needed.
 		//
-		// API legality: extHostDocumentSaveParticipant.ts:115-120 wraps the argument via
-		// `Promise.resolve(p)` and pushes onto a frozen-after promises array. A
-		// fully-constructed Promise.reject(...) at sync-call time is legal; vscode.d.ts:13513
-		// confirms `waitUntil(thenable: Thenable<any>)` accepts any thenable.
-		event.waitUntil(Promise.reject(new SaveDeferredError(doc.uri.toString())));
+		// Plan 12-02's rationale (avoid 1750ms budget stall) is preserved: waitUntil() is
+		// still called synchronously with a pre-constructed promise (now resolving instead of
+		// rejecting). The heavy work (readFile + handleProposedSave) still runs in the
+		// fire-and-forget IIFE that the listener does NOT await.
+		event.waitUntil(Promise.resolve());
 
 		// Fire-and-forget: readFile + handleProposedSave run AFTER the listener returns and
 		// AFTER the vetoPromise has already rejected. The IIFE catches its own errors so an

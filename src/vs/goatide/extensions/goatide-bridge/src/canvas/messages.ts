@@ -136,6 +136,13 @@ export type HostToWebview = z.infer<typeof HostToWebviewSchema>;
 // -------- WebviewToHost --------
 
 export const WebviewToHostSchema = z.discriminatedUnion('type', [
+	// canvas.ready — posted by the webview immediately after React mounts. The bridge uses this
+	// signal to guard rpc.show(payload) so the canvas.show message is never sent before the
+	// webview's window.addEventListener('message', ...) is established. Without this handshake,
+	// a freshly-created panel (Panel B in multi-wave ceremonies) can receive rpc.show before
+	// React's useEffect sets up the subscriber, silently dropping the payload (the App stays
+	// in the null/empty render state).
+	z.object({ type: z.literal('canvas.ready') }),
 	z.object({
 		type: z.literal('canvas.accept'),
 		payload: z.object({
