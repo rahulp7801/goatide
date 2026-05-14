@@ -33,6 +33,8 @@ import { resolvePort06ParamsFromEnv, type HarvestMetricsDao } from '../harvester
 import {
 	QueryGraphRequest,
 	QueryRationaleAtRequest,
+	QueryGraphSnapshotRequest,
+	QueryTimelineTransitionsRequest,
 	ProposeEditRequest,
 	RecordRejectionRequest,
 	RecordContractOverrideRequest,
@@ -54,6 +56,10 @@ import {
 	DriftProgressNotificationType,
 	type QueryGraphResult,
 	type QueryRationaleAtResult,
+	type QueryGraphSnapshotResult,
+	type QueryTimelineTransitionsResult,
+	type SerializedNodeSnapshot,
+	type SerializedEdgeSnapshot,
 	type ProposeEditResult,
 	type RecordRejectionResult,
 	type RecordContractOverrideResult,
@@ -205,6 +211,65 @@ function bindHandlers(
 			chain: [...result.chain],
 			has_superseded: result.has_superseded,
 		};
+	}));
+
+	// Phase 15 Plan 15-02 — graph.queryGraphSnapshot (DEEP-02 bitemporal snapshot for the
+	// Graph Inspector). Composes dao.queryAsOf (nodes) + dao.queryEdgesAsOf (edges, landed in
+	// Plan 15-01) at the single asOf threaded verbatim from params. Pitfall 1 fence (REC-03
+	// single-snapshot invariant): no new Date().toISOString() or Date.now() in this handler;
+	// params.asOf is the sole timestamp source.
+	//
+	// Truncation: max_nodes (default 2000) caps the response so unbounded graphs don't blow
+	// the wire budget. When truncated, `truncated: true` is set AND only edges whose src + dst
+	// are both in the truncated node set are emitted (orphan-edge prevention via O(1) Set
+	// membership). Wave 3 (Plan 15-04) renders a "Showing first N nodes (truncated)" banner.
+	//
+	// Label: payload.body (first 80 chars). The discriminated-union payload has body on every
+	// variant (kernel/src/graph/payloads.ts:107-113), but we defensively guard via typeof so
+	// any future variant without a string body falls back to empty rather than throws.
+	connection.onRequest(QueryGraphSnapshotRequest, requireAuth((params): QueryGraphSnapshotResult => {
+		const cap = params.max_nodes ?? 2000;
+		const nodeRows = ctx.dao.queryAsOf(params.asOf);
+		const truncated = nodeRows.length > cap;
+		const trimmedNodeRows = truncated ? nodeRows.slice(0, cap) : nodeRows;
+
+		const nodes: SerializedNodeSnapshot[] = trimmedNodeRows.map((r) => {
+			const body = (r.payload as { body?: unknown }).body;
+			const label = typeof body === 'string' ? body.slice(0, 80) : '';
+			return {
+				node_id: r.id,
+				kind: r.kind,
+				label,
+				valid_from: r.valid_from,
+				invalidated_at: r.invalidated_at,
+			};
+		});
+
+		// Orphan-edge prevention: only emit edges where both endpoints are in the truncated
+		// node set. The Set is built from the post-truncation node list so the predicate is
+		// trivially correct when truncated === false (full set membership).
+		const nodeIdSet = new Set(nodes.map((n) => n.node_id));
+		const edgeRows = ctx.dao.queryEdgesAsOf(params.asOf);
+		const edges: SerializedEdgeSnapshot[] = edgeRows
+			.filter((e) => nodeIdSet.has(e.src_id) && nodeIdSet.has(e.dst_id))
+			.map((e) => ({
+				edge_id: e.id,
+				kind: e.kind,
+				src_id: e.src_id,
+				dst_id: e.dst_id,
+				valid_from: e.valid_from,
+				invalidated_at: e.invalidated_at,
+			}));
+
+		return { nodes, edges, truncated };
+	}));
+
+	// Phase 15 Plan 15-02 — graph.queryTimelineTransitions (DEEP-02 slider step-set).
+	// Returns the full deduped + sorted ascending union of valid_from + invalidated_at across
+	// nodes and edges. Pure read — no parameters, no Date-source side effect.
+	connection.onRequest(QueryTimelineTransitionsRequest, requireAuth((): QueryTimelineTransitionsResult => {
+		const transitions = ctx.dao.queryTimelineTransitions();
+		return { transitions };
 	}));
 
 	connection.onRequest(ProposeEditRequest, requireAuth((params): ProposeEditResult => {

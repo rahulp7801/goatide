@@ -346,6 +346,37 @@ export class GraphDAO {
 	}
 
 	/**
+	 * Phase 15 Plan 15-02 (DEEP-02). Returns the deduped, sorted-ascending union of every
+	 * distinct `valid_from` and `invalidated_at` instant across nodes AND edges. Powers the
+	 * Graph Inspector's discrete-step slider (RESEARCH Risk 4) — the webview snaps to these
+	 * transition points so every drag step produces a visually-distinct snapshot.
+	 *
+	 * Result excludes NULL values (`invalidated_at` is nullable on both tables). Single SQL
+	 * statement using UNION (DISTINCT by default) — no N+1, no application-side dedup.
+	 *
+	 * Read-only: no parameters; returns the FULL timeline regardless of asOf — the slider
+	 * needs the complete step set, not a filtered subset.
+	 */
+	queryTimelineTransitions(): string[] {
+		// Raw better-sqlite3 — Drizzle's union builder requires re-typing each leg, which
+		// is awkward for four-way UNION; raw SQL is shorter and the predicate is a pure
+		// read (no mutation surface to drift). $client access pattern mirrors queryByAnchor
+		// + queryReferencesEdges + findSuccessor (the existing raw-SQL escape hatch in dao.ts).
+		const sqlite = (this.db as unknown as { $client: BetterSqliteHandle }).$client;
+		const rows = sqlite.prepare(`
+			SELECT DISTINCT valid_from AS t FROM nodes WHERE valid_from IS NOT NULL
+			UNION
+			SELECT DISTINCT invalidated_at AS t FROM nodes WHERE invalidated_at IS NOT NULL
+			UNION
+			SELECT DISTINCT valid_from AS t FROM edges WHERE valid_from IS NOT NULL
+			UNION
+			SELECT DISTINCT invalidated_at AS t FROM edges WHERE invalidated_at IS NOT NULL
+			ORDER BY t ASC
+		`).all() as Array<{ t: string }>;
+		return rows.map((r) => r.t);
+	}
+
+	/**
 	 * Look up nodes whose payload contains an exact-equality match at a JSON path,
 	 * filtered by bitemporal active-set as of `asOf`.
 	 *
