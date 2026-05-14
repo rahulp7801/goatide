@@ -34,6 +34,8 @@ const childProcess: typeof import('node:child_process') = require('node:child_pr
 import {
 	QueryGraphRequest,
 	QueryRationaleAtRequest,
+	QueryGraphSnapshotRequest,
+	QueryTimelineTransitionsRequest,
 	ProposeEditRequest,
 	RecordRejectionRequest,
 	RecordContractOverrideRequest,
@@ -378,26 +380,27 @@ export class KernelClient {
 		return this.sendWithTimeout(QueryRationaleAtRequest, params);
 	}
 	/**
-	 * Phase 15 Plan 15-01 Wave-0 stub — Plan 15-02 (Wave-1) implements.
+	 * Phase 15 Plan 15-02 (DEEP-02) — bitemporal snapshot of nodes + edges at the given
+	 * asOf timestamp. The inspector slider dispatches this once per timeline transition;
+	 * `params.asOf` MUST be a transition emitted by queryTimelineTransitions (the slider
+	 * snaps to those instants). REC-03 single-snapshot invariant — the bridge never
+	 * substitutes new Date().toISOString() for asOf.
 	 *
-	 * Bitemporal snapshot of nodes + edges at the given asOf timestamp; the inspector slider
-	 * dispatches this once per timeline transition. The throw-stub exists ONLY to satisfy the
-	 * `ReadonlyKernelClient` Pick<> extension landed in Plan 15-01 Task 3 — without it, the
-	 * bridge tsc gate would fail at Wave-0 close.
+	 * The ReadonlyKernelClient Pick<> exposes this method to the inspector layer (Mandate B
+	 * read-only narrowing); refuse-deep05-write.sh prevents inspector code from importing
+	 * any of the four banned write-RPC names.
 	 */
-	public async queryGraphSnapshot(_params: QueryGraphSnapshotParams): Promise<QueryGraphSnapshotResult> {
-		void _params;
-		throw new Error('Wave 1 implements queryGraphSnapshot - Plan 15-02');
+	public queryGraphSnapshot(params: QueryGraphSnapshotParams): Promise<QueryGraphSnapshotResult> {
+		return this.sendWithTimeout(QueryGraphSnapshotRequest, params);
 	}
 
 	/**
-	 * Phase 15 Plan 15-01 Wave-0 stub — Plan 15-02 (Wave-1) implements.
-	 *
-	 * Deduped, sorted timeline transitions across nodes + edges. Plan 15-04 webview slider
-	 * snaps to these instants so every drag step produces a visually-distinct snapshot.
+	 * Phase 15 Plan 15-02 (DEEP-02) — deduped, sorted-ascending timeline transitions across
+	 * nodes + edges. Plan 15-04 webview slider snaps to these instants so every drag step
+	 * produces a visually-distinct snapshot. Pure read; no parameters.
 	 */
-	public async queryTimelineTransitions(): Promise<QueryTimelineTransitionsResult> {
-		throw new Error('Wave 1 implements queryTimelineTransitions - Plan 15-02');
+	public queryTimelineTransitions(): Promise<QueryTimelineTransitionsResult> {
+		return this.sendWithTimeout(QueryTimelineTransitionsRequest, undefined);
 	}
 	heartbeat(): Promise<HeartbeatResult> {
 		return this.sendWithTimeout(HeartbeatRequest, {});
