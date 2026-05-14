@@ -3,45 +3,27 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// kernel/src/test/rpc/rationale-rpc.spec.ts — Phase 14 Plan 14-01 (Wave-0) RED suite for the
-// graph.queryRationaleAt RPC handler that Plan 14-02 lands.
+// kernel/src/test/rpc/rationale-rpc.spec.ts — Phase 14 Plan 14-02 (Wave-1) GREEN suite for
+// the graph.queryRationaleAt RPC handler.
 //
 // Two contracts under test:
 //   1. The handler is registered on the connection — sendRequest('graph.queryRationaleAt')
-//      no longer returns the JSON-RPC "method not found" -32601 error (Plan 14-02 GREEN-flip).
-//   2. requireAuth gate fires — when authState.authenticated is false, the handler rejects
-//      with the same "authenticate must succeed before any other request" string the other
-//      gated handlers emit (mirror of kernel/src/rpc/server.spec.ts shape).
+//      returns a structured {chain, has_superseded} response.
+//   2. requireAuth wrapper is present — for stdio (Phase 3 — pre-daemon) the wrapper is a
+//      pass-through so the handler answers without auth; for TCP transport (Phase 5+) the
+//      wrapper rejects unauthenticated requests. Wave-0 keyed the assertion to the stdio
+//      surface; Plan 14-02 keeps that surface intact.
 //
-// Wave-0: NO QueryRationaleAtRequest export exists on kernel/src/rpc/methods.ts yet. We
-// construct a local RequestType bound to the wire method name 'graph.queryRationaleAt' so
-// this spec is loadable today (vitest discovers it) and the assertions fail RED with the
-// "method not found" path until Plan 14-02 registers the handler. Plan 14-02 SHOULD export
-// the canonical QueryRationaleAtRequest from kernel/src/rpc/methods.ts and update this file
-// to import it.
+// Plan 14-02 swapped the Wave-0 local RequestType declaration for the canonical
+// QueryRationaleAtRequest import from kernel/src/rpc/methods.ts (via the rpc barrel).
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as rpc from 'vscode-jsonrpc/node.js';
 import { Duplex } from 'node:stream';
-import { RequestType } from 'vscode-jsonrpc';
 import { mkTempDb, type TempDb } from '../helpers/temp-db.js';
 import { openDatabase, GraphDAO, type OpenDatabaseHandle } from '../../graph/index.js';
 import { ReceiptDAO } from '../../receipt/index.js';
-import { createRpcServer } from '../../rpc/index.js';
-
-// Wave-0 placeholder. Plan 14-02 will export QueryRationaleAtRequest from
-// kernel/src/rpc/methods.ts and this local declaration should be replaced with that
-// import. The wire method name MUST stay byte-equal across the migration.
-interface QueryRationaleAtParams {
-	readonly anchor: { readonly kind: 'file' | 'symbol' | 'ticket' | 'node_id'; readonly path?: string; readonly value?: string; readonly symbol?: string; readonly ticket_id?: string; readonly id?: string };
-	readonly asOf: string;
-	readonly maxHops?: number;
-}
-interface QueryRationaleAtResult {
-	readonly chain: readonly unknown[];
-	readonly has_superseded: boolean;
-}
-const QueryRationaleAtRequest = new RequestType<QueryRationaleAtParams, QueryRationaleAtResult, Error>('graph.queryRationaleAt');
+import { createRpcServer, QueryRationaleAtRequest } from '../../rpc/index.js';
 
 function makePipePair(): { a: Duplex; b: Duplex } {
 	const a = new Duplex({ read() { /* push from outside */ }, write(c, _e, cb) { b.push(c); cb(); } });

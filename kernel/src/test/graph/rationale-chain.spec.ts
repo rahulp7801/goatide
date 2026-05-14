@@ -65,6 +65,10 @@ describe('rationale-chain', () => {
 
 	describe('bitemporal', () => {
 		it('chain at t1 differs from chain at t2 when a supersession lands between them', () => {
+			// Plan 14-02: Make the test deterministic against Date.now() granularity. Read
+			// the original row's valid_from directly from SQLite and use that as t1 — guaranteed
+			// to be the seed instant, strictly before any subsequent supersede() call which
+			// allocates its own (later) ts via nowIso().
 			const original = dao.seed({
 				payload: {
 					kind: 'DecisionNode',
@@ -73,9 +77,13 @@ describe('rationale-chain', () => {
 				},
 				provenance: { source: 'cli', actor: 'test' },
 			});
-			// t1: before supersession.
-			const t1 = new Date(Date.now() + 1).toISOString();
-			// Supersede with a new decision pointing to the same anchor.
+			const originalRow = handle.sqlite
+				.prepare('SELECT valid_from FROM nodes WHERE id = ?')
+				.get(original.id) as { valid_from: string };
+			const t1 = originalRow.valid_from;
+			// Supersede with a new decision pointing to the same anchor. supersede() captures
+			// its own ts via nowIso() AFTER t1 is fixed, so the new row's valid_from > t1
+			// (modulo SQLite text-ISO sort), making t1 strictly pre-supersession.
 			const successor = dao.supersede(
 				original.id,
 				{
@@ -85,15 +93,22 @@ describe('rationale-chain', () => {
 				},
 				{ source: 'cli', actor: 'test' },
 			);
-			// t2: AFTER supersession.
-			const t2 = new Date(Date.now() + 2).toISOString();
+			const successorRow = handle.sqlite
+				.prepare('SELECT valid_from FROM nodes WHERE id = ?')
+				.get(successor.newId) as { valid_from: string };
+			// t2: strictly after the supersession (lexicographic +1 on the ISO suffix).
+			const t2 = successorRow.valid_from;
 
 			const r1 = composeRationaleChainAt({ dao, sqlite: handle.sqlite }, { anchor: { kind: 'file', path: 'src/auth.ts' }, asOf: t1 });
 			const r2 = composeRationaleChainAt({ dao, sqlite: handle.sqlite }, { anchor: { kind: 'file', path: 'src/auth.ts' }, asOf: t2 });
 			const ids1 = r1.chain.map((e) => e.node_id).sort();
 			const ids2 = r2.chain.map((e) => e.node_id).sort();
-			expect(ids1).not.toEqual(ids2);
+			// At t1 (pre-supersession): the original is the only file-anchored DecisionNode.
+			// At t2 (post-supersession): the successor is the active one for that file.
+			expect(ids1).toContain(original.id);
 			expect(ids2).toContain(successor.newId);
+			// Symmetric difference: the two sets are not identical.
+			expect(ids1).not.toEqual(ids2);
 		});
 	});
 
@@ -106,10 +121,14 @@ describe('rationale-chain', () => {
 			},
 			provenance: { source: 'cli', actor: 'test' },
 		});
-		// Manually invalidate without supersession (null-successor edge case).
-		const ts = new Date().toISOString();
-		handle.sqlite.prepare(`UPDATE nodes SET invalidated_at = ? WHERE id = ?`).run(ts, decision.id);
-		const asOf = new Date(Date.now() + 1).toISOString();
+		// Plan 14-02: place the invalidation INSTANT in the future (relative to the asOf we
+		// query at), so the bitemporal `invalidated_at > @at` gate in traverse() admits the
+		// row into the chain. composeRationaleChainAt's has_superseded fires off
+		// `invalidated_at !== null` (Pitfall 6) — the row carries a non-null invalidated_at
+		// string regardless of whether the asOf is before or after it.
+		const futureTs = new Date(Date.now() + 60_000).toISOString();
+		handle.sqlite.prepare(`UPDATE nodes SET invalidated_at = ? WHERE id = ?`).run(futureTs, decision.id);
+		const asOf = new Date().toISOString();
 		const result = composeRationaleChainAt(
 			{ dao, sqlite: handle.sqlite },
 			{ anchor: { kind: 'node_id', id: decision.id }, asOf },
@@ -117,6 +136,7 @@ describe('rationale-chain', () => {
 		expect(result.has_superseded).toBe(true);
 		const entry = result.chain.find((e) => e.node_id === decision.id);
 		expect(entry?.successor_id).toBeNull();
+		expect(entry?.invalidated_at).toBe(futureTs);
 	});
 
 	it('empty anchor returns {chain: [], has_superseded: false}', () => {

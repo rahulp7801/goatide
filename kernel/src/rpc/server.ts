@@ -22,6 +22,7 @@ import type * as net from 'node:net';
 import * as rpc from 'vscode-jsonrpc/node.js';
 import type Database from 'better-sqlite3';
 import { resolveAnchor, traverse, type GraphDAO, type NodeKind } from '../graph/index.js';
+import { composeRationaleChainAt } from '../graph/rationale-chain.js';
 import { buildReceipt, renderReceipt, type ReceiptDAO } from '../receipt/index.js';
 import { validateAuthToken } from '../daemon/auth-token.js';
 import { submitRawObservation, type HarvesterDeps } from '../harvester/index.js';
@@ -31,6 +32,7 @@ import { resolveLivenessThresholdsFromEnv } from '../harvester/liveness.js';
 import { resolvePort06ParamsFromEnv, type HarvestMetricsDao } from '../harvester/metrics.js';
 import {
 	QueryGraphRequest,
+	QueryRationaleAtRequest,
 	ProposeEditRequest,
 	RecordRejectionRequest,
 	RecordContractOverrideRequest,
@@ -51,6 +53,7 @@ import {
 	RunRippleProgressiveRequest,
 	DriftProgressNotificationType,
 	type QueryGraphResult,
+	type QueryRationaleAtResult,
 	type ProposeEditResult,
 	type RecordRejectionResult,
 	type RecordContractOverrideResult,
@@ -184,6 +187,24 @@ function bindHandlers(
 			at,
 		});
 		return { nodes: traversal.nodes, paths: traversal.paths };
+	}));
+
+	// Phase 14 Plan 14-02 — graph.queryRationaleAt (DEEP-01 bitemporal rationale chain).
+	//
+	// Composes resolveAnchor + traverse + filter + findSuccessor (see
+	// kernel/src/graph/rationale-chain.ts). The handler passes params.asOf VERBATIM with no
+	// fallback — the bridge always supplies the receipt's graph_snapshot_tx_time (REC-03
+	// single-snapshot invariant; Pitfall 1 asOf-drift fence). New Date().toISOString() does
+	// NOT appear in this handler or in composeRationaleChainAt — caller responsibility.
+	connection.onRequest(QueryRationaleAtRequest, requireAuth((params): QueryRationaleAtResult => {
+		const result = composeRationaleChainAt(
+			{ dao: ctx.dao, sqlite: ctx.sqlite },
+			{ anchor: params.anchor, asOf: params.asOf, maxHops: params.max_hops },
+		);
+		return {
+			chain: [...result.chain],
+			has_superseded: result.has_superseded,
+		};
 	}));
 
 	connection.onRequest(ProposeEditRequest, requireAuth((params): ProposeEditResult => {

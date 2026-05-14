@@ -13,6 +13,7 @@
 export { createRpcServer, type CreateRpcServerArgs } from './server.js';
 export {
 	QueryGraphRequest,
+	QueryRationaleAtRequest,
 	ProposeEditRequest,
 	RecordRejectionRequest,
 	RecordContractOverrideRequest,
@@ -23,6 +24,9 @@ export {
 	AuthenticateRequest,
 	type QueryGraphParams,
 	type QueryGraphResult,
+	type QueryRationaleAtParams,
+	type QueryRationaleAtResult,
+	type RationaleChainEntry,
 	type ProposeEditParams,
 	type ProposeEditResult,
 	type RecordRejectionParams,

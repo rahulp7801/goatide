@@ -30,6 +30,7 @@
 import { RequestType, NotificationType } from 'vscode-jsonrpc';
 import type { AnchorRequest } from '../graph/anchor.js';
 import type { Scope, TraverseRow } from '../graph/traverse.js';
+import type { RationaleChainEntry } from '../graph/rationale-chain.js';
 import type { ReasoningReceipt } from '../receipt/index.js';
 import type { RawObservation, ObservationSource } from '../harvester/observations.js';
 import type { SubmitObservationResult } from '../harvester/index.js';
@@ -52,6 +53,32 @@ export interface QueryGraphResult {
 }
 
 export const QueryGraphRequest = new RequestType<QueryGraphParams, QueryGraphResult, Error>('graph.queryGraph');
+
+// -------- graph.queryRationaleAt (Plan 14-02 — DEEP-01) --------
+//
+// Phase 14 Plan 14-02 (Wave-1) — bitemporal "Why does this exist?" composition. The handler
+// composes resolveAnchor + traverse + filter + findSuccessor (see
+// kernel/src/graph/rationale-chain.ts) into a single round-trip. The bridge calls this
+// exactly once per Verification Canvas "Why does this exist?" button click; the asOf
+// parameter is REQUIRED and MUST be the receipt's graph_snapshot_tx_time (REC-03 invariant
+// — never new Date().toISOString() at click time, never optional with a fallback).
+//
+// Wire shape mirrors QueryGraphRequest (snake_case where the schema uses it; the
+// JSON-RPC method name is dot-namespaced under `graph.`).
+
+export interface QueryRationaleAtParams {
+	anchor: AnchorRequest;
+	asOf: string;        // ISO-8601 — REQUIRED (not optional)
+	max_hops?: number;   // default 4
+}
+
+export interface QueryRationaleAtResult {
+	chain: RationaleChainEntry[];
+	has_superseded: boolean;
+}
+
+export const QueryRationaleAtRequest = new RequestType<QueryRationaleAtParams, QueryRationaleAtResult, Error>('graph.queryRationaleAt');
+export type { RationaleChainEntry };
 
 // -------- graph.proposeEdit --------
 //
