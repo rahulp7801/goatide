@@ -10,7 +10,7 @@
 // to force remount per save (Pitfall 8 - stale React state).
 
 import * as React from 'react';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import type { WebviewRpc } from '../rpc.js';
 import type { CanvasShowPayload } from '../messages.js';
 import { DiffPane as DefaultDiffPane, type DiffPaneProps } from './DiffPane.js';
@@ -19,6 +19,7 @@ import { ConfirmationPhrase } from './ConfirmationPhrase.js';
 import { DriftFindings } from './DriftFindings.js';
 import { ComplianceReportView } from './ComplianceReport.js';
 import { RationaleChain } from './RationaleChain.js';
+import { rerankBySessionPriority } from '../../inspector/session-priority-lens.js';
 
 export interface AppProps {
 	rpc: WebviewRpc;
@@ -112,6 +113,24 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 	const rationaleChain = payload.rationale_chain ?? null;
 	const rationaleError = payload.rationale_error ?? null;
 
+	// Phase 14 Plan 14-04 (DEEP-05) — rerank citations in-memory by drift-bearing badge.
+	// Pure render-time concern: NO kernel touch, NO graph mutation (Mandate B). The lens
+	// returns a NEW citations array (input not mutated) and an indicator string. Wrapped in
+	// useMemo keyed on the citations identity + sessionPriority so the sort runs once per
+	// canvas.show payload, not on every CanvasShell re-render.
+	const sessionPriority = payload.session_priority ?? null;
+	const sessionPriorityIndicator = payload.session_priority_indicator ?? null;
+	const rerankedCitations = useMemo(() => {
+		if (sessionPriority === null) {
+			return payload.citations;
+		}
+		return rerankBySessionPriority({
+			citations: payload.citations,
+			findings: payload.drift_findings ?? [],
+			sessionPriority,
+		}).citations;
+	}, [payload.citations, payload.drift_findings, sessionPriority]);
+
 	const friendlyFile = formatFileUri(payload.file_uri);
 
 	return (
@@ -122,6 +141,15 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 				<span className="goatide-canvas-file" title={payload.file_uri}>{friendlyFile}</span>
 				{payload.destructive ? (
 					<span className="goatide-canvas-destructive-flag">Destructive</span>
+				) : null}
+				{/* Phase 14 Plan 14-04 (DEEP-05) — header indicator. Renders ONLY when the host populated session_priority_indicator. The text content matches the host-built string verbatim — never re-constructed client-side. */}
+				{sessionPriorityIndicator !== null ? (
+					<span
+						className="canvas-header__session-priority"
+						data-testid="canvas-header-session-priority"
+					>
+						{sessionPriorityIndicator}
+					</span>
 				) : null}
 			</header>
 			<div className="goatide-canvas-body">
@@ -154,7 +182,7 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 					onRequest={onRationaleRequest}
 				/>
 				<section className="goatide-canvas-citations">
-					<CitationList citations={payload.citations} onExplain={onCitationExplain} />
+					<CitationList citations={rerankedCitations} onExplain={onCitationExplain} />
 				</section>
 			</div>
 			{payload.destructive && payload.confirmation_phrase ? (

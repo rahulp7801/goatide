@@ -332,6 +332,19 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		})();
 	}
 
+	// Phase 14 Plan 14-04 (DEEP-05) — read goatide.session.priority from VS Code config and
+	// thread BOTH the raw value (session_priority) AND the user-visible indicator label
+	// (session_priority_indicator) onto the payload. The webview consumes session_priority
+	// to drive rerankBySessionPriority; the header renders session_priority_indicator
+	// verbatim. The lens itself is webview-only — tier-dispatch.ts does NOT invoke
+	// rerankBySessionPriority from here (the rerank decision is a render-time concern;
+	// host-side payload assembly must remain kernel-degraded-fork-aware + save-gate-budget
+	// bound). Default 'Quality-First' mirrors on-will-save.ts:239-241 (Pitfall 5).
+	const sessionPriority = vscode.workspace
+		.getConfiguration('goatide')
+		.get<string>('session.priority', 'Quality-First');
+	const sessionPriorityIndicator = `Filtered by session priority: ${sessionPriority}`;
+
 	const showPayload: CanvasShowPayload = {
 		change_id: inputs.receipt.change_id,
 		tier,
@@ -358,6 +371,13 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		drift_findings: (inputs.driftFindings ?? []).map(toCanvasDriftFinding),
 		compliance_report: initialComplianceReport !== null ? toCanvasComplianceReport(initialComplianceReport) : null,
 		lock_trigger: inputs.lockTrigger ? toCanvasLockTrigger(inputs.lockTrigger) : null,
+		// Phase 14 Plan 14-04 (DEEP-05) — explicit session-priority surface for the webview.
+		// Always shown when sessionPriority is set (open question #4 default — even for the
+		// default 'Quality-First'). graph_snapshot_tx_time is threaded so the rationale-chain
+		// lazy fetch in panel.ts handleMessage can pass it to kernel.queryRationaleAt as asOf.
+		session_priority: sessionPriority,
+		session_priority_indicator: sessionPriorityIndicator,
+		graph_snapshot_tx_time: inputs.receipt.graph_snapshot_tx_time ?? null,
 	};
 
 	let decision: CanvasDecision;

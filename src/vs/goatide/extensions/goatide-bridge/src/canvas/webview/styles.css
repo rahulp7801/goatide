@@ -113,6 +113,21 @@ button {
 	color: var(--vscode-errorForeground, #f48771);
 }
 
+/* Phase 14 Plan 14-04 (DEEP-05) — session-priority header indicator. Slots into the
+ * canvas header alongside the file path + destructive flag. Visually understated (secondary
+ * description foreground) so it does not compete with the destructive amber/red palette;
+ * the structural intent is "I am informational metadata about the rerank, not a warning". */
+.canvas-header__session-priority {
+	display: inline-flex;
+	align-items: center;
+	padding: 2px 8px;
+	border-radius: 3px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
+	background-color: var(--vscode-badge-background, #4d4d4d20);
+	font-style: italic;
+}
+
 .goatide-canvas-destructive-flag::before {
 	content: '⚠';
 	font-size: 12px;
