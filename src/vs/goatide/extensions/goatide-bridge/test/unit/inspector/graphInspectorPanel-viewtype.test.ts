@@ -3,17 +3,21 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// test/unit/inspector/graphInspectorPanel-viewtype.test.ts — Phase 15 Plan 15-01 (Wave-0).
+// test/unit/inspector/graphInspectorPanel-viewtype.test.ts —
+// Phase 15 Plan 15-01 (Wave-0) + Plan 15-03 (Wave-2 — Test 3 removed).
 //
 // VIEW_TYPE invariants for GraphInspectorPanel:
 //   1. byte-equal 'goatide.graphInspector'
 //   2. != CanvasPanel.VIEW_TYPE ('goatide.canvas') — distinct panel registration
-//   3. getOrCreate() throws the Wave-0 stub error (Plan 15-03 will replace the body and
-//      rewrite this case to assert success behavior)
+//
+// Plan 15-03 (Wave-2) removed the Wave-0 Test 3 throw-stub assertion: GraphInspectorPanel
+// .getOrCreate now has a real body (createWebviewPanel + singleton), so the throw-stub
+// test would fail with a different error. Coverage for the new behavior is provided by
+// test/integration/inspector/command-registration.test.ts (Plan 15-03 Task 3) which
+// asserts the command callback invokes getOrCreate when the kernel is connected.
 
 import { describe, it } from 'mocha';
 import { strict as assert } from 'node:assert';
-import * as vscode from 'vscode';
 import { GraphInspectorPanel } from '../../../src/inspector/panel.js';
 import { CanvasPanel } from '../../../src/canvas/panel.js';
 
@@ -27,13 +31,5 @@ describe('GraphInspectorPanel VIEW_TYPE', () => {
 		// literal here rather than reaching into the canvas/panel.ts internals.
 		void CanvasPanel;
 		assert.notStrictEqual(GraphInspectorPanel.VIEW_TYPE, 'goatide.canvas');
-	});
-
-	it('getOrCreate throws Wave-0 stub error (RED - Plan 15-03 GREEN-flips)', () => {
-		const fakeContext = {} as vscode.ExtensionContext;
-		assert.throws(
-			() => GraphInspectorPanel.getOrCreate(fakeContext),
-			/Wave 2 implements/,
-		);
 	});
 });

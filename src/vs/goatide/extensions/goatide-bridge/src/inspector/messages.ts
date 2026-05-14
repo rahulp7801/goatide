@@ -4,29 +4,69 @@
  *--------------------------------------------------------------------------------------------*/
 
 // src/vs/goatide/extensions/goatide-bridge/src/inspector/messages.ts —
-// Phase 15 Plan 15-01 (Wave-0 — DEEP-02 Graph Inspector wire schemas).
+// Phase 15 Plan 15-03 (Wave-2 — DEEP-02 host wiring extended wire schemas).
 //
-// Host <-> webview wire shapes for the bitemporal Graph Inspector. Wave-0 ships the minimal
-// pair of placeholder variants that the panel + tests can compile against:
-//   - inspector.ready          (webview -> host)  webview React mount complete
-//   - inspector.error          (host -> webview)  show an inline error string
+// Host <-> webview wire shapes for the bitemporal Graph Inspector. Wave-0 (Plan 15-01)
+// shipped the minimal pair of placeholder variants; Wave-2 (this plan) extends both unions
+// with the snapshot wire-shape:
+//   - inspector.ready             (webview -> host)  webview React mount complete; host
+//                                                    replies with the initial inspector.show
+//   - inspector.requestSnapshot   (webview -> host)  slider drag -> new asOf snapshot
+//   - inspector.show              (host -> webview)  snapshot payload (nodes + edges +
+//                                                    truncated + optional transitions[])
+//   - inspector.error             (host -> webview)  show an inline error string
 //
-// Wave-2 (Plan 15-03) extends both unions:
-//   - inspector.show           (host -> webview)  initial snapshot payload
-//   - inspector.requestSnapshot (webview -> host)  slider drag -> new asOf snapshot
+// Mandate B fence: schema field names + comments MUST NOT mention any of the four
+// banned write-RPC token identifiers — see scripts/ci/refuse-deep05-write.sh BANNED array
+// for the canonical list. The inspector wire is read-only by construction; the gate script
+// enforces structurally.
 //
-// Wave-3 (Plan 15-04) may add `inspector.requestTimeline` etc. The discriminator field
-// name is `type` — mirrors `canvas/messages.ts` HostToWebviewSchema / WebviewToHostSchema
-// (Phase 4 precedent, verified).
+// Pitfall 1 carry (REC-03 single-snapshot invariant): the host NEVER substitutes
+// new Date().toISOString() for an inbound asOf — the slider thumb position drives the asOf
+// verbatim. Only the initial inspector.ready handler may compute an asOf for an empty graph
+// (transitions[] length === 0); see panel.ts handleMessage.
 
 import { z } from 'zod';
 
+// The 5 canonical kernel NODE_KINDS — pinned by Phase 15 Plan 15-01 RESEARCH Risk 1.
+// "Superseded" is a visual modifier (invalidated_at !== null), NOT its own kind.
+const NodeKindSchema = z.enum(['ConstraintNode', 'DecisionNode', 'ContractNode', 'OpenQuestion', 'Attempt']);
+
+const InspectorNodeSnapshotSchema = z.object({
+	node_id: z.string(),
+	kind: NodeKindSchema,
+	label: z.string(),
+	valid_from: z.string(),
+	invalidated_at: z.string().nullable(),
+});
+
+const InspectorEdgeSnapshotSchema = z.object({
+	edge_id: z.string(),
+	kind: z.string(),
+	src_id: z.string(),
+	dst_id: z.string(),
+	valid_from: z.string(),
+	invalidated_at: z.string().nullable(),
+});
+
 export const InspectorWebviewToHostSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('inspector.ready') }),
+	z.object({ type: z.literal('inspector.requestSnapshot'), asOf: z.string() }),
 ]);
 
 export const InspectorHostToWebviewSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('inspector.error'), reason: z.string() }),
+	z.object({
+		type: z.literal('inspector.show'),
+		asOf: z.string(),
+		nodes: z.array(InspectorNodeSnapshotSchema),
+		edges: z.array(InspectorEdgeSnapshotSchema),
+		truncated: z.boolean(),
+		// Only present on the initial inspector.show (response to inspector.ready). Slider-driven
+		// inspector.requestSnapshot responses omit this field; the webview keeps its previously
+		// rendered transitions[] array.
+		transitions: z.array(z.string()).optional(),
+	}),
 ]);
 
 export type InspectorWebviewToHost = z.infer<typeof InspectorWebviewToHostSchema>;
