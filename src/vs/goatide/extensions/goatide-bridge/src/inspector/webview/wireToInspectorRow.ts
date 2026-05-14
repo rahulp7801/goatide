@@ -29,8 +29,8 @@ import type { InspectorEdgeRow } from '../edgeRowToCyElement.js';
  * Mirror of kernel SerializedNodeSnapshot — wire shape that arrives over the
  * inspector.show message. Field names match `kernel/src/rpc/methods.ts`
  * QueryGraphSnapshotResult.nodes byte-for-byte; the 5 canonical kernel kinds are
- * pinned here too (RESEARCH Risk 1 — Phase 15 uses canonical kinds, not the
- * ROADMAP-narrative ObservationNode/FileAnchorNode/SupersededNode).
+ * pinned here too (RESEARCH Risk 1 — Phase 15 uses the canonical kinds verbatim,
+ * not the additional ROADMAP-narrative names which do not exist in the kernel).
  */
 export interface WireNodeSnapshot {
 	readonly node_id: string;

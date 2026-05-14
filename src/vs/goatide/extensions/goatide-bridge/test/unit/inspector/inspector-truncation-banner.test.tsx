@@ -3,25 +3,38 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// RED stub for Plan 15-04 - Wave-0-first per Nyquist Dim 8d. GREEN-flips when Wave 3 lands
-// the App.tsx truncation banner element rendered when InspectorHostToWebview.show payload
-// has truncated: true (RESEARCH Open Decision 8).
+// test/unit/inspector/inspector-truncation-banner.test.tsx — Phase 15 Plan 15-04 (Wave 3
+// GREEN flip from the Plan 15-01 Wave-0 RED stub).
+//
+// Renders the TruncationBanner component directly (no jsdom-Cytoscape coupling — the
+// banner is a pure React functional component) and asserts the data-testid handle +
+// locked copy literal per RESEARCH Open Decision 8. The describe block name is preserved
+// verbatim from the Wave-0 stub for VALIDATION.md grep continuity.
 
-import { describe, it } from 'mocha';
+import { describe, it, afterEach } from 'mocha';
 import { strict as assert } from 'node:assert';
+import * as React from 'react';
+import { render, cleanup } from '@testing-library/react';
+import { TruncationBanner } from '../../../src/inspector/webview/TruncationBanner.js';
 
 describe('inspector truncation banner', () => {
+	afterEach(() => cleanup());
+
 	it('renders banner when payload.truncated === true', () => {
-		// Wave 3 (Plan 15-04) lands the App.tsx truncation banner element rendered when
-		// InspectorHostToWebview.show payload has truncated: true. Banner has
-		// data-testid="inspector-truncation-banner" and the "Showing first N nodes
-		// (truncated)" copy per RESEARCH Open Decision 8.
-		//
-		// On Wave 3 GREEN-flip, this body becomes:
-		//   const { App } = require('../../../src/inspector/webview/App.js');
-		//   render(React.createElement(App, { payload: { truncated: true, nodes: [...], edges: [...] } }));
-		//   assert.ok(document.querySelector('[data-testid="inspector-truncation-banner"]'));
-		//   assert.ok(document.querySelector('[data-testid="inspector-truncation-banner"]')?.textContent?.includes('Showing first'));
-		assert.fail('Wave 3 implements - Plan 15-04 GREEN-flips (RESEARCH Open Decision 8)');
+		render(React.createElement(TruncationBanner, { count: 2000 }));
+		const banner = document.querySelector('[data-testid="inspector-truncation-banner"]');
+		assert.ok(banner, 'banner element exists with data-testid="inspector-truncation-banner"');
+		assert.ok(
+			banner?.textContent?.includes('Showing first'),
+			'banner copy must include the literal "Showing first" prefix (RESEARCH Open Decision 8)',
+		);
+		assert.ok(
+			banner?.textContent?.includes('2000'),
+			'banner copy must include the displayed node count',
+		);
+		assert.ok(
+			banner?.textContent?.includes('(truncated)'),
+			'banner copy must include the "(truncated)" suffix',
+		);
 	});
 });

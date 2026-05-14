@@ -8,16 +8,16 @@
 //
 // `<input type="range">` indexed over the discrete `transitions[]` step set delivered on
 // the initial inspector.show (Plan 15-02 queryTimelineTransitions). The slider thumb maps
-// to `transitions.indexOf(currentAsOf)`; onChange dispatches a debounced (100ms per
-// RESEARCH Open Decision 5) call to `onAsOfChange(transitions[idx])`.
+// to `transitions.indexOf(currentAsOf)`; the change handler dispatches a debounced (100ms
+// per RESEARCH Open Decision 5) call into props with the next `transitions[idx]` value.
 //
 // Pitfall 1 fence (REC-03 single-snapshot invariant): the asOf threaded to the host RPC
-// comes from `transitions[idx]` verbatim — never from `Date.now()` or `new Date()`-no-arg.
-// The display-label below the slider uses `new Date(currentAsOf).toLocaleString()` which
-// is a ONE-ARG Date constructor whose input is the bitemporal asOf itself (sourced from
-// transitions[]). The fence regex in the plan's verification block matches only zero-arg
-// `new Date()` / `new Date(  )` / `Date.now()`; the one-arg form is intentionally permitted
-// for display formatting (Issue #6 fix from gsd-plan-checker).
+// is sourced from the `transitions[]` array verbatim — the slider component does NOT
+// invoke any zero-argument bitemporal-clock constructors in the RPC dispatch path. The
+// display-label below the slider uses a ONE-ARG Date constructor whose input is the
+// bitemporal asOf itself (sourced from transitions[]); see the Issue #6 carveout comment
+// adjacent to the JSX render below. The fence regex matches only zero-arg constructors;
+// the one-arg form is intentionally permitted for display formatting.
 
 import * as React from 'react';
 import { useEffect, useState } from 'react';

@@ -3,28 +3,53 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// RED stub for Plan 15-04 - Wave-0-first per Nyquist Dim 8d. GREEN-flips when Wave 3 lands
-// the App.tsx header element with literal text "Viewing snapshot - graph is read-only".
+// test/unit/inspector/inspector-app-header.test.tsx — Phase 15 Plan 15-04 (Wave 3 GREEN
+// flip from the Plan 15-01 Wave-0 RED stub).
 //
-// Loading App.tsx must use require() (not import) — the file does not exist yet at Wave 0,
-// so a static import would break tsc. require() defers resolution to runtime, producing the
-// clean RED at test execution (MODULE_NOT_FOUND) rather than a compile error that blocks
-// every other inspector test.
+// Verifies the App.tsx top-level component renders the locked SC#2 header literal
+// 'Viewing snapshot — graph is read-only' (byte-equal including em-dash U+2014) with the
+// data-testid='inspector-header-readonly' query handle.
+//
+// The describe block name is preserved verbatim from the Wave-0 stub for VALIDATION.md
+// grep continuity. The Cytoscape mount inside <Graph/> is allowed to fail under jsdom
+// (spike outcome from Plan 15-01 Task 8) — the React tree completes its initial render
+// pass before the Cytoscape effect throws, so the header element is mounted in the DOM
+// regardless. We assert ONLY on the header, not on Graph.
 
-import { describe, it } from 'mocha';
+import { describe, it, afterEach } from 'mocha';
 import { strict as assert } from 'node:assert';
+import * as React from 'react';
+import { render, cleanup } from '@testing-library/react';
+import { App } from '../../../src/inspector/webview/App.js';
+import type { WebviewRpc } from '../../../src/inspector/rpc.js';
+
+function makeStubRpc(): WebviewRpc {
+	const stub = {
+		subscribe: () => () => { /* unsubscribe noop */ },
+		postReady: () => { /* noop */ },
+		postRequestSnapshot: (_asOf: string) => { /* noop */ },
+	};
+	return stub as unknown as WebviewRpc;
+}
 
 describe('inspector header read-only', () => {
-	it('App renders literal "Viewing snapshot - graph is read-only" in the header', () => {
-		// Wave 3 (Plan 15-04) creates src/inspector/webview/App.tsx with the header literal
-		// "Viewing snapshot - graph is read-only" (SC#2 — inspector header must literally
-		// display the read-only label at all times). At Wave 0 the source file does not
-		// exist; this is RED by design.
-		//
-		// On Wave 3 GREEN-flip, this body becomes:
-		//   const { App } = require('../../../src/inspector/webview/App.js');
-		//   render(React.createElement(App, { payload: { snapshot } }));
-		//   assert.ok(document.body.textContent?.includes('Viewing snapshot - graph is read-only'));
-		assert.fail('Wave 3 implements - Plan 15-04 GREEN-flips (SC#2 read-only header literal)');
+	afterEach(() => cleanup());
+
+	it('App renders literal "Viewing snapshot — graph is read-only" in the header', () => {
+		const rpc = makeStubRpc();
+		// Render inside try/catch: Cytoscape's getContext('2d') throws under jsdom; the React
+		// commit completes before the layout effect fires so the header IS in the DOM by then.
+		try {
+			render(React.createElement(App, { rpc }));
+		} catch {
+			// Spike-fail expected when Cytoscape mount fires; header was already painted.
+		}
+		const header = document.querySelector('[data-testid="inspector-header-readonly"]');
+		assert.ok(header, 'header element exists with data-testid="inspector-header-readonly"');
+		assert.strictEqual(
+			header?.textContent,
+			'Viewing snapshot — graph is read-only',
+			'header literal must be byte-equal to ROADMAP SC#2 — including em-dash U+2014',
+		);
 	});
 });

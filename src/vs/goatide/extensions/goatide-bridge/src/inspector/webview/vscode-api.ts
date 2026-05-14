@@ -43,7 +43,29 @@ export interface VsCodeApi {
 	setState(state: InspectorWebviewState): void;
 }
 
-const raw: VsCodeApiRaw = acquireVsCodeApi();
+/**
+ * Acquire the VS Code API in production; fall back to an in-memory stub when
+ * `acquireVsCodeApi` is not present on the global (jsdom / mocha test runtime). The
+ * stub holds a single in-memory `state` slot so getState/setState round-trip works
+ * for unit tests of Graph.tsx position persistence; postMessage is a noop in tests.
+ * The Plan 15-04 webview entrypoint (index.tsx) only runs under the real VS Code
+ * webview, where `acquireVsCodeApi` is injected by the runtime — the fallback path
+ * here is exclusively for test reachability of the module graph.
+ */
+function acquireVsCodeApiSafe(): VsCodeApiRaw {
+	const g = globalThis as unknown as { acquireVsCodeApi?: () => VsCodeApiRaw };
+	if (typeof g.acquireVsCodeApi === 'function') {
+		return g.acquireVsCodeApi();
+	}
+	let inMemoryState: unknown = undefined;
+	return {
+		postMessage: (_message: unknown): void => { /* test-stub noop */ },
+		getState: (): unknown => inMemoryState,
+		setState: (state: unknown): void => { inMemoryState = state; },
+	};
+}
+
+const raw: VsCodeApiRaw = acquireVsCodeApiSafe();
 
 /**
  * The singleton typed VS Code API surface for the inspector webview. Use this

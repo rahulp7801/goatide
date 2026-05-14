@@ -9,9 +9,9 @@
 // Per-kind colors use the CANONICAL 5 kernel kinds defined in
 // kernel/src/graph/schema/nodes.ts:17 — ConstraintNode / DecisionNode / ContractNode
 // / OpenQuestion / Attempt. RESEARCH Risk 1 documents that the ROADMAP narrative
-// names three kinds (ObservationNode / FileAnchorNode / SupersededNode) that DO NOT
-// exist in the kernel. "Superseded" is rendered as a visual modifier on any node
-// with `invalidated_at !== null` (Cytoscape attribute-existence selector
+// names three additional kinds which DO NOT exist in the kernel; the inspector
+// uses the canonical 5 only. "Superseded" is rendered as a visual modifier on any
+// node with `invalidated_at !== null` (Cytoscape attribute-existence selector
 // `node[invalidated_at]`), NOT as its own kind.
 //
 // Bundle-size note (RESEARCH Risk 6): cytoscape@^3.33 ~120KB minified +

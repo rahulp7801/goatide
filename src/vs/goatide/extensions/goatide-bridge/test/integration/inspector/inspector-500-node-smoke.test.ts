@@ -3,27 +3,32 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// RED stub for Plan 15-04 - performance smoke. GREEN-flips when Wave 3 implements
-// Graph.tsx Cytoscape mount + fcose layout on a 500-node synthetic fixture (RESEARCH SC#3
-// < 2s wall-time budget).
+// test/integration/inspector/inspector-500-node-smoke.test.ts — Phase 15 Plan 15-04
+// (Wave 3 — spike-fail downgrade to playwright).
 //
-// If Task 8 spike (Cytoscape under jsdom) FAILS, this test downgrades to playwright
-// (Plan 15-05 phase-verify manual smoke). The describe-block name stays stable for
-// VALIDATION.md grep continuity regardless of test surface.
+// SPIKE OUTCOME (Plan 15-01 Task 8): Cytoscape fails under jsdom (`getContext('2d')`
+// returns null). The 500-node smoke fundamentally requires cy.layout({name:'fcose'}).run()
+// to complete + measurable wall-time from cy.add() through fcose.run() settle, both of
+// which need the real canvas renderer. The test is downgraded to it.skip with a comment
+// pointing at Plan 15-05 (DEEP-02 phase-verify) for the playwright-based manual smoke.
+//
+// describe block name preserved verbatim from Wave-0 stub for VALIDATION.md grep continuity.
 
 import { describe, it } from 'mocha';
-import { strict as assert } from 'node:assert';
 
 describe('inspector 500-node smoke', () => {
-	it('cy.add + fcose layout completes in < 2s on synthetic 500-node fixture', async function () {
-		this.timeout(5000);
-		// On Wave 3 GREEN-flip, this body becomes:
-		//   1. Generate 500 synthetic InspectorNodeRow + ~750 InspectorEdgeRow (1.5x density)
-		//   2. Run kernelRowToCyElement / edgeRowToCyElement projections
-		//   3. Mount cytoscape({container, elements, hideEdgesOnViewport: true,
-		//      textureOnViewport: true, pixelRatio: 1})
-		//   4. Run cy.layout({name: 'fcose', randomize: true, animate: false}).run()
-		//   5. Capture wall-time start/end; assert end - start < 2000ms
-		assert.fail('Wave 3 implements - Plan 15-04 GREEN-flips (RESEARCH SC#3 < 2s 500-node budget)');
+	// SPIKE: Cytoscape requires a real canvas (jsdom does not implement getContext('2d')).
+	// This test runs under playwright in Plan 15-05 phase-verify (manual smoke). The
+	// describe-block name stays stable for grep continuity. The implementation contract
+	// it tests is:
+	//   1. Generate 500 synthetic InspectorNodeRow (canonical 5 kinds round-robin) + 750
+	//      synthetic InspectorEdgeRow (1.5x density).
+	//   2. Mount cytoscape({container, elements, hideEdgesOnViewport:true,
+	//      textureOnViewport:true, pixelRatio:1, ...}) + cy.add() + cy.layout({name:'fcose',
+	//      randomize:true, animate:false}).run().
+	//   3. Capture wall-time start/end around the cy.add + layout settle; assert
+	//      end - start < 2000ms (RESEARCH SC#3 budget).
+	it.skip('cy.add + fcose layout completes in < 2s on synthetic 500-node fixture', () => {
+		/* see Plan 15-05 phase-verify playwright smoke (RESEARCH SC#3 < 2s 500-node budget) */
 	});
 });
