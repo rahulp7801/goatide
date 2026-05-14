@@ -166,18 +166,33 @@ export type ComplianceReport = z.infer<typeof ComplianceReportSchema>;
 // is rejected by the failing test in kernel/src/test/drift/intent.spec.ts.
 
 /**
- * IntentDrift badge — emitted when a cited DecisionNode's derived_under_priority does NOT
- * exact-match the active session priority. Decorates RenderedCitation.intent_drift_badge.
+ * IntentDrift badge — discriminated union of two variants (Phase 14 Plan 14-03 / DEEP-04):
+ *   - 'priority-mismatch' (Plan 07-05 / DRIFT-02): emitted when a cited DecisionNode's
+ *     derived_under_priority does NOT exact-match the active session priority.
+ *   - 'historical-conflict' (Plan 14-03 / DEEP-04): emitted when a cited DecisionNode has
+ *     been superseded on or before the receipt's `asOf`. Save proceeds normally —
+ *     Mandate D: the badge informs, does NOT block (no escalation through tier-dispatch).
  *
- * @property citation_node_id The cited node's ULID (== RenderedCitation.node_id).
- * @property session_priority The active session priority at evaluation time.
- * @property cited_priority   The DecisionNode's derived_under_priority (the rule-author's
- *                            stated optimization context at the time the rule was authored).
- * @property explanation      Templated human-readable string for tooltip / modal display.
+ * Both variants decorate RenderedCitation.intent_drift_badge. The discriminator `kind`
+ * lets webview render branches pick the variant-specific styling (priority-mismatch =
+ * existing icon; historical-conflict = amber "Superseded <date>" pill).
+ *
+ * @property kind             Variant tag — exhaustive narrowing via `if (badge.kind === ...)`.
+ * @property citation_node_id Common: the cited node's ULID (== RenderedCitation.node_id).
+ * @property explanation      Common: templated human-readable string for tooltip / modal.
  */
-export interface IntentDriftBadge {
-	readonly citation_node_id: string;
-	readonly session_priority: string;
-	readonly cited_priority: string;
-	readonly explanation: string;
-}
+export type IntentDriftBadge =
+	| {
+		readonly kind: 'priority-mismatch';
+		readonly citation_node_id: string;
+		readonly session_priority: string;
+		readonly cited_priority: string;
+		readonly explanation: string;
+	}
+	| {
+		readonly kind: 'historical-conflict';
+		readonly citation_node_id: string;
+		readonly superseded_at: string;
+		readonly successor_id: string;
+		readonly explanation: string;
+	};

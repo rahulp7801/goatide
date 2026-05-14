@@ -25,7 +25,7 @@
 import type { GraphDAO, NodePayload } from '../graph/index.js';
 import type { Citation } from './citation.js';
 import type { ReasoningReceipt } from './builder.js';
-import { evaluateIntentDrift } from '../drift/intent.js';
+import { evaluateIntentDrift, evaluateHistoricalConflict } from '../drift/intent.js';
 import type { IntentDriftBadge } from '../drift/types.js';
 
 export interface RenderedCitation extends Citation {
@@ -93,20 +93,51 @@ export function renderReceipt(receipt: ReasoningReceipt, dao: GraphDAO, options?
 		citations,
 	};
 
+	// Plan 14-03 (DEEP-04): unconditionally evaluate historical-conflict. The evaluator
+	// fires regardless of session priority — DEEP-04 is independent of priority (open question
+	// #4 default). Each cited DecisionNode whose row was superseded on or before the
+	// receipt's graph_snapshot_tx_time gets a `historical-conflict` IntentDriftBadge.
+	const historicalBadges = evaluateHistoricalConflict({
+		renderedReceipt: rendered,
+		asOf: receipt.graph_snapshot_tx_time,
+	});
+	const historicalByCitationId = new Map<string, IntentDriftBadge>();
+	for (const badge of historicalBadges) {
+		historicalByCitationId.set(badge.citation_node_id, badge);
+	}
+
 	// Plan 07-05 (DRIFT-02): decorate citations with intent_drift_badge when sessionPriority is set.
-	// When sessionPriority is undefined, the badge field stays absent (Phase 3..6 wire shape preserved).
+	// When sessionPriority is undefined, the priority-mismatch evaluator is skipped (Phase 3..6
+	// wire shape preserved for priority-mismatch). Historical-conflict still fires above —
+	// the field becomes present (badge or null) once either evaluator runs.
+	const priorityByCitationId = new Map<string, IntentDriftBadge>();
 	if (options?.sessionPriority !== undefined) {
-		const badges = evaluateIntentDrift({
+		const priorityBadges = evaluateIntentDrift({
 			renderedReceipt: rendered,
 			sessionPriority: options.sessionPriority,
 		});
-		const badgeByCitationId = new Map<string, IntentDriftBadge>();
-		for (const badge of badges) {
-			badgeByCitationId.set(badge.citation_node_id, badge);
+		for (const badge of priorityBadges) {
+			priorityByCitationId.set(badge.citation_node_id, badge);
 		}
+	}
+
+	// Attach badges. Historical-conflict takes precedence over priority-mismatch when both
+	// fire on the same citation (the row was actually superseded — strongest signal). When
+	// neither evaluator emitted a badge but at least one ran, the field is null. When
+	// sessionPriority was omitted AND no historical-conflict badges were emitted, the field
+	// stays undefined to preserve the pre-Plan-07-05 wire shape for legacy callers.
+	const anyEvaluatorRan = options?.sessionPriority !== undefined || historicalBadges.length > 0;
+	if (anyEvaluatorRan) {
 		for (const citation of rendered.citations) {
-			const badge = badgeByCitationId.get(citation.node_id);
-			citation.intent_drift_badge = badge ?? null;
+			const historical = historicalByCitationId.get(citation.node_id);
+			if (historical !== undefined) {
+				citation.intent_drift_badge = historical;
+				continue;
+			}
+			if (options?.sessionPriority !== undefined) {
+				const priority = priorityByCitationId.get(citation.node_id);
+				citation.intent_drift_badge = priority ?? null;
+			}
 		}
 	}
 

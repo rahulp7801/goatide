@@ -31,7 +31,8 @@ export { DriftPattern } from '../graph/payloads.js';
 export type { DriftPatternT } from '../graph/payloads.js';
 
 // Plan 07-05 (DRIFT-02) — IntentDrift evaluator public surface.
-export { evaluateIntentDrift, type EvaluateIntentDriftInput } from './intent.js';
+// Plan 14-03 (DEEP-04) — evaluateHistoricalConflict additive export.
+export { evaluateIntentDrift, evaluateHistoricalConflict, type EvaluateIntentDriftInput, type EvaluateHistoricalConflictInput } from './intent.js';
 export type { IntentDriftBadge } from './types.js';
 
 // Plan 07-04 (DRIFT-04 + DRIFT-05) — ripple analyzer + progressive-disclosure public surface.

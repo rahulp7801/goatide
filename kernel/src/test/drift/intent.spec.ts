@@ -81,6 +81,7 @@ describe('drift/intent — Plan 07-05 (DRIFT-02)', () => {
 		]);
 		const badges = evaluateIntentDrift({ renderedReceipt: receipt, sessionPriority: 'Quality-First' });
 		const expected: IntentDriftBadge = {
+			kind: 'priority-mismatch',
 			citation_node_id: DECISION_ID_1,
 			session_priority: 'Quality-First',
 			cited_priority: 'Speed-First',
@@ -103,6 +104,7 @@ describe('drift/intent — Plan 07-05 (DRIFT-02)', () => {
 		]);
 		const badges = evaluateIntentDrift({ renderedReceipt: receipt, sessionPriority: 'Quality' });
 		expect(badges).toEqual([{
+			kind: 'priority-mismatch',
 			citation_node_id: DECISION_ID_1,
 			session_priority: 'Quality',
 			cited_priority: 'Quality-First',
@@ -127,6 +129,7 @@ describe('drift/intent — Plan 07-05 (DRIFT-02)', () => {
 		]);
 		const badges = evaluateIntentDrift({ renderedReceipt: receipt, sessionPriority: 'Quality-First' });
 		expect(badges).toEqual([{
+			kind: 'priority-mismatch',
 			citation_node_id: DECISION_ID_2,
 			session_priority: 'Quality-First',
 			cited_priority: 'Speed-First',
@@ -140,5 +143,29 @@ describe('drift/intent — Plan 07-05 (DRIFT-02)', () => {
 		]);
 		const badges = evaluateIntentDrift({ renderedReceipt: receipt, sessionPriority: 'Quality-First' });
 		expect(badges).toEqual([]);
+	});
+});
+
+// Phase 14 Plan 14-03 (DEEP-04) — discriminated-union shape lock (14-W2-B in VALIDATION.md).
+// The badge migration from flat interface to discriminated union must preserve the
+// priority-mismatch shape verbatim (every existing field) AND add `kind: 'priority-mismatch'`
+// as the first field. This describe block pins that contract independently of the toEqual
+// snapshots above.
+describe('discriminated-union backwards shape', () => {
+	it('priority-mismatch badge carries kind: "priority-mismatch" plus all four original fields', () => {
+		const receipt = makeReceipt([
+			makeCitation({ node_id: DECISION_ID_1, cited_payload: makeDecisionPayload({ derived_under_priority: 'Speed-First' }) }),
+		]);
+		const badges = evaluateIntentDrift({ renderedReceipt: receipt, sessionPriority: 'Quality-First' });
+		expect(badges).toHaveLength(1);
+		const badge = badges[0];
+		expect(badge.kind).toBe('priority-mismatch');
+		// Narrowing — TypeScript discriminated-union guard.
+		if (badge.kind === 'priority-mismatch') {
+			expect(badge.citation_node_id).toBe(DECISION_ID_1);
+			expect(badge.session_priority).toBe('Quality-First');
+			expect(badge.cited_priority).toBe('Speed-First');
+			expect(typeof badge.explanation).toBe('string');
+		}
 	});
 });

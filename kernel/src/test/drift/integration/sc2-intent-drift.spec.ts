@@ -145,8 +145,14 @@ describe('Phase 7 SC #2 — IntentDrift badge fires on session-priority mismatch
 		expect(decisionCitation!.intent_drift_badge).toBeTruthy();
 		const badge = decisionCitation!.intent_drift_badge!;
 		expect(badge.citation_node_id).toBe(decisionId);
-		expect(badge.cited_priority).toBe('Quality-First');
-		expect(badge.session_priority).toBe('Speed-First');
+		// Phase 14 Plan 14-03 — IntentDriftBadge is now a discriminated union. The Speed-First
+		// vs Quality-First mismatch fires the priority-mismatch variant; narrow before reading
+		// the variant-specific fields.
+		expect(badge.kind).toBe('priority-mismatch');
+		if (badge.kind === 'priority-mismatch') {
+			expect(badge.cited_priority).toBe('Quality-First');
+			expect(badge.session_priority).toBe('Speed-First');
+		}
 		expect(badge.explanation.length).toBeGreaterThan(0);
 
 		// ----- Bridge data-shape assertion: the production rendered.citations array is the
