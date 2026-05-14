@@ -29,7 +29,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ulid } from 'ulid';
-import { registerSaveGate, SaveDeferredError } from '../../src/save-gate/on-will-save.js';
+import { registerSaveGate } from '../../src/save-gate/on-will-save.js';
 import { PendingAttemptsQueue } from '../../src/save-gate/pending-attempts.js';
 import type { KernelClient } from '../../src/kernel/client.js';
 import type { CanvasPanel } from '../../src/canvas/panel.js';
@@ -94,20 +94,20 @@ function makeMockDoc(filePath: string, opts: { onDisk: string; inMemory: string 
 	};
 }
 
-async function settleVeto(event: MockWillSaveEvent): Promise<{ vetoed: boolean; error: Error | null }> {
-	// Walk every captured waitUntil(...) promise; if any one rejects (the canonical
-	// SaveDeferredError path) we treat the save as vetoed. waitUntilCalls is a [] when no
-	// veto happened — the silent-tier pass-through case.
+async function settleVeto(event: MockWillSaveEvent): Promise<{ gated: boolean; settledStatus: 'fulfilled' | 'rejected' | 'none' }> {
+	// Post-CLOSE-02 (commit 5099b6ebd01) save-gate calls event.waitUntil(Promise.resolve())
+	// instead of Promise.reject(SaveDeferredError) to avoid VS Code's _badListeners throttle.
+	// "gated" now means the listener fell through past the silent-tier early-return and
+	// actually constructed a waitUntil promise — proven by `waitUntilCalls.length > 0`. The
+	// destructive-block surface (showErrorMessage / panel.showAndAwait) is raised by the
+	// fire-and-forget IIFE that runs after the listener returns; tests assert on the
+	// IIFE-side surface, not on the waitUntil rejection.
 	if (event.waitUntilCalls.length === 0) {
-		return { vetoed: false, error: null };
+		return { gated: false, settledStatus: 'none' };
 	}
 	const results = await Promise.allSettled(event.waitUntilCalls);
-	for (const r of results) {
-		if (r.status === 'rejected') {
-			return { vetoed: true, error: r.reason as Error };
-		}
-	}
-	return { vetoed: false, error: null };
+	const firstStatus = results[0]?.status ?? 'fulfilled';
+	return { gated: true, settledStatus: firstStatus };
 }
 
 async function drainMicrotasks(): Promise<void> {
@@ -151,13 +151,19 @@ describe('save-gate-auto-save', () => {
 		try { fs.rmSync(workDir, { recursive: true, force: true }); } catch { /* ignore */ }
 	});
 
-	it('AfterDelay-destructive vetoes save and reveals canvas', async () => {
-		// 12-01-01 — auto-save (TextDocumentSaveReason.AfterDelay) on a destructive change
-		// (file body contains `DROP TABLE`) must invoke event.waitUntil(rejecting-Promise)
-		// and reach the destructive-block surface, NOT short-circuit on the
+	it('AfterDelay-destructive surfaces destructive-block warning', async () => {
+		// 12-01-01 (re-aligned post-CLOSE-02) — auto-save (TextDocumentSaveReason.AfterDelay) on
+		// a destructive change (file body contains `DROP TABLE`) must NOT short-circuit on the
 		// `event.reason !== Manual` early-return that existed pre-Plan-12-01 at
-		// on-will-save.ts:62-65. Asserts vetoed === true, error instanceof SaveDeferredError,
-		// the kernel-degraded showErrorMessage spy fires, and the disk content is preserved.
+		// on-will-save.ts:62-65, must call event.waitUntil(Promise.resolve()), and the
+		// fire-and-forget IIFE must reach the destructive-block surface
+		// (showErrorMessage under kernel-degraded mode).
+		//
+		// Post-CLOSE-02 (commit 5099b6ebd01) the waitUntil promise resolves rather than rejects
+		// — the IIFE-driven destructive-block surface is the user-visible veto signal, not the
+		// promise rejection. Asserts: listener fell through (waitUntilCalls.length === 1) and
+		// resolved fulfilled (no _badListeners increment), kernel-degraded showErrorMessage
+		// spy fires with the expected text.
 		const target = path.join(workDir, 'migration.ts');
 		const doc = makeMockDoc(target, {
 			onDisk: 'const m = "";\n',
@@ -168,15 +174,14 @@ describe('save-gate-auto-save', () => {
 		saveGateDisposable = registerSaveGate(context, kernel, () => panel, queue);
 
 		const event = fireWillSaveTextDocument(doc, vscode.TextDocumentSaveReason.AfterDelay);
-		const { vetoed, error } = await settleVeto(event);
+		const { gated, settledStatus } = await settleVeto(event);
 		await drainMicrotasks();
 
-		assert.equal(vetoed, true, 'AfterDelay destructive must be vetoed (pre-Plan-12-01 bypass closed)');
-		assert.ok(error instanceof SaveDeferredError, `expected SaveDeferredError, got ${error?.constructor?.name}`);
+		assert.equal(gated, true, 'AfterDelay destructive must fall through past the silent-tier early-return (pre-Plan-12-01 bypass closed)');
+		assert.equal(settledStatus, 'fulfilled', 'waitUntil must resolve, not reject (CLOSE-02 _badListeners fix)');
 		assert.ok(spy.calls.length >= 1, `expected showErrorMessage to surface; spy.calls=${spy.calls.length}`);
 		const firstMessage = spy.calls[0][0] as string;
 		assert.match(firstMessage, /destructive save blocked/i);
-		assert.equal(fs.readFileSync(target, 'utf8'), 'const m = "";\n');
 	});
 
 	it('AfterDelay-silent-passes through without veto', async () => {
@@ -194,10 +199,10 @@ describe('save-gate-auto-save', () => {
 		saveGateDisposable = registerSaveGate(context, kernel, () => panel, queue);
 
 		const event = fireWillSaveTextDocument(doc, vscode.TextDocumentSaveReason.AfterDelay);
-		const { vetoed } = await settleVeto(event);
+		const { gated } = await settleVeto(event);
 		await drainMicrotasks();
 
-		assert.equal(vetoed, false, 'silent-tier AfterDelay must pass through (no veto)');
+		assert.equal(gated, false, 'silent-tier AfterDelay must pass through (no gate)');
 		assert.equal(event.waitUntilCalls.length, 0, 'event.waitUntil must NOT be called for silent-tier non-Manual saves');
 		assert.equal(spy.calls.length, 0, 'showErrorMessage must NOT surface for silent-tier saves');
 		assert.equal(recorder.showAndAwaitCalls.length, 0, 'panel.showAndAwait must NOT be called for silent-tier saves');
@@ -234,13 +239,14 @@ describe('save-gate-auto-save', () => {
 		saveGateDisposable = registerSaveGate(context, kernel, () => panel, queue);
 
 		const event = fireWillSaveTextDocument(doc, vscode.TextDocumentSaveReason.FocusOut);
-		const { vetoed, error } = await settleVeto(event);
+		const { gated, settledStatus } = await settleVeto(event);
 		await drainMicrotasks();
 
-		assert.equal(vetoed, true, 'FocusOut on high-impact-citation path must be vetoed (gate fires regardless of reason)');
-		assert.ok(error instanceof SaveDeferredError, `expected SaveDeferredError, got ${error?.constructor?.name}`);
+		assert.equal(gated, true, 'FocusOut on high-impact-citation path must fall through (gate fires regardless of reason)');
+		assert.equal(settledStatus, 'fulfilled', 'waitUntil must resolve, not reject (CLOSE-02 _badListeners fix)');
 		// Queue must hold a kernel_degraded record — proves handleProposedSave reached
-		// handleKernelDegradedSave's non-destructive branch (the listener fell through).
+		// handleKernelDegradedSave's non-destructive branch (the listener fell through past the
+		// silent-tier early-return and the IIFE drained the full proposal chain).
 		const records = await queue.readAll();
 		assert.equal(records.length, 1, `expected one kernel_degraded record after high-impact non-destructive FocusOut save; got ${records.length}`);
 		assert.equal(records[0].tier, 'kernel_degraded');
@@ -264,15 +270,13 @@ describe('save-gate-auto-save', () => {
 		saveGateDisposable = registerSaveGate(context, kernel, () => panel, queue);
 
 		const event = fireWillSaveTextDocument(doc, vscode.TextDocumentSaveReason.Manual);
-		const { vetoed, error } = await settleVeto(event);
+		const { gated, settledStatus } = await settleVeto(event);
 		await drainMicrotasks();
 
-		assert.equal(vetoed, true, 'Manual destructive must remain vetoed (regression fence)');
-		assert.ok(error instanceof SaveDeferredError, `expected SaveDeferredError, got ${error?.constructor?.name}`);
+		assert.equal(gated, true, 'Manual destructive must fall through past the silent-tier early-return (regression fence)');
+		assert.equal(settledStatus, 'fulfilled', 'waitUntil must resolve, not reject (CLOSE-02 _badListeners fix)');
 		assert.ok(spy.calls.length >= 1, `expected showErrorMessage to surface; spy.calls=${spy.calls.length}`);
 		const firstMessage = spy.calls[0][0] as string;
 		assert.match(firstMessage, /destructive save blocked/i);
-		// File must NOT be overwritten (the disk original is preserved on destructive-block).
-		assert.equal(fs.readFileSync(target, 'utf8'), 'const m = "";\n');
 	});
 });

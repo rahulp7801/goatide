@@ -3,14 +3,23 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Phase 12 Plan 12-02 — 1750ms event.waitUntil budget vulnerability tests.
+// Phase 12 Plan 12-02 — 1750ms event.waitUntil budget vulnerability tests
+// (re-aligned post-Phase-13 CLOSE-02 commit 5099b6ebd01).
 //
-// Asserts the post-Plan-12-02 on-will-save.ts shape:
-//   1. event.waitUntil(Promise.reject(new SaveDeferredError(...))) is called SYNCHRONOUSLY
-//      with a fully-constructed rejected Promise — so the rejection fires in a microtask,
-//      far inside the 1750ms budget regardless of how long fsp.readFile takes.
+// Asserts the post-CLOSE-02 on-will-save.ts shape:
+//   1. event.waitUntil(Promise.resolve()) is called SYNCHRONOUSLY with a fully-constructed
+//      pre-resolved Promise — so the participant promise settles in a microtask, far inside
+//      the 1750ms budget regardless of how long fsp.readFile takes. Plan 12-02's microtask-
+//      timing rationale is preserved; only the settle direction changed (reject → resolve).
+//      The reject→resolve flip was driven by CLOSE-02's _badListeners fix: VS Code's
+//      extHostDocumentSaveParticipant tracks per-listener error counts in a WeakMap and
+//      permanently ignores a listener after 3 errors. Promise.reject(SaveDeferredError) used
+//      to increment this counter on every gated save, which dropped the listener mid-ceremony
+//      after 4 saves (Phase 13 CLOSE-02 root cause analysis).
 //   2. readFile + handleProposedSave run inside a separate fire-and-forget
-//      `void (async () => { ... })()` IIFE that the listener does NOT await.
+//      `void (async () => { ... })()` IIFE that the listener does NOT await. The user-visible
+//      destructive-block surface (showErrorMessage / panel.showAndAwait) is raised by the
+//      IIFE, not by a waitUntil rejection.
 //
 // Caveat per 12-RESEARCH.md Pitfall 4: the 1750ms timer is enforced renderer-side by
 // mainThreadSaveParticipant.ts, not reachable from mocha-as-Node. These tests therefore
@@ -37,7 +46,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { ulid } from 'ulid';
-import { registerSaveGate, SaveDeferredError } from '../../src/save-gate/on-will-save.js';
+import { registerSaveGate } from '../../src/save-gate/on-will-save.js';
 import { PendingAttemptsQueue } from '../../src/save-gate/pending-attempts.js';
 import type { KernelClient } from '../../src/kernel/client.js';
 import type { CanvasPanel } from '../../src/canvas/panel.js';
@@ -234,12 +243,14 @@ describe('save-gate-budget', () => {
 		return { timing, event };
 	}
 
-	it('sync-reject-microtask rejects vetoPromise within 50ms', async () => {
-		// 12-02-01 — with fsp.readFile stubbed to delay 3000ms, the Promise passed to
-		// event.waitUntil(...) must reject within 50ms of the listener invocation. Proves
-		// the sync-veto fix: the rejection rides a microtask, not the readFile completion.
+	it('sync-resolve-microtask settles vetoPromise within 50ms', async () => {
+		// 12-02-01 (re-aligned post-CLOSE-02) — with fsp.readFile stubbed to delay 3000ms, the
+		// Promise passed to event.waitUntil(...) must SETTLE (fulfilled) within 50ms of the
+		// listener invocation. Proves the sync-veto fix: the participant settlement rides a
+		// microtask, not the readFile completion. Post-CLOSE-02 the settle direction is
+		// fulfilled rather than rejected (see file header for _badListeners rationale).
 		stubSlowReadFile(3000, 'const m = "";\n');
-		const target = path.join(workDir, 'sync-reject.ts');
+		const target = path.join(workDir, 'sync-resolve.ts');
 		const doc = makeMockDoc(target, {
 			onDisk: 'const m = "";\n',
 			inMemory: 'const m = "DROP TABLE x";\n',
@@ -256,15 +267,13 @@ describe('save-gate-budget', () => {
 
 		assert.deepStrictEqual({
 			vetoSettled: timing.vetoSettledStatus !== null,
-			vetoRejected: timing.vetoSettledStatus === 'rejected',
-			rejectionIsSaveDeferredError: timing.vetoSettledReason instanceof SaveDeferredError,
+			vetoFulfilled: timing.vetoSettledStatus === 'fulfilled',
 			vetoSettledWithin50ms: elapsedNs >= 0n && elapsedNs < 50_000_000n,
 		}, {
 			vetoSettled: true,
-			vetoRejected: true,
-			rejectionIsSaveDeferredError: true,
+			vetoFulfilled: true,
 			vetoSettledWithin50ms: true,
-		}, `veto must reject within 50ms of listener invocation despite 3000ms readFile stub; elapsedNs=${elapsedNs}`);
+		}, `veto must settle (fulfilled) within 50ms of listener invocation despite 3000ms readFile stub; elapsedNs=${elapsedNs}`);
 	});
 
 	it('panel-show-after-readfile-delay invoked from IIFE', async () => {
@@ -300,7 +309,7 @@ describe('save-gate-budget', () => {
 		// happened AFTER the listener-return on wall-clock ordering grounds.)
 
 		assert.deepStrictEqual({
-			vetoSettledFast: timing.vetoSettledStatus === 'rejected' && timing.vetoSettledAtNs !== null && (timing.vetoSettledAtNs - timing.listenerCalledAtNs) < 50_000_000n,
+			vetoSettledFast: timing.vetoSettledStatus === 'fulfilled' && timing.vetoSettledAtNs !== null && (timing.vetoSettledAtNs - timing.listenerCalledAtNs) < 50_000_000n,
 			showErrorReached: spy.calls.length >= 1,
 			showErrorMessageMatchesDestructive: spy.calls.length >= 1 && /destructive save blocked/i.test(String(spy.calls[0][0])),
 			showErrorAfterListenerReturn: showErrorCalledAtNs !== null && showErrorCalledAtNs > timing.listenerReturnedAtNs,
@@ -351,13 +360,13 @@ describe('save-gate-budget', () => {
 	});
 
 	it('no-1750ms-abort under simulated slow readFile', async () => {
-		// 12-02-04 — with fsp.readFile stubbed 3000ms, the captured vetoPromise must have
-		// ALREADY rejected (with SaveDeferredError) well before 1750ms. Caveat per
+		// 12-02-04 (re-aligned post-CLOSE-02) — with fsp.readFile stubbed 3000ms, the captured
+		// vetoPromise must have ALREADY settled (fulfilled) well before 1750ms. Caveat per
 		// 12-RESEARCH.md Pitfall 4: the actual `Aborted onWillSaveTextDocument-event after
 		// 1750ms` error is renderer-side (mainThreadSaveParticipant.ts) and not reachable
 		// from mocha-as-Node. This test asserts the BRIDGE-SIDE PRECONDITION that makes the
-		// renderer-side timer irrelevant: the veto rides a microtask, so the 1750ms timer
-		// never has the chance to fire.
+		// renderer-side timer irrelevant: the participant settles in a microtask, so the
+		// 1750ms timer never has the chance to fire.
 		stubSlowReadFile(3000, 'const m = "";\n');
 		const target = path.join(workDir, 'no-1750ms-abort.ts');
 		const doc = makeMockDoc(target, {
@@ -375,13 +384,11 @@ describe('save-gate-budget', () => {
 			: -1n;
 
 		assert.deepStrictEqual({
-			vetoSettledBefore1750ms: timing.vetoSettledStatus === 'rejected' && elapsedNs >= 0n && elapsedNs < 1_750_000_000n,
-			rejectionIsSaveDeferredError: timing.vetoSettledReason instanceof SaveDeferredError,
+			vetoSettledBefore1750ms: timing.vetoSettledStatus === 'fulfilled' && elapsedNs >= 0n && elapsedNs < 1_750_000_000n,
 			readFileStillPending: true,   // 3000ms stub, asserted ≤1500ms below ⇒ readFile not yet resolved.
 		}, {
 			vetoSettledBefore1750ms: true,
-			rejectionIsSaveDeferredError: true,
 			readFileStillPending: true,
-		}, `veto must reject before 1750ms even with 3000ms readFile stub; elapsedNs=${elapsedNs}`);
+		}, `veto must settle (fulfilled) before 1750ms even with 3000ms readFile stub; elapsedNs=${elapsedNs}`);
 	});
 });
