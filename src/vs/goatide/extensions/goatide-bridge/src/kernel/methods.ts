@@ -89,6 +89,55 @@ export interface QueryRationaleAtResult {
 
 export const QueryRationaleAtRequest = new RequestType<QueryRationaleAtParams, QueryRationaleAtResult, Error>('graph.queryRationaleAt');
 
+// -------- graph.queryGraphSnapshot (Plan 15-01 Wave-0 — type-only, bridge mirror) --------
+//
+// Bridge-side mirror of kernel/src/rpc/methods.ts QueryGraphSnapshot{Params,Result}. Wave-1
+// (Plan 15-02) lands the KernelClient.queryGraphSnapshot method body + server-side handler;
+// the throw-stub method in client.ts (Plan 15-01 Task 5) keeps tsc GREEN while the Wave-0
+// ReadonlyKernelClient Pick<> already exposes the symbol.
+
+export interface QueryGraphSnapshotParams {
+	asOf: string;
+	max_nodes?: number;
+}
+
+export interface SerializedNodeSnapshot {
+	node_id: string;
+	kind: 'ConstraintNode' | 'DecisionNode' | 'ContractNode' | 'OpenQuestion' | 'Attempt';
+	label: string;
+	valid_from: string;
+	invalidated_at: string | null;
+}
+
+export interface SerializedEdgeSnapshot {
+	edge_id: string;
+	kind: string;
+	src_id: string;
+	dst_id: string;
+	valid_from: string;
+	invalidated_at: string | null;
+}
+
+export interface QueryGraphSnapshotResult {
+	nodes: SerializedNodeSnapshot[];
+	edges: SerializedEdgeSnapshot[];
+	truncated: boolean;
+}
+
+export const QueryGraphSnapshotRequest = new RequestType<
+	QueryGraphSnapshotParams, QueryGraphSnapshotResult, Error
+>('graph.queryGraphSnapshot');
+
+// -------- graph.queryTimelineTransitions (Plan 15-01 Wave-0 — type-only, bridge mirror) --------
+
+export interface QueryTimelineTransitionsResult {
+	transitions: string[];
+}
+
+export const QueryTimelineTransitionsRequest = new RequestType<
+	void, QueryTimelineTransitionsResult, Error
+>('graph.queryTimelineTransitions');
+
 // -------- graph.proposeEdit --------
 //
 // Phase 7 Plan 07-05 (DRIFT-02): ProposeEditParams gains optional session_priority.

@@ -80,6 +80,65 @@ export interface QueryRationaleAtResult {
 export const QueryRationaleAtRequest = new RequestType<QueryRationaleAtParams, QueryRationaleAtResult, Error>('graph.queryRationaleAt');
 export type { RationaleChainEntry };
 
+// -------- graph.queryGraphSnapshot (Plan 15-01 Wave-0 — type-only; handler lands Wave-1 / Plan 15-02) --------
+//
+// Phase 15 DEEP-02 bitemporal snapshot for the Graph Inspector. The bridge inspector calls
+// this exactly once per slider movement; `params.asOf` is the inspector's current point in
+// bitemporal time. `max_nodes` caps the response so unbounded graphs do not blow the wire
+// budget — when the result is truncated, `truncated: true` is set and Wave 3 (Plan 15-04)
+// renders a "Showing first N nodes (truncated)" banner.
+//
+// Wire shape is snake_case (matches receipt/CanvasShowPayload precedent for SQLite-aligned
+// row-shape fields). The handler in Wave-1 composes `dao.queryAsOf(asOf)` (nodes) +
+// `dao.queryEdgesAsOf(asOf)` (edges — landed in Plan 15-01) and projects each row.
+
+export interface QueryGraphSnapshotParams {
+	asOf: string;
+	max_nodes?: number;
+}
+
+export interface SerializedNodeSnapshot {
+	node_id: string;
+	kind: 'ConstraintNode' | 'DecisionNode' | 'ContractNode' | 'OpenQuestion' | 'Attempt';
+	label: string;
+	valid_from: string;
+	invalidated_at: string | null;
+}
+
+export interface SerializedEdgeSnapshot {
+	edge_id: string;
+	kind: string;
+	src_id: string;
+	dst_id: string;
+	valid_from: string;
+	invalidated_at: string | null;
+}
+
+export interface QueryGraphSnapshotResult {
+	nodes: SerializedNodeSnapshot[];
+	edges: SerializedEdgeSnapshot[];
+	truncated: boolean;
+}
+
+export const QueryGraphSnapshotRequest = new RequestType<
+	QueryGraphSnapshotParams, QueryGraphSnapshotResult, Error
+>('graph.queryGraphSnapshot');
+
+// -------- graph.queryTimelineTransitions (Plan 15-01 Wave-0 — type-only; handler lands Wave-1) --------
+//
+// RESEARCH Risk 4 — discrete slider granularity over the union of all `valid_from` and
+// `invalidated_at` instants across nodes + edges. Output is sorted ascending, deduplicated.
+// The webview slider snaps to these transition points so every drag step produces a
+// visually-distinct snapshot.
+
+export interface QueryTimelineTransitionsResult {
+	transitions: string[];
+}
+
+export const QueryTimelineTransitionsRequest = new RequestType<
+	void, QueryTimelineTransitionsResult, Error
+>('graph.queryTimelineTransitions');
+
 // -------- graph.proposeEdit --------
 //
 // Plan 07-05 (DRIFT-02) extends ProposeEditParams additively with an optional

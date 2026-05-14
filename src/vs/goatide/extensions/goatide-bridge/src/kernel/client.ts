@@ -55,6 +55,8 @@ import {
 	DriftProgressNotificationType,
 	type QueryGraphParams, type QueryGraphResult,
 	type QueryRationaleAtParams, type QueryRationaleAtResult,
+	type QueryGraphSnapshotParams, type QueryGraphSnapshotResult,
+	type QueryTimelineTransitionsResult,
 	type ProposeEditParams, type ProposeEditResult,
 	type RecordRejectionParams, type RecordRejectionResult,
 	type RecordContractOverrideParams, type RecordContractOverrideResult,
@@ -374,6 +376,28 @@ export class KernelClient {
 	 */
 	queryRationaleAt(params: QueryRationaleAtParams): Promise<QueryRationaleAtResult> {
 		return this.sendWithTimeout(QueryRationaleAtRequest, params);
+	}
+	/**
+	 * Phase 15 Plan 15-01 Wave-0 stub — Plan 15-02 (Wave-1) implements.
+	 *
+	 * Bitemporal snapshot of nodes + edges at the given asOf timestamp; the inspector slider
+	 * dispatches this once per timeline transition. The throw-stub exists ONLY to satisfy the
+	 * `ReadonlyKernelClient` Pick<> extension landed in Plan 15-01 Task 3 — without it, the
+	 * bridge tsc gate would fail at Wave-0 close.
+	 */
+	public async queryGraphSnapshot(_params: QueryGraphSnapshotParams): Promise<QueryGraphSnapshotResult> {
+		void _params;
+		throw new Error('Wave 1 implements queryGraphSnapshot - Plan 15-02');
+	}
+
+	/**
+	 * Phase 15 Plan 15-01 Wave-0 stub — Plan 15-02 (Wave-1) implements.
+	 *
+	 * Deduped, sorted timeline transitions across nodes + edges. Plan 15-04 webview slider
+	 * snaps to these instants so every drag step produces a visually-distinct snapshot.
+	 */
+	public async queryTimelineTransitions(): Promise<QueryTimelineTransitionsResult> {
+		throw new Error('Wave 1 implements queryTimelineTransitions - Plan 15-02');
 	}
 	heartbeat(): Promise<HeartbeatResult> {
 		return this.sendWithTimeout(HeartbeatRequest, {});

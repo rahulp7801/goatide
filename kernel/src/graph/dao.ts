@@ -87,6 +87,22 @@ export interface NodeRow {
 	superseded_by: string | null;
 }
 
+/**
+ * Bitemporal edges row shape. Phase 15 Plan 15-01 (DEEP-02): the `queryEdgesAsOf` read API
+ * returns this shape verbatim from the `edges` table. Wave-1 graph.queryGraphSnapshot RPC
+ * (Plan 15-02) projects this row into a SerializedEdgeSnapshot for the inspector wire.
+ */
+export interface EdgeRow {
+	id: string;
+	kind: EdgeKind;
+	src_id: string;
+	dst_id: string;
+	valid_from: string;
+	invalidated_at: string | null;
+	recorded_at: string;
+	superseded_by: string | null;
+}
+
 export interface ProvenanceRow {
 	node_id: string;
 	source: string;
@@ -297,6 +313,36 @@ export class GraphDAO {
 				lte(nodes.recorded_at, t),
 			)
 		).all().map((r) => this.materialize(r));
+	}
+
+	/**
+	 * Bitemporal-filtered edges at the given asOf timestamp. Phase 15 Plan 15-01
+	 * (DEEP-02). Predicate identical to {@link queryAsOf} for nodes: edge is visible iff
+	 * `valid_from <= asOf` AND (`invalidated_at IS NULL` OR `invalidated_at > asOf`) AND
+	 * `recorded_at <= asOf`.
+	 *
+	 * Used by `graph.queryGraphSnapshot` RPC (Wave 1 — Plan 15-02). Wave 3 (Plan 15-04)
+	 * projects each EdgeRow into a Cytoscape edge element via the bridge's
+	 * `edgeRowToCyElement` projection utility (Pitfall 1 fence — row never mutated).
+	 */
+	queryEdgesAsOf(t: string): EdgeRow[] {
+		const rows = this.db.select().from(edges).where(
+			and(
+				lte(edges.valid_from, t),
+				or(isNull(edges.invalidated_at), gt(edges.invalidated_at, t)),
+				lte(edges.recorded_at, t),
+			)
+		).all();
+		return rows.map((r) => ({
+			id: r.id,
+			kind: r.kind as EdgeKind,
+			src_id: r.src_id,
+			dst_id: r.dst_id,
+			valid_from: r.valid_from,
+			invalidated_at: r.invalidated_at,
+			recorded_at: r.recorded_at,
+			superseded_by: r.superseded_by,
+		}));
 	}
 
 	/**
