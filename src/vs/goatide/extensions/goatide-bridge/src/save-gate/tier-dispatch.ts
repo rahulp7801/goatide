@@ -335,11 +335,11 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 	// Phase 14 Plan 14-04 (DEEP-05) — read goatide.session.priority from VS Code config and
 	// thread BOTH the raw value (session_priority) AND the user-visible indicator label
 	// (session_priority_indicator) onto the payload. The webview consumes session_priority
-	// to drive rerankBySessionPriority; the header renders session_priority_indicator
-	// verbatim. The lens itself is webview-only — tier-dispatch.ts does NOT invoke
-	// rerankBySessionPriority from here (the rerank decision is a render-time concern;
-	// host-side payload assembly must remain kernel-degraded-fork-aware + save-gate-budget
-	// bound). Default 'Quality-First' mirrors on-will-save.ts:239-241 (Pitfall 5).
+	// to drive the session-priority lens; the header renders session_priority_indicator
+	// verbatim. The lens itself is webview-only — tier-dispatch.ts does NOT invoke any
+	// inspector/ symbol from here (the rerank decision is a render-time concern; host-side
+	// payload assembly must remain kernel-degraded-fork-aware + save-gate-budget bound).
+	// Default 'Quality-First' mirrors on-will-save.ts:239-241 (Pitfall 5).
 	const sessionPriority = vscode.workspace
 		.getConfiguration('goatide')
 		.get<string>('session.priority', 'Quality-First');
