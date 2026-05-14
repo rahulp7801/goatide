@@ -25,7 +25,11 @@ import * as path from 'node:path';
 import * as M from '../../../src/inspector/ReadonlyKernelClient.js';
 import type { ReadonlyKernelClient } from '../../../src/inspector/ReadonlyKernelClient.js';
 import type { KernelClient } from '../../../src/kernel/client.js';
-import type { QueryRationaleAtParams, QueryRationaleAtResult } from '../../../src/kernel/methods.js';
+import type {
+	QueryRationaleAtParams, QueryRationaleAtResult,
+	QueryGraphSnapshotParams, QueryGraphSnapshotResult,
+	QueryTimelineTransitionsResult,
+} from '../../../src/kernel/methods.js';
 
 describe('Plan 14-01 — ReadonlyKernelClient type-only fence', () => {
 	it('exports zero runtime symbols (type-only file)', () => {
@@ -97,6 +101,32 @@ describe('Plan 14-01 — ReadonlyKernelClient type-only fence', () => {
 		assert.ok(
 			/'queryRationaleAt'/.test(sourceText),
 			'ReadonlyKernelClient.ts Pick<> must include the literal string "queryRationaleAt" (Plan 14-02 I1 wave-split)',
+		);
+	});
+
+	it('Plan 15-01 I1 wave-split: queryGraphSnapshot IS in the Pick<> surface (DEEP-02)', () => {
+		// Type-only assertion — the typed assignment compiles iff queryGraphSnapshot is in
+		// the Pick<>. If the method is removed, this line breaks at compile time (TS2339).
+		const r = {} as ReadonlyKernelClient;
+		const _call: (p: QueryGraphSnapshotParams) => Promise<QueryGraphSnapshotResult> = r.queryGraphSnapshot;
+		void _call;
+		const sourcePath = path.resolve(__dirname, '..', '..', '..', 'src', 'inspector', 'ReadonlyKernelClient.ts');
+		const sourceText = fs.readFileSync(sourcePath, 'utf8');
+		assert.ok(
+			/'queryGraphSnapshot'/.test(sourceText),
+			'ReadonlyKernelClient.ts Pick<> must include the literal string "queryGraphSnapshot" (Plan 15-01 DEEP-02)',
+		);
+	});
+
+	it('Plan 15-01 I1 wave-split: queryTimelineTransitions IS in the Pick<> surface (DEEP-02)', () => {
+		const r = {} as ReadonlyKernelClient;
+		const _call: () => Promise<QueryTimelineTransitionsResult> = r.queryTimelineTransitions;
+		void _call;
+		const sourcePath = path.resolve(__dirname, '..', '..', '..', 'src', 'inspector', 'ReadonlyKernelClient.ts');
+		const sourceText = fs.readFileSync(sourcePath, 'utf8');
+		assert.ok(
+			/'queryTimelineTransitions'/.test(sourceText),
+			'ReadonlyKernelClient.ts Pick<> must include the literal string "queryTimelineTransitions" (Plan 15-01 DEEP-02)',
 		);
 	});
 });

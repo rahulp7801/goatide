@@ -25,7 +25,7 @@ import type { KernelClient } from '../kernel/client.js';
 
 /**
  * Read-only narrowing of `KernelClient` for the DEEP-05 session-priority lens + the DEEP-01
- * "Why does this exist?" rationale-chain webview component.
+ * "Why does this exist?" rationale-chain webview component + the DEEP-02 Graph Inspector.
  *
  * Banned methods (DEEP-05 Mandate B + DEEP-04 Mandate D): the four write RPCs whose names
  * are enumerated as the `BANNED` token array in `scripts/ci/refuse-deep05-write.sh`. The
@@ -37,7 +37,15 @@ import type { KernelClient } from '../kernel/client.js';
  * KernelClient in the same task). Plan 14-04 (DEEP-05) consumes this surface from
  * inspector/session-priority-lens.ts; downstream session-priority-lens code can call
  * `client.queryRationaleAt(...)` for read-only enrichment without breaking Mandate-B.
+ *
+ * Plan 15-01 (Phase 15 Wave-0) adds `queryGraphSnapshot` + `queryTimelineTransitions` to
+ * the Pick<>. The two methods land on KernelClient as throw-stubs in Plan 15-01 Task 5;
+ * Plan 15-02 (Wave 1) replaces the throw-stubs with real RPC bodies + server-side handler
+ * registration. Plan 15-04 (Wave 3) consumes both via this surface from the Graph Inspector
+ * webview-side adapter.
  */
 export type ReadonlyKernelClient = Pick<KernelClient,
-	'queryGraph' | 'queryNodes' | 'queryRationaleAt' | 'heartbeat' | 'runDriftAndLock'
+	'queryGraph' | 'queryNodes' | 'queryRationaleAt'
+	| 'queryGraphSnapshot' | 'queryTimelineTransitions'
+	| 'heartbeat' | 'runDriftAndLock'
 	| 'onDidChangeState' | 'onDriftProgress' | 'isConnected' | 'currentState'>;
