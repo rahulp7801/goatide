@@ -73,7 +73,7 @@ export interface DispatchInputs {
  *   - drift_findings.length > 0 AND tier === 'silent' → escalate to 'inline' (don't demote
  *     a modal to inline; only escalate from silent).
  */
-function applyDriftEscalation(
+export function applyDriftEscalation(
 	tier: CanvasTier,
 	driftFindings: readonly DriftFinding[] | undefined,
 	lockTrigger: LockTrigger | null | undefined,
