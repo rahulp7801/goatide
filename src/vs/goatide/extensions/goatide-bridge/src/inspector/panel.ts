@@ -31,6 +31,7 @@
 
 import * as vscode from 'vscode';
 import * as crypto from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import type { ReadonlyKernelClient } from './ReadonlyKernelClient.js';
 import { InspectorWebviewToHostSchema, type InspectorHostToWebview } from './messages.js';
 
@@ -193,10 +194,17 @@ export class GraphInspectorPanel {
 	}
 
 	/**
-	 * Wave-2 minimal HTML shell. Loads dist/inspector/index.js if it exists (Wave 3 creates
-	 * the bundle via esbuild.config.mjs's second entry). The inline shell is the FALLBACK
-	 * for Wave-2 close state where the bundle does not yet exist; Task 2 Step 6 upgrades
-	 * this method to read a bundled index.html from disk via existsSync + readFileSync.
+	 * Renders the webview HTML. Two paths:
+	 *   - Primary (Wave 3+): read the bundled `dist/inspector/index.html` from disk via
+	 *     readFileSync, substitute CSP nonce / cspSource / bundle URI placeholders. Mirrors
+	 *     canvas/panel.ts:419-448 (the canonical getHtmlForWebview pattern).
+	 *   - Fallback (Wave 2 close state): inline minimal shell. The webview loads the bundled
+	 *     index.js (which doesn't exist yet) and the React root stays empty. Wave 3 ships
+	 *     src/inspector/webview/index.{tsx,html} and esbuild copies index.html to dist/, at
+	 *     which point existsSync auto-flips to the primary path.
+	 *
+	 * Issue #8 (gsd-plan-checker): panel.ts edits are entirely within Plan 15-03. Plan
+	 * 15-04 (Wave 3) does NOT re-edit panel.ts; the lazy-load guard handles the transition.
 	 */
 	private renderHtml(): string {
 		const nonce = crypto.randomBytes(16).toString('base64').replace(/\W/g, '').slice(0, 32);
@@ -204,9 +212,17 @@ export class GraphInspectorPanel {
 		const bundledJsUri = this.panel.webview
 			.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'dist', 'inspector', 'index.js'))
 			.toString();
-		// Wave-2 close state: the bundle may not exist yet. The webview will load the
-		// missing script (404) and the React root stays empty — Wave 3 fixes this by
-		// shipping src/inspector/webview/index.tsx + index.html.
+		const bundledHtmlPath = vscode.Uri.joinPath(this.extensionUri, 'dist', 'inspector', 'index.html');
+		if (existsSync(bundledHtmlPath.fsPath)) {
+			// Primary path — Wave 3 (Plan 15-04) ships dist/inspector/index.html via esbuild's
+			// post-build copy step.
+			return readFileSync(bundledHtmlPath.fsPath, 'utf-8')
+				.replaceAll('${nonce}', nonce)
+				.replaceAll('${webview.cspSource}/index.js', bundledJsUri)
+				.replaceAll('${webview.cspSource}', cspSource);
+		}
+		// Wave-2 fallback — bundled HTML doesn't exist yet (Wave 3 lands the .tsx + .html).
+		// Returns a minimal shell; the user sees an empty webview until Wave 3 ships.
 		return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src ${cspSource} 'nonce-${nonce}'; style-src ${cspSource} 'unsafe-inline';"></head><body><div id="root"></div><script nonce="${nonce}" src="${bundledJsUri}"></script></body></html>`;
 	}
 }

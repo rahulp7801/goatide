@@ -15,6 +15,7 @@ import * as fs from 'node:fs';
 import { KernelClient } from './kernel/client.js';
 import { HeartbeatPoller } from './kernel/heartbeat.js';
 import { CanvasPanel } from './canvas/panel.js';
+import { GraphInspectorPanel } from './inspector/panel.js';
 import { registerSaveGate } from './save-gate/on-will-save.js';
 import { getCanvasModule } from './save-gate/canvas-module.js';
 import { scanForOrphanStagingFiles } from './save-gate/recovery-scan.js';
@@ -176,6 +177,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			await vscode.workspace
 				.getConfiguration('goatide')
 				.update('session.priority', value, vscode.ConfigurationTarget.Workspace);
+		}),
+	);
+
+	// Phase 15 Plan 15-03 (DEEP-02) — Graph Inspector Panel open command. Read-only
+	// inspector consumes the kernel's bitemporal snapshot RPCs via the structurally-narrowed
+	// ReadonlyKernelClient surface (Mandate B fence — refuse-deep05-write.sh enforces).
+	// Guard with isConnected() so an offline kernel produces a warning notification instead
+	// of an obscure RPC timeout. The webview render layer ships in Phase 15 Plan 15-04
+	// (Wave 3); until then reveal() paints an empty webview shell.
+	context.subscriptions.push(
+		vscode.commands.registerCommand('goatide.openGraphInspector', () => {
+			if (!kernel.isConnected()) {
+				vscode.window.showWarningMessage('GoatIDE Graph Inspector requires the kernel to be connected.');
+				return;
+			}
+			// TypeScript narrows `kernel` (full KernelClient) to ReadonlyKernelClient at the
+			// argument site because the parameter type is Pick<KernelClient, ...>. No cast.
+			const inspector = GraphInspectorPanel.getOrCreate(context, kernel);
+			inspector.reveal();
 		}),
 	);
 

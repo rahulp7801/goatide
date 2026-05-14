@@ -76,6 +76,11 @@
 				"command": "goatide.harvester.showStaleSources",
 				"title": "GoatIDE: Show Stale Telemetry Sources",
 				"category": "GoatIDE"
+			},
+			{
+				"command": "goatide.openGraphInspector",
+				"title": "Open Graph Inspector",
+				"category": "GoatIDE"
 			}
 		]
 	},
