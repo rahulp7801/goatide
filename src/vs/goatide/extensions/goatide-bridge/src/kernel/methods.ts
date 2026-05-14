@@ -27,6 +27,11 @@ export interface AnchorRequest {
 	value?: string;
 	symbol?: string;
 	ticket_id?: string;
+	// Phase 14 Plan 14-02 (DEEP-01) — id field used when kind === 'node_id'. The kernel's
+	// resolveAnchor switch reads req.id for the node_id branch (kernel/src/graph/anchor.ts).
+	// Bridge ↔ kernel wire shape: snake_case JSON, byte-identical to the kernel's
+	// AnchorRequest discriminated union.
+	id?: string;
 }
 
 export interface QueryGraphParams {

@@ -14,7 +14,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { HostRpc } from './rpc.js';
-import type { CanvasShowPayload, WebviewToHost } from './messages.js';
+import type { CanvasShowPayload, WebviewToHost, RationaleChainEntryForCanvas } from './messages.js';
+import type { AnchorRequest as KernelAnchorRequest } from '../kernel/methods.js';
 
 export interface CanvasDecision {
 	kind: 'accept' | 'reject' | 'reject_with_note';
@@ -50,6 +51,37 @@ export interface OverrideHandlerResult {
 
 export type OverrideHandler = (payload: OverrideHandlerPayload) => Promise<OverrideHandlerResult>;
 
+/**
+ * Phase 14 Plan 14-02 (DEEP-01) — rationale-chain fetch callback. Registered by the
+ * extension activation (or tier-dispatch) on construction; panel.ts handleMessage forwards
+ * the canvas.requestRationale webview message into this callback. The callback is the
+ * Option A integration shape — panel.ts stays transport-only; the actual kernel call
+ * lives wherever the KernelClient is owned.
+ *
+ * Contract:
+ *   - The caller MUST pass the receipt's graph_snapshot_tx_time as `asOf` (NOT
+ *     Date.now() at click time — Pitfall 1 / REC-03 invariant).
+ *   - On kernel-degraded (kernelClient.isConnected() === false) the callback returns
+ *     `{ kind: 'degraded' }`. panel.ts re-posts canvas.show with rationale_error =
+ *     'kernel-degraded' and the webview RationaleChain component renders the degraded
+ *     branch.
+ *   - On success the callback returns `{ kind: 'ok', chain }` and panel.ts re-posts
+ *     canvas.show with rationale_chain populated.
+ *   - On RPC failure (timeout / dispose) the callback may throw OR return
+ *     `{ kind: 'degraded' }`; panel.ts catches both shapes.
+ */
+export interface RationaleHandlerPayload {
+	anchor: KernelAnchorRequest;
+	asOf: string;
+	max_hops?: number;
+}
+
+export type RationaleHandlerResult =
+	| { kind: 'ok'; chain: ReadonlyArray<RationaleChainEntryForCanvas> }
+	| { kind: 'degraded' };
+
+export type RationaleHandler = (payload: RationaleHandlerPayload) => Promise<RationaleHandlerResult>;
+
 const VIEW_TYPE = 'goatide.canvas';
 
 /**
@@ -66,6 +98,13 @@ export class CanvasPanel {
 	// When a 'record_override' webview message arrives, panel.ts invokes this callback
 	// (Option A: save-gate-owned override path). panel.ts does NOT call kernel directly.
 	private overrideHandler?: OverrideHandler;
+	// Phase 14 Plan 14-02 (DEEP-01) — Rationale-chain handler callback. Registered by the
+	// extension activation; invoked from handleMessage('canvas.requestRationale').
+	private rationaleHandler?: RationaleHandler;
+	// Phase 14 Plan 14-02 (DEEP-01) — The most recent payload posted to the webview via
+	// showAndAwait. Captured so handleMessage('canvas.requestRationale') can extract the
+	// citation seed + graph_snapshot_tx_time at message-receive time. Cleared on dispose().
+	private lastPayload: CanvasShowPayload | null = null;
 	private readonly subDisposable: vscode.Disposable;
 	private readonly disposeDisposable: vscode.Disposable;
 	// canvas.ready handshake (13-02 CLOSE-02): the webview posts this message when React
@@ -148,6 +187,18 @@ export class CanvasPanel {
 	}
 
 	/**
+	 * Phase 14 Plan 14-02 (DEEP-01) — Register the rationale-chain fetch callback. The
+	 * extension activation wires this on construction; panel.ts forwards the webview's
+	 * canvas.requestRationale message into the callback (transport-only pattern, mirrors
+	 * registerOverrideHandler). The callback is responsible for the kernel.queryRationaleAt
+	 * invocation + kernel-degraded detection; panel.ts re-posts canvas.show with the
+	 * resulting chain or the kernel-degraded sentinel.
+	 */
+	registerRationaleHandler(handler: RationaleHandler): void {
+		this.rationaleHandler = handler;
+	}
+
+	/**
 	 * Phase 7 Plan 07-07 — Post the compliance_report.partial or compliance_report.full
 	 * message to the webview. tier-dispatch.ts uses these to feed the progressive-disclosure
 	 * stream from kernel.runRippleProgressive (notification + final RPC response).
@@ -162,6 +213,12 @@ export class CanvasPanel {
 
 	/** Show the canvas + wait for a decision from the developer. */
 	async showAndAwait(payload: CanvasShowPayload, options?: { timeoutMs?: number }): Promise<CanvasDecision> {
+		// Phase 14 Plan 14-02 (DEEP-01): capture the payload so handleMessage's
+		// canvas.requestRationale branch can extract the citation seed + the receipt's
+		// graph_snapshot_tx_time at message-receive time. Pitfall 1 fence: the asOf is
+		// captured AT receipt-build time (REC-03 single-snapshot invariant) and lives on
+		// the payload until the canvas is hidden — never re-derived at click time.
+		this.lastPayload = payload;
 		const timeoutMs = options?.timeoutMs ?? 10 * 60 * 1000;  // 10 min default
 		// Plan 12-03 H2: reveal in ViewColumn.Active (paired with createWebviewPanel above).
 		this.panel.reveal(vscode.ViewColumn.Active, false);
@@ -219,6 +276,9 @@ export class CanvasPanel {
 		try { this.subDisposable.dispose(); } catch { /* best-effort */ }
 		try { this.disposeDisposable.dispose(); } catch { /* best-effort */ }
 		this.rpc.dispose();
+		// Phase 14 Plan 14-02: drop the cached payload so any late canvas.requestRationale
+		// message arriving after cleanup() returns finds null and short-circuits silently.
+		this.lastPayload = null;
 		if (this.pendingReject) {
 			this.pendingReject(new Error('CanvasPanel disposed before decision'));
 			this.pendingResolve = undefined;
@@ -251,6 +311,51 @@ export class CanvasPanel {
 					editor.selection = new vscode.Selection(range.start, range.end);
 				} catch (e) {
 					console.error('[goatide-bridge] reveal_line failed', e);
+				}
+			})();
+			return;
+		}
+		if (msg.type === 'canvas.requestRationale') {
+			// Phase 14 Plan 14-02 (DEEP-01) — "Why does this exist?" button click.
+			//
+			// W3 fix: citations have NO `anchor` field (kernel/src/receipt/citation.ts:16-22).
+			// We extract the citation's node_id and build an AnchorRequest of kind 'node_id'.
+			// If there are no citations to anchor against, OR no graph_snapshot_tx_time on the
+			// payload, OR no handler registered, OR the handler reports degraded — fall back
+			// to the rationale_error sentinel so the webview renders the degraded branch.
+			//
+			// Pitfall 1 fence (REC-03): asOf is the payload's graph_snapshot_tx_time, NEVER
+			// Date.now() at click time. The handler signature enforces this — `asOf` is a
+			// required string parameter.
+			void (async () => {
+				const lp = this.lastPayload;
+				if (!lp) {
+					return;  // No payload context (canvas already cleared) — drop silently.
+				}
+				const seedNodeId = lp.citations[0]?.node_id;
+				const asOf = lp.graph_snapshot_tx_time ?? null;
+				if (!seedNodeId || !asOf || !this.rationaleHandler) {
+					// Insufficient context to satisfy the request — render the degraded branch.
+					await this.rpc.show({ ...lp, rationale_error: 'kernel-degraded' });
+					return;
+				}
+				try {
+					const result = await this.rationaleHandler({
+						anchor: { kind: 'node_id', id: seedNodeId },
+						asOf,
+						max_hops: 4,
+					});
+					if (result.kind === 'degraded') {
+						await this.rpc.show({ ...lp, rationale_error: 'kernel-degraded' });
+						return;
+					}
+					// Cast the readonly chain back through the webview's mutable schema shape.
+					const chain = result.chain.map((e) => ({ ...e }));
+					const updated: CanvasShowPayload = { ...lp, rationale_chain: chain, rationale_error: null };
+					this.lastPayload = updated;
+					await this.rpc.show(updated);
+				} catch {
+					await this.rpc.show({ ...lp, rationale_error: 'kernel-degraded' });
 				}
 			})();
 			return;

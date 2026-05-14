@@ -150,6 +150,12 @@ const CanvasShowPayloadSchema = z.object({
 	// Phase 14 Plan 14-04 (DEEP-05) — user-visible label string rendered by the Canvas
 	// header indicator. Plan 14-04 Task 2 reads this field directly.
 	session_priority_indicator: z.string().nullable().optional(),
+	// Phase 14 Plan 14-02 (DEEP-01) — the receipt's bitemporal snapshot timestamp.
+	// REQUIRED for the rationale-chain fetch: panel.ts handleMessage passes this verbatim as
+	// the asOf parameter to kernel.queryRationaleAt. NEVER Date.now() at click time
+	// (Pitfall 1 — REC-03 single-snapshot invariant). When absent the host falls back to
+	// the kernel-degraded sentinel rather than guessing a timestamp.
+	graph_snapshot_tx_time: z.string().nullable().optional(),
 });
 export type CanvasShowPayload = z.infer<typeof CanvasShowPayloadSchema>;
 
