@@ -643,3 +643,153 @@ button {
 	cursor: help;
 	font-weight: 500;
 }
+
+/* ========================================================================================
+ * Phase 14 Plan 14-02 (DEEP-01) — RationaleChain ("Why does this exist?")
+ * Slots between DiffPane and CitationList in App.tsx. Three render branches:
+ *   - idle       (chain === null && error === null): "Why does this exist?" request button
+ *   - degraded   (error === 'kernel-degraded'):      degraded-mode notice
+ *   - empty      (chain.length === 0):               "no rationale found" message
+ *   - loaded     (chain.length > 0):                 ordered list of entries
+ * Reuses the same --vscode-editorWarning-foreground variable as .intent-drift-badge for
+ * the superseded amber accent — keeps the two visual idioms consistent across the canvas.
+ * ====================================================================================== */
+
+.rationale-chain {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 12px;
+	border: 1px solid var(--vscode-panel-border, #2b2b2b);
+	border-radius: 4px;
+	background-color: var(--vscode-editorWidget-background, #252526);
+}
+
+.rationale-chain__title {
+	margin: 0 0 6px 0;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
+}
+
+.rationale-chain__button {
+	align-self: flex-start;
+	padding: 5px 14px;
+	background-color: var(--vscode-button-secondaryBackground, #3a3d41);
+	color: var(--vscode-button-secondaryForeground, #ffffff);
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 3px;
+	cursor: pointer;
+	font-weight: 500;
+	font-size: 12px;
+	transition: background-color 120ms ease;
+}
+
+.rationale-chain__button:hover {
+	background-color: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.rationale-chain--degraded {
+	background-color: var(--vscode-editorWarning-background, rgba(204, 167, 0, 0.10));
+	border-color: var(--vscode-editorWarning-foreground, #cca700);
+	color: var(--vscode-editorWarning-foreground, #cca700);
+	font-size: 12px;
+}
+
+.rationale-chain--degraded p {
+	margin: 0;
+}
+
+.rationale-chain--empty p {
+	margin: 0;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
+	font-style: italic;
+	font-size: 12px;
+}
+
+.rationale-chain__entries {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.rationale-chain__entry {
+	display: grid;
+	grid-template-columns: 90px minmax(0, 1fr) 80px 80px auto;
+	gap: 10px;
+	padding: 6px 8px;
+	border: 1px solid var(--vscode-panel-border, #2b2b2b);
+	border-radius: 3px;
+	align-items: baseline;
+	font-size: 12px;
+	background-color: var(--vscode-editor-background, #1e1e1e);
+}
+
+.rationale-chain__entry--superseded {
+	border-left: 3px solid var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.rationale-chain__kind {
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	padding: 1px 6px;
+	border-radius: 9px;
+	background-color: var(--vscode-badge-background, #4d4d4d);
+	color: var(--vscode-badge-foreground, #ffffff);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.rationale-chain__kind--constraint {
+	background-color: var(--vscode-inputValidation-warningBackground, #5a4a1d);
+}
+
+.rationale-chain__kind--decision {
+	background-color: var(--vscode-button-background, #0e639c);
+}
+
+.rationale-chain__body {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-foreground, #cccccc);
+}
+
+.rationale-chain__valid-from {
+	font-family: var(--monaco-monospace-font, ui-monospace, Consolas, monospace);
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
+}
+
+.rationale-chain__confidence {
+	font-size: 10px;
+	padding: 1px 6px;
+	border-radius: 9px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.rationale-chain__confidence--explicit {
+	color: var(--vscode-textLink-foreground, #3794ff);
+	border: 1px solid var(--vscode-textLink-foreground, #3794ff);
+}
+
+.rationale-chain__confidence--inferred {
+	color: var(--vscode-descriptionForeground, #9d9d9d);
+	border: 1px solid var(--vscode-descriptionForeground, #9d9d9d);
+}
+
+.rationale-chain__superseded {
+	font-size: 11px;
+	font-style: italic;
+	color: var(--vscode-editorWarning-foreground, #cca700);
+}

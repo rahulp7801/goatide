@@ -132,9 +132,17 @@ const CanvasShowPayloadSchema = z.object({
 	compliance_report: ComplianceReportSchema.nullable().optional(),
 	lock_trigger: LockTriggerSchema.nullable().optional(),
 	// Phase 14 Plan 14-02 (DEEP-01) — populated lazily on "Why does this exist?" button click.
-	// Initially absent (the kernel-degraded fork uses an empty array sentinel; see panel.ts
-	// handleMessage canvas.requestRationale branch in Plan 14-02 Task 3b).
+	// Initially absent. panel.ts handleMessage's canvas.requestRationale branch re-posts
+	// canvas.show with this field populated; the webview RationaleChain component reads from
+	// payload.rationale_chain to decide between the request-button idle state (null) and the
+	// rendered-list loaded state (non-null array). Empty array == "no rationale found"
+	// (anchor returned zero ConstraintNode/DecisionNode rows).
 	rationale_chain: z.array(RationaleChainEntrySchema).nullable().optional(),
+	// Phase 14 Plan 14-02 (DEEP-01) — explicit kernel-degraded sentinel for the rationale
+	// fetch path. Set by panel.ts handleMessage when kernelClient.isConnected() is false or
+	// the RPC throws. Separates degraded-fork rendering (kernel offline) from empty-graph
+	// rendering (anchor matched zero rows). Plan 14-02 Task 3a uses this discriminator.
+	rationale_error: z.literal('kernel-degraded').nullable().optional(),
 	// Phase 14 Plan 14-04 (DEEP-05) — explicit session priority string consumed by the
 	// rerank invocation. W4 fix: separate from session_priority_indicator so the rerank
 	// path does not have to parse the user-visible indicator label.
@@ -223,5 +231,11 @@ export const WebviewToHostSchema = z.discriminatedUnion('type', [
 			line: z.number().int().nonnegative(),
 		}),
 	}),
+	// Phase 14 Plan 14-02 (DEEP-01) — "Why does this exist?" button click. The host already
+	// has the current payload state from when it last called rpc.show, so this message is
+	// payload-less. panel.ts handleMessage extracts the citation seed + the receipt's
+	// graph_snapshot_tx_time from its stored lastPayload, calls kernel.queryRationaleAt, and
+	// re-posts canvas.show with rationale_chain populated.
+	z.object({ type: z.literal('canvas.requestRationale') }),
 ]);
 export type WebviewToHost = z.infer<typeof WebviewToHostSchema>;

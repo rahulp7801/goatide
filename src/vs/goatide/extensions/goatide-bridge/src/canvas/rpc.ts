@@ -145,4 +145,16 @@ export class WebviewRpc {
 		const msg: WebviewToHost = { type: 'reveal_line', payload };
 		this.vscode.postMessage(msg);
 	}
+
+	/**
+	 * Phase 14 Plan 14-02 (DEEP-01) — request the rationale chain for the currently-shown
+	 * receipt. The host extracts the asOf from the current payload's
+	 * receipt-aware graph_snapshot_tx_time and calls kernel.queryRationaleAt, then re-posts
+	 * canvas.show with rationale_chain populated. No client-side timestamping
+	 * (Pitfall 1 — REC-03 invariant: NEVER Date.now() at click time).
+	 */
+	postRationaleRequest(): void {
+		const msg: WebviewToHost = { type: 'canvas.requestRationale' };
+		this.vscode.postMessage(msg);
+	}
 }

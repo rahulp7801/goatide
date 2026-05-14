@@ -18,6 +18,7 @@ import { CitationList } from './CitationList.js';
 import { ConfirmationPhrase } from './ConfirmationPhrase.js';
 import { DriftFindings } from './DriftFindings.js';
 import { ComplianceReportView } from './ComplianceReport.js';
+import { RationaleChain } from './RationaleChain.js';
 
 export interface AppProps {
 	rpc: WebviewRpc;
@@ -99,6 +100,18 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 		rpc.postCitationExplain(node_id);
 	}, [rpc]);
 
+	// Phase 14 Plan 14-02 (DEEP-01): "Why does this exist?" button click sends a payload-less
+	// canvas.requestRationale message; panel.ts handleMessage extracts the citation seed +
+	// the receipt's graph_snapshot_tx_time from its stored lastPayload, calls
+	// kernel.queryRationaleAt, and re-posts canvas.show with rationale_chain populated. No
+	// client-side timestamping (Pitfall 1 fence).
+	const onRationaleRequest = useCallback(() => {
+		rpc.postRationaleRequest();
+	}, [rpc]);
+
+	const rationaleChain = payload.rationale_chain ?? null;
+	const rationaleError = payload.rationale_error ?? null;
+
 	const friendlyFile = formatFileUri(payload.file_uri);
 
 	return (
@@ -134,6 +147,12 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 						language={payload.language}
 					/>
 				</section>
+				{/* Phase 14 Plan 14-02 (DEEP-01) — RationaleChain slots between DiffPane and CitationList per the Phase 14 mandate (no new panel). The component renders the request button when idle, the chain when loaded, or a degraded message when the kernel is offline. */}
+				<RationaleChain
+					chain={rationaleChain}
+					error={rationaleError}
+					onRequest={onRationaleRequest}
+				/>
 				<section className="goatide-canvas-citations">
 					<CitationList citations={payload.citations} onExplain={onCitationExplain} />
 				</section>
