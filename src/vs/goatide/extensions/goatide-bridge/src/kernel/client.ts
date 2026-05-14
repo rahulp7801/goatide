@@ -33,6 +33,7 @@ import { readLockfile, isPidAlive, clearStaleLockfile, resolveLockfilePath, reso
 const childProcess: typeof import('node:child_process') = require('node:child_process');
 import {
 	QueryGraphRequest,
+	QueryRationaleAtRequest,
 	ProposeEditRequest,
 	RecordRejectionRequest,
 	RecordContractOverrideRequest,
@@ -53,6 +54,7 @@ import {
 	RunRippleProgressiveRequest,
 	DriftProgressNotificationType,
 	type QueryGraphParams, type QueryGraphResult,
+	type QueryRationaleAtParams, type QueryRationaleAtResult,
 	type ProposeEditParams, type ProposeEditResult,
 	type RecordRejectionParams, type RecordRejectionResult,
 	type RecordContractOverrideParams, type RecordContractOverrideResult,
@@ -357,6 +359,21 @@ export class KernelClient {
 	}
 	queryNodes(params: QueryNodesParams): Promise<QueryNodesResult> {
 		return this.sendWithTimeout(QueryNodesRequest, params);
+	}
+	/**
+	 * Phase 14 Plan 14-02 (DEEP-01) — bitemporal "Why does this exist?" composition.
+	 *
+	 * The Verification Canvas "Why does this exist?" button click ultimately calls this
+	 * method via panel.ts handleMessage. `params.asOf` MUST be the receipt's
+	 * graph_snapshot_tx_time (REC-03 single-snapshot invariant; Pitfall 1 asOf-drift
+	 * fence — NEVER new Date().toISOString() at click time).
+	 *
+	 * The ReadonlyKernelClient Pick<> exposes this method to the inspector layer
+	 * (DEEP-05 read-only narrowing); the bridge tsc gate refuses inspector code that
+	 * touches any of the four banned write-RPC names (refuse-deep05-write.sh).
+	 */
+	queryRationaleAt(params: QueryRationaleAtParams): Promise<QueryRationaleAtResult> {
+		return this.sendWithTimeout(QueryRationaleAtRequest, params);
 	}
 	heartbeat(): Promise<HeartbeatResult> {
 		return this.sendWithTimeout(HeartbeatRequest, {});

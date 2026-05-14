@@ -4,7 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 // src/vs/goatide/extensions/goatide-bridge/src/inspector/ReadonlyKernelClient.ts —
-// Phase 14 Plan 14-01 (Wave-0) DEEP-05 + DEEP-01 read-side type narrowing.
+// Phase 14 Plan 14-01 (Wave-0) + Plan 14-02 (Wave-1) DEEP-05 + DEEP-01 read-side type
+// narrowing.
 //
 // This is a TYPE-ONLY file. After tsc emits, the corresponding .js MUST be empty (or
 // contain only the `export {}` ESM marker). The CI gate scripts/ci/refuse-deep05-write.sh
@@ -12,10 +13,9 @@
 // write-RPC method names (see the gate script for the canonical token list) so the
 // read-only contract cannot drift.
 //
-// Wave-0 minimal Pick<>: the methods named below are precisely those that exist on
-// KernelClient as of 2026-05-13. queryRationaleAt is NOT in the Pick<>; Plan 14-02 Task 2
-// adds it to KernelClient AND extends this Pick<> simultaneously (I1 fix — keeps the
-// Wave-0 type structurally complete so tsc --noEmit passes today).
+// Plan 14-02 (I1 wave-split): the Pick<> gains `'queryRationaleAt'` atomically with the
+// KernelClient.queryRationaleAt method landing in the same task/commit. The two changes
+// together keep the bridge tsc gate GREEN across the Wave-0 → Wave-1 transition.
 //
 // Mandate-B fence (Pitfall 7): we use `import type` so no runtime symbol from KernelClient
 // (notably the four banned methods) appears in the emitted .js. The unit test asserts the
@@ -33,10 +33,11 @@ import type { KernelClient } from '../kernel/client.js';
  * in a comment, even as a string literal — so this type is the *contract*, the gate is
  * the *enforcement*.
  *
- * Wave-0 (Plan 14-01): omits `queryRationaleAt`. Plan 14-02 Task 2 lands `queryRationaleAt`
- * on `KernelClient` AND extends this Pick<> to include it. Doing the two together keeps the
- * type structurally valid at every step (no "method does not exist on KernelClient" errors).
+ * Plan 14-02 includes `queryRationaleAt` in the Pick<> (DEEP-01 read-side method landed on
+ * KernelClient in the same task). Plan 14-04 (DEEP-05) consumes this surface from
+ * inspector/session-priority-lens.ts; downstream session-priority-lens code can call
+ * `client.queryRationaleAt(...)` for read-only enrichment without breaking Mandate-B.
  */
 export type ReadonlyKernelClient = Pick<KernelClient,
-	'queryGraph' | 'queryNodes' | 'heartbeat' | 'runDriftAndLock'
+	'queryGraph' | 'queryNodes' | 'queryRationaleAt' | 'heartbeat' | 'runDriftAndLock'
 	| 'onDidChangeState' | 'onDriftProgress' | 'isConnected' | 'currentState'>;

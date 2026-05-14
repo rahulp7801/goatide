@@ -50,6 +50,40 @@ export interface QueryGraphResult {
 
 export const QueryGraphRequest = new RequestType<QueryGraphParams, QueryGraphResult, Error>('graph.queryGraph');
 
+// -------- graph.queryRationaleAt (Plan 14-02 — DEEP-01) --------
+//
+// Bridge-side mirror of the kernel's QueryRationaleAtRequest. The Verification Canvas
+// "Why does this exist?" button click posts canvas.requestRationale to the host;
+// panel.ts handleMessage extracts the citation seed + the receipt's
+// graph_snapshot_tx_time, then calls KernelClient.queryRationaleAt with that asOf —
+// REC-03 single-snapshot invariant (Pitfall 1 fence: NEVER new Date().toISOString() at
+// click time). Wire shape is byte-identical to kernel/src/rpc/methods.ts.
+
+export interface RationaleChainEntry {
+	node_id: string;
+	kind: 'ConstraintNode' | 'DecisionNode';
+	body: string;
+	valid_from: string;
+	invalidated_at: string | null;
+	successor_id: string | null;
+	confidence: 'Explicit' | 'Inferred';
+	edge_path: string;
+	derived_under_priority?: string;
+}
+
+export interface QueryRationaleAtParams {
+	anchor: AnchorRequest;
+	asOf: string;        // ISO-8601 — REQUIRED (not optional)
+	max_hops?: number;   // default 4
+}
+
+export interface QueryRationaleAtResult {
+	chain: RationaleChainEntry[];
+	has_superseded: boolean;
+}
+
+export const QueryRationaleAtRequest = new RequestType<QueryRationaleAtParams, QueryRationaleAtResult, Error>('graph.queryRationaleAt');
+
 // -------- graph.proposeEdit --------
 //
 // Phase 7 Plan 07-05 (DRIFT-02): ProposeEditParams gains optional session_priority.

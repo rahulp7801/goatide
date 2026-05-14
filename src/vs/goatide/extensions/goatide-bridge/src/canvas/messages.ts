@@ -90,6 +90,30 @@ const ComplianceReportSchema = z.object({
 });
 export type ComplianceReportForCanvas = z.infer<typeof ComplianceReportSchema>;
 
+// -------- Phase 14 Plan 14-02 — DEEP-01 rationale chain --------
+//
+// The "Why does this exist?" Verification Canvas component renders an ordered list of
+// ConstraintNode + DecisionNode entries — the chain that drove the cited file's current
+// shape. The chain is fetched lazily on button click; CanvasShowPayload gains three new
+// optional fields (rationale_chain + session_priority + session_priority_indicator).
+//
+// Bitemporal asOf invariant (Pitfall 1): the chain is anchored to the receipt's
+// graph_snapshot_tx_time, NEVER to Date.now() at click time. panel.ts handleMessage
+// extracts that timestamp from the current payload state when forwarding to the kernel.
+
+export const RationaleChainEntrySchema = z.object({
+	node_id: z.string().length(26),
+	kind: z.union([z.literal('ConstraintNode'), z.literal('DecisionNode')]),
+	body: z.string(),
+	valid_from: z.string(),
+	invalidated_at: z.string().nullable(),
+	successor_id: z.string().length(26).nullable(),
+	confidence: z.union([z.literal('Explicit'), z.literal('Inferred')]),
+	edge_path: z.string(),
+	derived_under_priority: z.string().optional(),
+});
+export type RationaleChainEntryForCanvas = z.infer<typeof RationaleChainEntrySchema>;
+
 // -------- canvas.show payload --------
 
 const CanvasShowPayloadSchema = z.object({
@@ -107,6 +131,17 @@ const CanvasShowPayloadSchema = z.object({
 	drift_findings: z.array(DriftFindingSchema).optional(),
 	compliance_report: ComplianceReportSchema.nullable().optional(),
 	lock_trigger: LockTriggerSchema.nullable().optional(),
+	// Phase 14 Plan 14-02 (DEEP-01) — populated lazily on "Why does this exist?" button click.
+	// Initially absent (the kernel-degraded fork uses an empty array sentinel; see panel.ts
+	// handleMessage canvas.requestRationale branch in Plan 14-02 Task 3b).
+	rationale_chain: z.array(RationaleChainEntrySchema).nullable().optional(),
+	// Phase 14 Plan 14-04 (DEEP-05) — explicit session priority string consumed by the
+	// rerank invocation. W4 fix: separate from session_priority_indicator so the rerank
+	// path does not have to parse the user-visible indicator label.
+	session_priority: z.string().nullable().optional(),
+	// Phase 14 Plan 14-04 (DEEP-05) — user-visible label string rendered by the Canvas
+	// header indicator. Plan 14-04 Task 2 reads this field directly.
+	session_priority_indicator: z.string().nullable().optional(),
 });
 export type CanvasShowPayload = z.infer<typeof CanvasShowPayloadSchema>;
 

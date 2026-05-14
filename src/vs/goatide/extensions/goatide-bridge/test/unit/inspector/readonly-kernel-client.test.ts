@@ -3,10 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// test/unit/inspector/readonly-kernel-client.test.ts — Phase 14 Plan 14-01 (Wave-0) — DEEP-05
-// type-only fence regression suite.
+// test/unit/inspector/readonly-kernel-client.test.ts — Phase 14 Plan 14-01 (Wave-0) +
+// Plan 14-02 (Wave-1) — DEEP-05 type-only fence regression suite.
 //
-// Four invariants that protect the read-only narrowing of KernelClient:
+// Five invariants that protect the read-only narrowing of KernelClient:
 //   1. Object.keys(import * as M) is empty after tsx transpile — no runtime symbols.
 //   2. The compiled JS (dist/inspector/ReadonlyKernelClient.js) — if present — does NOT
 //      embed the literal `class KernelClient`; only `import type` references should appear.
@@ -15,6 +15,8 @@
 //   4. None of the four banned write-RPC method names (atomicAccept / proposeEdit /
 //      recordRejection / recordContractOverride) appears in the ReadonlyKernelClient
 //      surface — proved via @ts-expect-error.
+//   5. Plan 14-02 I1 wave-split: queryRationaleAt IS in the Pick<> — `(c as ReadonlyKernelClient)
+//      .queryRationaleAt` is a callable signature, NOT a type error.
 
 import { describe, it } from 'mocha';
 import { strict as assert } from 'node:assert';
@@ -23,6 +25,7 @@ import * as path from 'node:path';
 import * as M from '../../../src/inspector/ReadonlyKernelClient.js';
 import type { ReadonlyKernelClient } from '../../../src/inspector/ReadonlyKernelClient.js';
 import type { KernelClient } from '../../../src/kernel/client.js';
+import type { QueryRationaleAtParams, QueryRationaleAtResult } from '../../../src/kernel/methods.js';
 
 describe('Plan 14-01 — ReadonlyKernelClient type-only fence', () => {
 	it('exports zero runtime symbols (type-only file)', () => {
@@ -76,5 +79,24 @@ describe('Plan 14-01 — ReadonlyKernelClient type-only fence', () => {
 		void r.recordRejection;
 		// @ts-expect-error — recordContractOverride must not be on ReadonlyKernelClient
 		void r.recordContractOverride;
+	});
+
+	it('Plan 14-02 I1 wave-split: queryRationaleAt IS in the Pick<> surface', () => {
+		// This line MUST compile cleanly (no @ts-expect-error). If queryRationaleAt was
+		// missing from the Pick<>, the call below would error TS2339 and break the build.
+		// The runtime call would throw "not a function" — we never reach it; the type
+		// assertion is the load-bearing guarantee.
+		const r = {} as ReadonlyKernelClient;
+		const _call: (p: QueryRationaleAtParams) => Promise<QueryRationaleAtResult> = r.queryRationaleAt;
+		void _call;
+		// Smoke-assert at runtime that the .ts surface includes queryRationaleAt; reading
+		// the source file rather than running it (KernelClient instantiation requires a
+		// kernel handle which is out-of-scope for a unit test).
+		const sourcePath = path.resolve(__dirname, '..', '..', '..', 'src', 'inspector', 'ReadonlyKernelClient.ts');
+		const sourceText = fs.readFileSync(sourcePath, 'utf8');
+		assert.ok(
+			/'queryRationaleAt'/.test(sourceText),
+			'ReadonlyKernelClient.ts Pick<> must include the literal string "queryRationaleAt" (Plan 14-02 I1 wave-split)',
+		);
 	});
 });
