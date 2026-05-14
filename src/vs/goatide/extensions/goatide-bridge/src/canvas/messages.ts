@@ -14,17 +14,40 @@ import { z } from 'zod';
 // -------- Citation shape consumed by the webview --------
 //
 // Phase 7 Plan 07-05 (DRIFT-02): RenderedCitationSchema gains an optional intent_drift_badge
-// field mirroring the kernel-side RenderedCitation. Plan 07-07 will render the badge via
+// field mirroring the kernel-side RenderedCitation. Plan 07-07 renders the badge via
 // CitationList.tsx (icon + click-to-modal explanation). The Zod schema is additive — the
 // host->webview canvas.show payload remains structurally compatible with pre-Plan-07-05
 // callers that don't populate the field.
+//
+// Phase 14 Plan 14-03 (DEEP-04): IntentDriftBadgeSchema is now a z.discriminatedUnion on
+// `kind`. Two variants:
+//   - 'priority-mismatch' (Plan 07-05): existing shape unchanged except for the new `kind`
+//     discriminator field.
+//   - 'historical-conflict' (Plan 14-03): emitted when a cited DecisionNode was superseded
+//     on or before the receipt's asOf. Save proceeds normally (Mandate D — informs, does
+//     NOT block). CitationList renders the amber `intent-drift-badge--historical-conflict`
+//     variant with the superseded date pill.
+//
+// Atomicity (Pitfall 5): kernel emit-site (kernel/src/drift/intent.ts evaluateIntentDrift
+// + evaluateHistoricalConflict) updated in Task 1 of this plan; this schema MUST land in
+// the same plan or the webview Zod parse fails the entire canvas.show payload.
 
-const IntentDriftBadgeSchema = z.object({
-	citation_node_id: z.string().length(26),
-	session_priority: z.string(),
-	cited_priority: z.string(),
-	explanation: z.string(),
-});
+const IntentDriftBadgeSchema = z.discriminatedUnion('kind', [
+	z.object({
+		kind: z.literal('priority-mismatch'),
+		citation_node_id: z.string().length(26),
+		session_priority: z.string(),
+		cited_priority: z.string(),
+		explanation: z.string(),
+	}),
+	z.object({
+		kind: z.literal('historical-conflict'),
+		citation_node_id: z.string().length(26),
+		superseded_at: z.string(),
+		successor_id: z.string().length(26),
+		explanation: z.string(),
+	}),
+]);
 export type IntentDriftBadgeForCanvas = z.infer<typeof IntentDriftBadgeSchema>;
 
 const RenderedCitationSchema = z.object({

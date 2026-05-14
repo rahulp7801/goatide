@@ -26,7 +26,7 @@ import * as vscode from 'vscode';
 // check under degraded state.
 import type { KernelClient } from '../kernel/client.js';
 import type { CanvasPanel, CanvasDecision } from '../canvas/panel.js';
-import type { Citation, ReasoningReceipt, DriftFinding, LockTrigger, ComplianceReport } from '../kernel/methods.js';
+import type { Citation, ReasoningReceipt, DriftFinding, LockTrigger, ComplianceReport, IntentDriftBadge } from '../kernel/methods.js';
 import type { CanvasShowPayload, ComplianceReportForCanvas, DriftFindingForCanvas, LockTriggerForCanvas } from '../canvas/messages.js';
 import { applyEditAtomically } from './apply-edit.js';
 import { getCanvasModule, type CanvasTier, type CitationDetail, type AnchorResultCacheLike } from './canvas-module.js';
@@ -349,7 +349,7 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 			snippet: c.snippet,
 			body_preview: deriveBodyPreview(citationDetails, c),
 			successor_id: deriveSuccessorId(citationDetails, c),
-			intent_drift_badge: (c as { intent_drift_badge?: { citation_node_id: string; session_priority: string; cited_priority: string; explanation: string } | null }).intent_drift_badge ?? null,
+			intent_drift_badge: (c as { intent_drift_badge?: IntentDriftBadge | null }).intent_drift_badge ?? null,
 		})),
 		drill_chain: inputs.receipt.drill_chain,
 		// Phase 7 Plan 07-07 — drift fields. drift_findings always populated (may be empty);

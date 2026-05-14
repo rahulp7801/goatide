@@ -160,6 +160,7 @@ describe('Phase 7 Plan 07-05 — bridge IntentDrift integration (DRIFT-02)', () 
 			const matched = propose.receipt.citations.find((c) => c.node_id === decisionId);
 			assert.ok(matched, `expected citation for decisionId ${decisionId} in receipt`);
 			assert.deepEqual(matched!.intent_drift_badge, {
+				kind: 'priority-mismatch',
 				citation_node_id: decisionId,
 				session_priority: 'Speed-First',
 				cited_priority: 'Quality-First',

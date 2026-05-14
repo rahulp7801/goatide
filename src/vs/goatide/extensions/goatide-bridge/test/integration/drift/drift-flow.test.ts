@@ -333,6 +333,7 @@ describe('Phase 7 Plan 07-07 — bridge drift-flow integration (SC #1 + SC #3 + 
 					body_preview: 'Use refresh-token rotation',
 					successor_id: null,
 					intent_drift_badge: {
+						kind: 'priority-mismatch',
 						citation_node_id: FIXED_NODE_ID,
 						session_priority: 'Speed-First',
 						cited_priority: 'Quality-First',

@@ -103,12 +103,24 @@ export interface ProposeEditParams {
 	session_priority?: string;
 }
 
-export interface IntentDriftBadge {
-	citation_node_id: string;
-	session_priority: string;
-	cited_priority: string;
-	explanation: string;
-}
+// Phase 14 Plan 14-03 (DEEP-04): bridge mirror of kernel's IntentDriftBadge discriminated
+// union. Two variants — 'priority-mismatch' (Plan 07-05 / DRIFT-02) and 'historical-conflict'
+// (Plan 14-03 / DEEP-04). Wire shape is byte-identical to kernel/src/drift/types.ts.
+export type IntentDriftBadge =
+	| {
+		kind: 'priority-mismatch';
+		citation_node_id: string;
+		session_priority: string;
+		cited_priority: string;
+		explanation: string;
+	}
+	| {
+		kind: 'historical-conflict';
+		citation_node_id: string;
+		superseded_at: string;
+		successor_id: string;
+		explanation: string;
+	};
 
 export interface Citation {
 	node_id: string;

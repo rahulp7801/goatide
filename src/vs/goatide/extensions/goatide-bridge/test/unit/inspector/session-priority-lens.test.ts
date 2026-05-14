@@ -38,6 +38,7 @@ describe('session-priority-lens rerank', () => {
 	const c2 = makeCitation({
 		node_id: ID('B'),
 		badge: {
+			kind: 'priority-mismatch',
 			citation_node_id: ID('B'),
 			session_priority: 'X',
 			cited_priority: 'Y',
@@ -45,16 +46,16 @@ describe('session-priority-lens rerank', () => {
 		},
 	});
 	const c3 = makeCitation({ node_id: ID('C') });
-	// c4 represents the future historical-conflict variant. At Wave-0 the schema is flat
-	// (priority-mismatch only); Plan 14-03 lands the discriminated-union expansion and
-	// Plan 14-04 GREEN-flips this test. We tag c4 with a recognisable explanation so the
-	// v1 implementation can detect it.
+	// Phase 14 Plan 14-03 — historical-conflict variant of the discriminated union. The
+	// rerank lens (Plan 14-04) should treat both variants as drift-bearing for ordering
+	// purposes. Wave-0 stub remains RED until 14-04 lands the implementation.
 	const c4 = makeCitation({
 		node_id: ID('D'),
 		badge: {
+			kind: 'historical-conflict',
 			citation_node_id: ID('D'),
-			session_priority: 'X',
-			cited_priority: 'X',
+			superseded_at: '2026-05-01T00:00:00.000Z',
+			successor_id: ID('S'),
 			explanation: 'historical-conflict',
 		},
 	});

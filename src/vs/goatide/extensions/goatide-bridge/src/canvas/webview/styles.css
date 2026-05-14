@@ -644,6 +644,15 @@ button {
 	font-weight: 500;
 }
 
+/* Phase 14 Plan 14-03 (DEEP-04) — historical-conflict variant. Same amber idiom as the
+ * priority-mismatch base; slightly darker border to differentiate at a glance and signal
+ * that the cited DecisionNode is no longer current. Mandate D: informs only, save proceeds. */
+.intent-drift-badge--historical-conflict {
+	background-color: var(--vscode-editorWarning-background, rgba(204, 167, 0, 0.15));
+	color: var(--vscode-editorWarning-foreground, #cca700);
+	border: 1px solid var(--vscode-editorWarning-border, var(--vscode-editorWarning-foreground, #cca700));
+}
+
 /* ========================================================================================
  * Phase 14 Plan 14-02 (DEEP-01) — RationaleChain ("Why does this exist?")
  * Slots between DiffPane and CitationList in App.tsx. Three render branches:

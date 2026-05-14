@@ -49,12 +49,23 @@ export interface LockTrigger {
 	hunk_index: number;
 }
 
-export interface IntentDriftBadge {
-	citation_node_id: string;
-	session_priority: string;
-	cited_priority: string;
-	explanation: string;
-}
+// Phase 14 Plan 14-03 (DEEP-04): bridge mirror of kernel's IntentDriftBadge discriminated
+// union. Mirrors kernel/src/drift/types.ts byte-for-byte (the wire shape is the contract).
+export type IntentDriftBadge =
+	| {
+		kind: 'priority-mismatch';
+		citation_node_id: string;
+		session_priority: string;
+		cited_priority: string;
+		explanation: string;
+	}
+	| {
+		kind: 'historical-conflict';
+		citation_node_id: string;
+		superseded_at: string;
+		successor_id: string;
+		explanation: string;
+	};
 
 export interface ComplianceRow {
 	node_id: string;
