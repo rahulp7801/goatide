@@ -3,12 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// test/unit/inspector/session-priority-lens.test.ts — Phase 14 Plan 14-01 (Wave-0) RED suite
-// for DEEP-05 session-priority lens rerank semantics + Mandate-B no-mutation invariant.
+// test/unit/inspector/session-priority-lens.test.ts — Phase 14 Plan 14-01 (Wave-0) RED suite,
+// flipped GREEN by Plan 14-04 with one regression test added for the historical-conflict
+// discriminator variant (DEEP-04 / Plan 14-03 cross-plan link).
 //
-// All 5 it() cases are RED at Wave-0 close (the stub throws). Plan 14-04 flips them GREEN
-// by landing the v1 implementation. The `describe('session-priority-lens rerank', ...)`
-// string matches the VALIDATION.md `--grep "session-priority-lens rerank"` query verbatim.
+// The `describe('session-priority-lens rerank', ...)` string matches the VALIDATION.md
+// `--grep "session-priority-lens rerank"` query verbatim.
 
 import { describe, it } from 'mocha';
 import { strict as assert } from 'node:assert';
@@ -111,5 +111,21 @@ describe('session-priority-lens rerank', () => {
 		const citations = [c1, c2];
 		const result = rerankBySessionPriority({ citations, findings: [], sessionPriority: 'X' });
 		assert.notStrictEqual(result.citations, citations, 'lens must return a new array');
+	});
+
+	// Plan 14-04 Task 1 regression — historical-conflict alone (no priority-mismatch in the
+	// batch) MUST still sort to the front. Proves both discriminator variants of
+	// IntentDriftBadgeForCanvas (Plan 14-03) are treated as drift-bearing for ordering.
+	it('historical-conflict variant alone sorts to front', () => {
+		const result = rerankBySessionPriority({
+			citations: [c1, c4, c3],
+			findings: [],
+			sessionPriority: 'X',
+		});
+		assert.deepStrictEqual(
+			result.citations.map((c) => c.node_id),
+			[c4.node_id, c1.node_id, c3.node_id],
+			'historical-conflict citation must sort first; non-drift order preserved (tie-stable)',
+		);
 	});
 });
