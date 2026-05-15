@@ -19,7 +19,7 @@ set -euo pipefail
 
 KERNEL_DRIFT="kernel/src/drift"
 
-mapfile -t FILES < <(git ls-files 2>/dev/null | grep -E "^${KERNEL_DRIFT}/ripple.*\.ts$" || true)
+mapfile -t FILES < <(git ls-files 2>/dev/null | grep -E "^${KERNEL_DRIFT}/(ripple|constraint-lift).*\.ts$" || true)
 
 EXISTING=()
 for f in "${FILES[@]}"; do
@@ -27,7 +27,7 @@ for f in "${FILES[@]}"; do
 done
 
 if [ "${#EXISTING[@]}" -eq 0 ]; then
-	echo "Phase-7 unbounded-ripple-walk gate ok — kernel/src/drift/ripple*.ts not yet present (Plan 07-04 ships it)."
+	echo "Phase-7 unbounded-ripple-walk gate ok — kernel/src/drift/(ripple|constraint-lift)*.ts not yet present (Plan 07-04 ships it)."
 	exit 0
 fi
 
@@ -47,6 +47,6 @@ for f in "${EXISTING[@]}"; do
 done
 
 if [ "$VIOLATIONS" -eq 0 ]; then
-	echo "Phase-7 unbounded-ripple-walk gate ok — every max_hops literal in kernel/src/drift/ripple*.ts is <= 3."
+	echo "Phase-7 unbounded-ripple-walk gate ok — every max_hops literal in kernel/src/drift/(ripple|constraint-lift)*.ts is <= 3."
 fi
 exit "$VIOLATIONS"
