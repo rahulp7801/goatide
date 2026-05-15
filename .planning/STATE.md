@@ -7,7 +7,7 @@ last_updated: "2026-05-15T05:57:15.319Z"
 last_activity: "2026-05-15 — Phase 16 closed (DEEP-03 ripple-impact + DEEP-06 phase-A schema migration GREEN — migration 0008_cross_repo_identity.sql + queryByRepo + repo-fingerprint helper + constraint-lift.ts sibling + What-would-break button + HypotheticalImpact UI + Mandate B 4-layer defense + refuse-unbounded-ripple-walk.sh widened)"
 progress:
   total_phases: 4
-  completed_phases: 4
+  completed_phases: 3
   total_plans: 21
   completed_plans: 21
 ---

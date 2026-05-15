@@ -4,6 +4,8 @@ verified: 2026-05-15
 status: green
 nyquist_compliant: true
 wave_0_complete: true
+gsd_verifier_audit: 2026-05-14
+gsd_verifier_status: passed
 ---
 
 # Phase 16 — Verification Log
@@ -364,7 +366,7 @@ grep -n "repoId" kernel/src/graph/dao.ts | wc -l
 
 **No blocking gaps found.** One auto-fix applied:
 
-- **[Rule 1 - Bug] Kernel tsc `confidence_band` type error** — `ConstraintLiftAnalysisResult.hypothetical_impact` typed as `ComplianceReport` (base type) while tests correctly accessed `confidence_band` (ConstraintLiftRow field). Fixed by introducing `ConstraintLiftReport` with properly-typed buckets + renaming local result type. Runtime behavior was already correct (vitest passed). Build now exits 0.
+- **[Rule 1 - Bug] Kernel tsc `confidence_band` type error** — `ConstraintLiftAnalysisResult.hypothetical_impact` typed as `ComplianceReport` (base type) while tests correctly accessed `confidence_band` (ConstraintLiftRow field). Fixed by introducing `ConstraintLiftReport` with properly-typed buckets + renaming local result type. Runtime behavior was always correct (vitest passed). Build now exits 0.
 
 ---
 
@@ -377,3 +379,199 @@ grep -n "repoId" kernel/src/graph/dao.ts | wc -l
 - **Meta-tests:** 3/3 META PASS
 - **Freshclone smoke:** 5/5 assertions PASS
 - **Phase close commit:** pending (Task 3)
+
+---
+
+## Goal-Backward Audit (gsd-verifier)
+
+**Audit date:** 2026-05-14
+**Auditor:** Claude (gsd-verifier)
+**Re-verification:** No — this is the first goal-backward audit (wave-by-wave evidence above was produced by the Plan 16-05 executor)
+
+### Phase 16 Goal Statement
+
+> Land the constraint-lift ripple impact RPC (DEEP-03) and the cross-repo schema migration phase-A (DEEP-06): `0008_cross_repo_identity.sql` adding `repo_id TEXT NOT NULL DEFAULT 'primary'` to nodes + edges with backfill; `queryByRepo()` DAO method; `repo-fingerprint.ts` helper; constraint-lift kernel handler + bridge transport + Hypothetical Impact webview UI + DriftFindings "What would break if this constraint is lifted?" button.
+
+---
+
+### 1. Requirement Coverage: DEEP-03 and DEEP-06
+
+#### DEEP-03 — Constraint-Lift Ripple Impact RPC
+
+**REQUIREMENTS.md status:** Confirmed closed. Traceability index entry reads:
+`DEEP-03 | 16 | Closed 2026-05-15` with 13 closure commit hashes.
+
+The Open block lists only `DEEP-06 phase-B` as pending; DEEP-03 is absent from Open, present in the Phase 16 Closed section with full prose and commits.
+
+**Implementation files verified on disk:**
+
+| File | Exists | Substantive | Assessment |
+|------|--------|-------------|------------|
+| `kernel/src/drift/constraint-lift.ts` | Yes | Yes — 197 lines; `runConstraintLiftAnalysis`, `ConstraintLiftRow`, `ConstraintLiftReport`, `ConstraintLiftAnalysisResult` interfaces; BFS walk, bucket sort, confidence_score | VERIFIED |
+| `kernel/src/rpc/server.ts` (handler) | Yes | Yes — `connection.onRequest(ConstraintLiftRequest, requireAuth(...))` at line 291; reads `params.asOf`, calls `runConstraintLiftAnalysis`, returns result | VERIFIED |
+| `src/.../client.ts` | Yes | Yes — `constraintLift()` at line 414 returns `this.sendWithTimeout(ConstraintLiftRequest, params)` | VERIFIED |
+| `src/.../panel.ts` (handler) | Yes | Yes — `registerConstraintLiftHandler` at line 241; `canvas.requestConstraintLift` dispatch at line 407 with asOf from `lastPayload.graph_snapshot_tx_time` | VERIFIED |
+| `src/.../DriftFindings.tsx` | Yes | Yes — conditional button at lines 103-112; renders when `constraintLiftEligible && constraintCitation !== null`; `onConstraintLiftClick` calls `rpc.postConstraintLiftRequest` | VERIFIED |
+| `src/.../HypotheticalImpact.tsx` | Yes | Yes — 97 lines; real body with Hypothetical badge, depth radio (1/2/3), show-all toggle, `ComplianceReportView` child; `return null` only when `props.report === null` (null-guard, not stub) | VERIFIED |
+| `src/.../tier-dispatch.ts` | Yes | Yes — `constraint_lift_eligible = citationDetails.some(d => d.kind === 'ConstraintNode')` at line 339 | VERIFIED |
+
+**DEEP-03 verdict: VERIFIED**
+
+#### DEEP-06 phase-A — Cross-Repo Schema Migration
+
+**REQUIREMENTS.md status:** Confirmed. Traceability index entry reads:
+`DEEP-06 | 16 (schema-A), 17 (UI-B) | Phase-A Closed 2026-05-15; Phase-B Pending` with 4 closure commit hashes. The Open section retains only `DEEP-06 phase-B` (cross-repo UI) as pending Phase 17. This is the correct split.
+
+**Implementation files verified on disk:**
+
+| File | Exists | Substantive | Assessment |
+|------|--------|-------------|------------|
+| `kernel/src/graph/migrations/0008_cross_repo_identity.sql` | Yes | Yes — 4 canonical statements: `ALTER TABLE nodes ADD COLUMN repo_id TEXT NOT NULL DEFAULT 'primary'`, `ALTER TABLE edges ADD COLUMN repo_id TEXT NOT NULL DEFAULT 'primary'`, `CREATE INDEX IF NOT EXISTS nodes_repo_id ON nodes(repo_id)`, `CREATE INDEX IF NOT EXISTS edges_repo_id ON edges(repo_id)` | VERIFIED |
+| `kernel/src/graph/repo-fingerprint.ts` | Yes | Yes — `fingerprint(remoteUrl)` function using `createHash('sha256').update(normalized).digest('hex').slice(0, 12)` with URL normalization | VERIFIED |
+| `kernel/src/graph/dao.ts` — `queryByRepo` | Yes | Yes — method at line 328 with Drizzle `eq(nodes.repo_id, repoId)` + bitemporal clauses; 2 occurrences in file (declaration + Drizzle call) | VERIFIED |
+| `kernel/src/graph/dao.ts` — `queryByAnchor` repoId param | Yes | Yes — `repoId: string = 'primary'` default param at line 421; 8 `repoId` occurrences in dao.ts | VERIFIED |
+
+**DEEP-06 phase-A verdict: VERIFIED**
+**DEEP-06 phase-B verdict: Correctly deferred to Phase 17 — Pending**
+
+---
+
+### 2. Success Criteria Verification (ROADMAP Phase 16)
+
+#### SC#1: Constraint-lift kernel RPC + RunConstraintLiftInput type + maxHops 1|2|3 literal-union
+
+**Kernel RPC:** `graph.constraintLift` registered via `connection.onRequest(ConstraintLiftRequest, requireAuth(...))` in `kernel/src/rpc/server.ts` lines 291-303. The handler reads `params.max_hops ?? 3` and passes it as `maxHops` to `runConstraintLiftAnalysis`.
+
+**RunConstraintLiftInput type:** Defined in `kernel/src/drift/constraint-lift.ts` lines 23-31. The `maxHops` field is typed as `1 | 2 | 3` (literal union) — confirmed by direct file read at line 25: `readonly maxHops: 1 | 2 | 3;   // literal-union cap — refuse-unbounded-ripple-walk gate enforces`.
+
+**DriftFindings button:** Renders conditionally when `constraintLiftEligible && constraintCitation !== null` — confirmed in DriftFindings.tsx line 103.
+
+**HypotheticalImpact UI:** Non-stub; renders Hypothetical badge (`data-testid="hypothetical-impact-badge"`), depth radio (1/2/3), show-all toggle (`data-testid="hypothetical-impact-show-all-toggle"`), and `ComplianceReportView` child.
+
+**Mandate B (no graph writes):** Verified — HypotheticalImpact.tsx and DriftFindings.tsx contain zero calls to `atomicAccept`, `proposeEdit`, `recordRejection`, `recordContractOverride`. The constraint-lift path in panel.ts routes through `constraintLiftHandler` (registered by extension.ts as a read-only RPC transport); it does not touch write RPCs.
+
+**SC#1 verdict: VERIFIED** (automated checks pass; SC#1 visual aspect requires human-verify as flagged in plan)
+
+#### SC#2: Ripple walk export + refuse-unbounded-ripple-walk.sh covers constraint-lift*.ts
+
+**walkRippleEdges export:** `kernel/src/drift/ripple.ts` exports `walkRippleEdges` (confirmed by SUMMARY and that `constraint-lift.ts` imports `import { walkRippleEdges } from './ripple.js'` at line 21).
+
+**refuse-unbounded-ripple-walk.sh coverage:** The gate script at `scripts/ci/refuse-unbounded-ripple-walk.sh` line 22 uses regex: `grep -E "^${KERNEL_DRIFT}/(ripple|constraint-lift).*\.ts$"` — confirmed by direct file read. The `(ripple|constraint-lift)` alternation is the Phase 16 widening.
+
+**maxHops literal-union in constraint-lift.ts:** `readonly maxHops: 1 | 2 | 3` at line 25 — the gate would fire if any call site used `max_hops: 4` anywhere in the matched files.
+
+**SC#2 verdict: VERIFIED**
+
+#### SC#3: 0008_cross_repo_identity.sql adds repo_id TEXT NOT NULL DEFAULT 'primary' to nodes + edges + indexes; existing sentinels pass byte-equal
+
+**Migration file:** Exists at `kernel/src/graph/migrations/0008_cross_repo_identity.sql`. Body confirmed verbatim:
+- Line 19: `ALTER TABLE nodes ADD COLUMN repo_id TEXT NOT NULL DEFAULT 'primary';`
+- Line 21: `ALTER TABLE edges ADD COLUMN repo_id TEXT NOT NULL DEFAULT 'primary';`
+- Line 23: `CREATE INDEX IF NOT EXISTS nodes_repo_id ON nodes(repo_id);`
+- Line 25: `CREATE INDEX IF NOT EXISTS edges_repo_id ON edges(repo_id);`
+
+All 4 canonical statements present. The file uses `IF NOT EXISTS` for idempotency and includes Drizzle statement-breakpoints.
+
+**Backward-compat sentinels:** Wave-by-wave evidence shows `as-of.spec.ts` (2), `query-by-anchor.spec.ts` (4), `traverse.spec.ts` (7), `traverse-smoke.spec.ts` (4) all PASS in the full kernel suite (406/406).
+
+**Manual sqlite3 .schema:** Not programmatically verifiable — flagged as CHECKPOINT in plan. Human verification remains pending.
+
+**SC#3 verdict: VERIFIED (automated); CHECKPOINT (manual .schema)**
+
+#### SC#4: queryByRepo() DAO method + queryByAnchor optional repoId param
+
+**queryByRepo:** Implemented in `kernel/src/graph/dao.ts` at line 328. Real Drizzle body uses `and(eq(nodes.repo_id, repoId), lte(...), or(...), lte(...))`. Not a stub.
+
+**queryByAnchor repoId param:** `repoId: string = 'primary'` default param at line 421 of dao.ts — backward-compatible (all existing 2-arg callers default to 'primary').
+
+**INDEX nodes_repo_id:** Created by migration; not verifiable without a live DB (human verify via `.indices nodes`).
+
+**SC#4 verdict: VERIFIED (code); CHECKPOINT (index existence — requires live DB)**
+
+#### SC#5: freshclone-smoke-cdp.cjs continues to PASS
+
+Wave-by-wave evidence records 5/5 assertions PASS. The migration is backward-compatible (ALTER TABLE ADD COLUMN with NOT NULL DEFAULT backfills all existing rows). No kernel boot regression.
+
+**SC#5 verdict: VERIFIED**
+
+---
+
+### 3. Mandate B Fence Verification
+
+**Audit question:** Do webview / bridge paths call `atomicAccept` / `proposeEdit` / `recordRejection` / `recordContractOverride` for the constraint-lift flow?
+
+**HypotheticalImpact.tsx:** Zero occurrences of any banned token. The component only filters rows and renders UI.
+
+**DriftFindings.tsx:** Zero occurrences of any banned token. The `onConstraintLiftClick` handler calls `rpc.postConstraintLiftRequest(...)` — a read-only RPC.
+
+**panel.ts (constraint-lift branch):** The occurrences of `recordContractOverride` in panel.ts are in comments describing the _override_ handler (lines 31-35), not in the constraint-lift code path (lines 407-444). The constraint-lift branch calls `this.constraintLiftHandler(...)` which routes to `KernelClient.constraintLift` (read-only `sendWithTimeout`). No write RPC is called.
+
+**refuse-deep05-write.sh:** CI gate scans inspector/ — the constraint-lift code does not live in inspector/ — but the gate's overall exit 0 confirms no banned tokens crept into the inspector path.
+
+**Mandate B fence verdict: VERIFIED — no write RPCs in constraint-lift flow**
+
+---
+
+### 4. Pitfall 1 Fence Verification (Date.now / new Date in constraint-lift handler path)
+
+**kernel/src/drift/constraint-lift.ts:** The only occurrences of `Date.now` and `new Date` are in comments (lines 14, 118, 192 contain comment text). Zero executable calls. `generated_at` is set to `input.asOf` (line 192) — the REC-03 single-snapshot pattern.
+
+**kernel/src/rpc/server.ts (constraint-lift handler, lines 291-303):** The handler body reads `params.asOf` and passes it to `runConstraintLiftAnalysis`. No `Date.now()` or `new Date()` call in this region. The `new Date().toISOString()` at line 306 belongs to the `ProposeEditRequest` handler — a different handler entirely.
+
+**src/.../panel.ts (canvas.requestConstraintLift branch, lines 407-444):** One `new Date().toISOString()` at line 425 — this is the documented defensive fallback when `lp.graph_snapshot_tx_time` is null (first-open degraded path where no payload context is available). The VERIFICATION log accepts `≤1 code hit` here as passing. This is the exact pattern described in Pitfall 1 four-layer fence.
+
+**src/.../HypotheticalImpact.tsx:** Zero executable `Date.now`/`new Date` calls. Comment at line 19 states the fence; no code-level violations.
+
+**src/.../DriftFindings.tsx:** Zero occurrences of `Date.now` or `new Date`.
+
+**Pitfall 1 fence verdict: VERIFIED — constraint-lift handler path is free of Date.now()/new Date() calls; panel.ts defensive fallback (≤1 hit) is within the accepted tolerance**
+
+---
+
+### 5. REQUIREMENTS.md Status Verification
+
+**DEEP-03:** Absent from the Open section. Present in `Phase 16 — Ripple Analysis + Cross-Repo Schema Migration — Closed 2026-05-15` section with full prose and 13 closure commit hashes. Traceability index: `DEEP-03 | 16 | Closed 2026-05-15`.
+
+**DEEP-06:** The Open section retains only `DEEP-06 phase-B` (cross-repo UI) as pending Phase 17 — correctly annotated. Phase-A closure entry in the Phase 16 Closed section. Traceability index: `DEEP-06 | 16 (schema-A), 17 (UI-B) | Phase-A Closed 2026-05-15; Phase-B Pending`.
+
+**REQUIREMENTS.md verdict: VERIFIED** — DEEP-03 closed, DEEP-06 phase-A closed with phase-B explicitly pending Phase 17.
+
+---
+
+### 6. Phase-Close Commit Verification
+
+The phase-close commit `f1f486fa41e` (subject: `docs(16): close Phase 16 — DEEP-03 + DEEP-06 phase-A GREEN`) exists on master. The commit modified 5 planning files (REQUIREMENTS.md, ROADMAP.md, STATE.md, 16-SUMMARY.md, 16-VALIDATION.md). No `Co-Authored-By` trailer present (per user memory). The commit predates the gsd-tools state regression fix commit (`635c048f6d6`).
+
+---
+
+### Observable Truths Summary
+
+| # | Truth | Status | Evidence |
+|---|-------|--------|----------|
+| 1 | `graph.constraintLift` RPC exists under requireAuth with RunConstraintLiftInput.maxHops 1\|2\|3 literal-union | VERIFIED | constraint-lift.ts line 25; server.ts lines 291-303 |
+| 2 | `walkRippleEdges` is exported; refuse-unbounded-ripple-walk.sh covers (ripple\|constraint-lift)*.ts | VERIFIED | ripple.ts import in constraint-lift.ts; gate script line 22 regex |
+| 3 | `0008_cross_repo_identity.sql` adds `repo_id TEXT NOT NULL DEFAULT 'primary'` to nodes + edges + 2 indexes | VERIFIED (code); CHECKPOINT (live DB) | Migration file lines 19-25; 4/4 canonical statements |
+| 4 | `queryByRepo()` DAO method + `queryByAnchor` optional repoId='primary' default | VERIFIED | dao.ts lines 328, 421 |
+| 5 | SC#5 freshclone-smoke-cdp.cjs 5/5 PASS | VERIFIED | Wave-by-wave evidence |
+| 6 | HypotheticalImpact.tsx is non-stub; DriftFindings constraint-lift button renders conditionally | VERIFIED | HypotheticalImpact.tsx 97 lines real body; DriftFindings.tsx lines 103-112 |
+| 7 | Mandate B fence holds — constraint-lift flow makes zero write-RPC calls | VERIFIED | Zero banned tokens in webview files; panel.ts routes read-only |
+| 8 | Pitfall 1 fence holds — constraint-lift handler path free of Date.now()/new Date() | VERIFIED | constraint-lift.ts comments only; server.ts handler region clean; panel.ts ≤1 defensive fallback |
+| 9 | REQUIREMENTS.md has DEEP-03 closed + DEEP-06 phase-A closed / phase-B pending Phase 17 | VERIFIED | REQUIREMENTS.md traceability index confirmed |
+
+**Score: 9/9 truths verified (1 partial checkpoint for live DB human-verify on SC#3/SC#4)**
+
+---
+
+## Verifier Status
+
+**status: passed**
+
+All automated checks pass. Goal-backward audit finds no gaps. The one remaining CHECKPOINT item (manual `sqlite3 ~/.goatide/graph.db ".schema nodes"` + `.indices nodes` verification) is a human-verify task flagged in Plan 16-05 Task 2 — it is not a blocking gap for the automated goal-backward audit. The implementation exists, is substantive, is wired end-to-end, and the REQUIREMENTS.md status fields are correctly updated.
+
+Phase 16 goal is achieved.
+
+---
+
+_Wave-by-wave evidence: 2026-05-15 (Plan 16-05 executor)_
+_Goal-backward audit: 2026-05-14 (gsd-verifier)_
+_Verifier: Claude (gsd-verifier)_
