@@ -179,6 +179,17 @@ const CanvasShowPayloadSchema = z.object({
 	// (Pitfall 1 — REC-03 single-snapshot invariant). When absent the host falls back to
 	// the kernel-degraded sentinel rather than guessing a timestamp.
 	graph_snapshot_tx_time: z.string().nullable().optional(),
+	// Phase 16 Plan 16-01 (DEEP-03) — hypothetical-impact report from runConstraintLiftAnalysis.
+	// Populated by panel.ts handleMessage's canvas.requestConstraintLift branch; initially absent.
+	// Mirrors Phase 14 Plan 14-02's rationale_chain/rationale_error pattern:
+	//   null = not yet requested (idle state)
+	//   non-null ComplianceReport = loaded
+	//   hypothetical_impact_error = 'kernel-degraded' = transient kernel offline
+	hypothetical_impact: ComplianceReportSchema.nullable().optional(),
+	// Phase 16 Plan 16-01 (DEEP-03) — explicit kernel-degraded sentinel for the constraint-lift
+	// fetch path. Set by panel.ts handleMessage when kernelClient.isConnected() is false or the
+	// RPC throws. Separates degraded-fork rendering (kernel offline) from empty-graph rendering.
+	hypothetical_impact_error: z.literal('kernel-degraded').nullable().optional(),
 });
 export type CanvasShowPayload = z.infer<typeof CanvasShowPayloadSchema>;
 
@@ -266,5 +277,17 @@ export const WebviewToHostSchema = z.discriminatedUnion('type', [
 	// graph_snapshot_tx_time from its stored lastPayload, calls kernel.queryRationaleAt, and
 	// re-posts canvas.show with rationale_chain populated.
 	z.object({ type: z.literal('canvas.requestRationale') }),
+	// Phase 16 Plan 16-01 (DEEP-03) — hypothetical-impact request. The DriftFindings webview
+	// component (Wave 3 — Plan 16-04) posts this when the developer clicks the constraint-lift
+	// button on a ConstraintNode citation. panel.ts handleMessage dispatches kernel.constraintLift
+	// and re-posts canvas.show with hypothetical_impact populated.
+	z.object({
+		type: z.literal('canvas.requestConstraintLift'),
+		payload: z.object({
+			constraint_node_id: z.string().length(26),
+			max_hops: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+			confidence_threshold: z.number().min(0).max(1).optional(),
+		}),
+	}),
 ]);
 export type WebviewToHost = z.infer<typeof WebviewToHostSchema>;

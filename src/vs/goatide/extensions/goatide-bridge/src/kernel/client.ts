@@ -77,6 +77,8 @@ import {
 	type RunDriftAndLockParams, type RunDriftAndLockResult,
 	type RunRippleProgressiveParams, type RunRippleProgressiveResult,
 	type DriftProgressNotification,
+	ConstraintLiftRequest,
+	type ConstraintLiftParams, type ConstraintLiftResult,
 } from './methods.js';
 
 export interface KernelClientOptions {
@@ -402,6 +404,16 @@ export class KernelClient {
 	public queryTimelineTransitions(): Promise<QueryTimelineTransitionsResult> {
 		return this.sendWithTimeout(QueryTimelineTransitionsRequest, undefined);
 	}
+
+	/**
+	 * Phase 16 Plan 16-03 (DEEP-03) — Wave-0 throw-stub; Wave 2 (Plan 16-03) replaces with
+	 * `return this.sendWithTimeout(ConstraintLiftRequest, params)`. Typed compile surface
+	 * allows callers (bridge integration tests) to reference the method at Wave-0 close.
+	 */
+	public constraintLift(_params: ConstraintLiftParams): Promise<ConstraintLiftResult> {
+		throw new Error('Wave 2 implements - Plan 16-03');
+	}
+
 	heartbeat(): Promise<HeartbeatResult> {
 		return this.sendWithTimeout(HeartbeatRequest, {});
 	}

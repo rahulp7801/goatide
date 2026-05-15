@@ -138,6 +138,25 @@ export const QueryTimelineTransitionsRequest = new RequestType<
 	void, QueryTimelineTransitionsResult, Error
 >('graph.queryTimelineTransitions');
 
+// -------- graph.constraintLift (Phase 16 Plan 16-01 — DEEP-03 bridge mirror types) --------
+//
+// Mirror of kernel/src/rpc/methods.ts ConstraintLiftParams + ConstraintLiftResult +
+// ConstraintLiftRequest. Wire shape is byte-identical; bridge cannot import from kernel/src
+// directly without bundling. ComplianceReport is re-declared inline below (mirrors kernel
+// drift/types.ts shape) as the bridge's ComplianceReportSchema.parse() result type.
+
+export interface ConstraintLiftParams {
+	constraint_node_id: string;
+	asOf: string;
+	max_hops?: 1 | 2 | 3;
+	confidence_threshold?: number;
+}
+export interface ConstraintLiftResult {
+	hypothetical_impact: ComplianceReport;  // mirrors kernel/src/drift/types.ts shape
+	confidence_score: number;
+}
+export const ConstraintLiftRequest = new RequestType<ConstraintLiftParams, ConstraintLiftResult, Error>('graph.constraintLift');
+
 // -------- graph.proposeEdit --------
 //
 // Phase 7 Plan 07-05 (DRIFT-02): ProposeEditParams gains optional session_priority.
