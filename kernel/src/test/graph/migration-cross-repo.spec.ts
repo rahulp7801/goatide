@@ -87,29 +87,45 @@ describe('migration 0008_cross_repo_identity', () => {
 
 	it('two repos with identical ULID sequences are namespaced by repo_id', () => {
 		// Phase 16 deployment model: one DB per repo + bridge-side query-layer stitching.
-		// See 16-RESEARCH.md ## Open Decisions §6. Test #5 RED until Wave 1 fills queryByRepo.
-		// Seed two separate temp DBs with the same node payloads; assert queryByRepo on each
-		// returns its own scoped rows only. Wave-0: dao.queryByRepo throws => RED.
+		// See 16-RESEARCH.md ## Open Decisions §6.
+		// Seed two separate temp DBs with the same node payloads; assert queryByRepo('primary', asOf)
+		// on each DB returns that DB's rows ONLY (semantic (a): each repo carries its own SQLite DB;
+		// repo_id distinguishes at query-layer; no PRIMARY KEY conflict because no single DB holds
+		// both repos' rows).
 		const tmpA = mkTempDb();
 		const tmpB = mkTempDb();
 		try {
-			const { db: dbA, close: closeA } = openDatabase(tmpA.dbPath);
+			const { db: dbA, sqlite: sqliteA, close: closeA } = openDatabase(tmpA.dbPath);
 			const daoA = new GraphDAO(dbA);
+			let rowsA: ReturnType<typeof daoA.queryByRepo>;
 			try {
 				daoA.seed({ payload: VALID_PAYLOADS.ConstraintNode, provenance: VALID_PROVENANCE });
-				const asOf = new Date().toISOString();
-				// Wave-0 throw-stub: Wave 1 (Plan 16-02) GREEN-flips with real Drizzle body.
-				expect(() => daoA.queryByRepo('A', asOf)).toThrow('Wave 1 implements');
+				daoA.seed({ payload: VALID_PAYLOADS.DecisionNode, provenance: VALID_PROVENANCE });
+				// Capture asOf after all writes in DB-A.
+				const lastA = sqliteA.prepare(`SELECT valid_from FROM nodes ORDER BY recorded_at DESC LIMIT 1`).get() as { valid_from: string };
+				const asOfA = new Date(Date.parse(lastA.valid_from) + 1).toISOString();
+				// queryByRepo('primary', asOf) on DB-A returns only DB-A's rows.
+				rowsA = daoA.queryByRepo('primary', asOfA);
+				expect(rowsA.length).toBe(2);
 			} finally {
 				closeA();
 			}
 
-			const { db: dbB, close: closeB } = openDatabase(tmpB.dbPath);
+			const { db: dbB, sqlite: sqliteB, close: closeB } = openDatabase(tmpB.dbPath);
 			const daoB = new GraphDAO(dbB);
 			try {
-				daoB.seed({ payload: VALID_PAYLOADS.ConstraintNode, provenance: VALID_PROVENANCE });
-				const asOf = new Date().toISOString();
-				expect(() => daoB.queryByRepo('B', asOf)).toThrow('Wave 1 implements');
+				daoB.seed({ payload: VALID_PAYLOADS.ContractNode, provenance: VALID_PROVENANCE });
+				// Capture asOf after all writes in DB-B.
+				const lastB = sqliteB.prepare(`SELECT valid_from FROM nodes ORDER BY recorded_at DESC LIMIT 1`).get() as { valid_from: string };
+				const asOfB = new Date(Date.parse(lastB.valid_from) + 1).toISOString();
+				// queryByRepo('primary', asOf) on DB-B returns only DB-B's rows.
+				const rowsB = daoB.queryByRepo('primary', asOfB);
+				expect(rowsB.length).toBe(1);
+				// DB-A's node IDs must NOT appear in DB-B's result (different DBs, no shared state).
+				const rowAIds = rowsA.map(r => r.id);
+				for (const row of rowsB) {
+					expect(rowAIds).not.toContain(row.id);
+				}
 			} finally {
 				closeB();
 			}

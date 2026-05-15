@@ -317,10 +317,23 @@ export class GraphDAO {
 
 	/**
 	 * Phase 16 Plan 16-02 DEEP-06 phase-A — repo-scoped node read.
-	 * Wave-0 throw-stub; Wave 1 fills the body via Drizzle eq(repo_id) + bitemporal clauses.
+	 *
+	 * Mirror of queryAsOf's predicate shape with an additional eq(nodes.repo_id, repoId)
+	 * clause. All Phase-pre-16 rows backfill to repo_id='primary' via migration 0008,
+	 * so queryByRepo('primary', asOf) returns the same row set as queryAsOf(asOf).
+	 *
+	 * @param repoId  Canonical repo identifier (e.g. 'primary' or fingerprint(remoteUrl)).
+	 * @param asOf    ISO-8601 timestamp; bitemporal upper bound for valid_from + invalidated_at + recorded_at.
 	 */
-	queryByRepo(_repoId: string, _asOf: string): NodeRow[] {
-		throw new Error('Wave 1 implements - Plan 16-02');
+	queryByRepo(repoId: string, asOf: string): NodeRow[] {
+		return this.db.select().from(nodes).where(
+			and(
+				eq(nodes.repo_id, repoId),
+				lte(nodes.valid_from, asOf),
+				or(isNull(nodes.invalidated_at), gt(nodes.invalidated_at, asOf)),
+				lte(nodes.recorded_at, asOf),
+			)
+		).all().map((r) => this.materialize(r));
 	}
 
 	/**
@@ -396,7 +409,17 @@ export class GraphDAO {
 	 * @param value    The exact string to match
 	 * @param asOf     ISO-8601 transaction time
 	 */
-	queryByAnchor(args: { jsonPath: string; value: string }, asOf: string): NodeRow[] {
+	/**
+	 * Phase 16 Plan 16-02 DEEP-06 phase-A extension: optional `repoId` default-param.
+	 * Two-arg callers (all existing call sites) default to repoId='primary' — back-compat
+	 * guaranteed since all pre-Phase-16 rows have repo_id='primary' via migration 0008.
+	 * Three-arg callers (future cross-repo readers, Phase 17 phase-B) filter to that repo only.
+	 */
+	queryByAnchor(
+		args: { jsonPath: string; value: string },
+		asOf: string,
+		repoId: string = 'primary',
+	): NodeRow[] {
 		// drizzle-orm 0.45.2's `drizzle()` factory return type intersects BetterSQLite3Database
 		// with `{ $client: Database }` — accessing the underlying handle is the path of least
 		// resistance for json_extract over LIKE/LOWER ambiguity. NodePayload type is inferred
@@ -407,12 +430,13 @@ export class GraphDAO {
 			SELECT id, kind, payload, confidence, valid_from, invalidated_at, recorded_at, superseded_by
 			FROM nodes
 			WHERE json_extract(payload, ?) = ?
+			  AND repo_id = ?
 			  AND valid_from <= ?
 			  AND (invalidated_at IS NULL OR invalidated_at > ?)
 			  AND recorded_at <= ?
 			ORDER BY valid_from ASC
 		`);
-		const rows = stmt.all(args.jsonPath, args.value, asOf, asOf, asOf) as Array<{
+		const rows = stmt.all(args.jsonPath, args.value, repoId, asOf, asOf, asOf) as Array<{
 			id: string;
 			kind: string;
 			payload: string;
