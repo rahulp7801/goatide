@@ -82,6 +82,33 @@ export type RationaleHandlerResult =
 
 export type RationaleHandler = (payload: RationaleHandlerPayload) => Promise<RationaleHandlerResult>;
 
+/**
+ * Phase 16 Plan 16-03 (DEEP-03) — hypothetical-impact fetch callback. Registered by
+ * extension activation on construction; panel.ts forwards the webview's
+ * canvas.requestConstraintLift message into this callback (transport-only pattern,
+ * mirrors registerRationaleHandler). The callback is responsible for the
+ * kernelClient.constraintLift invocation + kernel-degraded detection.
+ *
+ * Contract:
+ *   - `asOf` MUST be the receipt's graph_snapshot_tx_time captured at canvas-show time
+ *     (Pitfall 1 / REC-03 invariant — NEVER new Date().toISOString() at click time).
+ *   - On kernel-degraded the callback returns `{ kind: 'degraded' }`. panel.ts re-posts
+ *     canvas.show with `hypothetical_impact_error = 'kernel-degraded'`.
+ *   - On success returns `{ kind: 'ok', hypothetical_impact, confidence_score }`.
+ */
+export interface ConstraintLiftHandlerPayload {
+	constraint_node_id: string;
+	asOf: string;
+	max_hops?: 1 | 2 | 3;
+	confidence_threshold?: number;
+}
+
+export type ConstraintLiftHandlerResult =
+	| { kind: 'ok'; hypothetical_impact: import('./messages.js').ComplianceReportForCanvas; confidence_score: number }
+	| { kind: 'degraded' };
+
+export type ConstraintLiftHandler = (payload: ConstraintLiftHandlerPayload) => Promise<ConstraintLiftHandlerResult>;
+
 const VIEW_TYPE = 'goatide.canvas';
 
 /**
@@ -101,6 +128,9 @@ export class CanvasPanel {
 	// Phase 14 Plan 14-02 (DEEP-01) — Rationale-chain handler callback. Registered by the
 	// extension activation; invoked from handleMessage('canvas.requestRationale').
 	private rationaleHandler?: RationaleHandler;
+	// Phase 16 Plan 16-03 (DEEP-03) — Constraint-lift handler callback. Registered by the
+	// extension activation; invoked from handleMessage('canvas.requestConstraintLift').
+	private constraintLiftHandler?: ConstraintLiftHandler;
 	// Phase 14 Plan 14-02 (DEEP-01) — The most recent payload posted to the webview via
 	// showAndAwait. Captured so handleMessage('canvas.requestRationale') can extract the
 	// citation seed + graph_snapshot_tx_time at message-receive time. Cleared on dispose().
@@ -196,6 +226,20 @@ export class CanvasPanel {
 	 */
 	registerRationaleHandler(handler: RationaleHandler): void {
 		this.rationaleHandler = handler;
+	}
+
+	/**
+	 * Phase 16 Plan 16-03 (DEEP-03) — Register the constraint-lift callback. The
+	 * extension activation wires this on construction; panel.ts forwards the webview's
+	 * canvas.requestConstraintLift message into the callback (transport-only pattern,
+	 * mirrors registerRationaleHandler). The callback calls kernelClient.constraintLift
+	 * and returns ok/degraded; panel.ts re-posts canvas.show with hypothetical_impact.
+	 *
+	 * Pitfall 1 fence: asOf passed to the callback is ALWAYS lastPayload.graph_snapshot_tx_time
+	 * (captured at canvas-show time), NEVER a freshly-derived Date at click time.
+	 */
+	registerConstraintLiftHandler(handler: ConstraintLiftHandler): void {
+		this.constraintLiftHandler = handler;
 	}
 
 	/**
@@ -356,6 +400,49 @@ export class CanvasPanel {
 					await this.rpc.show(updated);
 				} catch {
 					await this.rpc.show({ ...lp, rationale_error: 'kernel-degraded' });
+				}
+			})();
+			return;
+		}
+		if (msg.type === 'canvas.requestConstraintLift') {
+			// Phase 16 Plan 16-03 (DEEP-03) — "Hypothetical Impact" button click.
+			//
+			// Pitfall 1 fence (REC-03): asOf is `lastPayload.graph_snapshot_tx_time`, captured
+			// at canvas-show time. NEVER new Date().toISOString() at click time. Empty-graph
+			// defensive fallback to new Date() ONLY when lastPayload is null on first-open
+			// (degraded path — no payload context yet).
+			void (async () => {
+				const lp = this.lastPayload;
+				if (!lp) {
+					return;  // No payload context (canvas already cleared) — drop silently.
+				}
+				if (!this.constraintLiftHandler) {
+					await this.rpc.show({ ...lp, hypothetical_impact_error: 'kernel-degraded' });
+					return;
+				}
+				// Pitfall 1 fence: asOf from lastPayload (captured at canvas-show time),
+				// NOT fresh new Date() at click time. Defensive fallback only when lastPayload is null.
+				const asOf = lp.graph_snapshot_tx_time ?? new Date().toISOString();
+				try {
+					const result = await this.constraintLiftHandler({
+						constraint_node_id: msg.payload.constraint_node_id,
+						asOf,
+						max_hops: msg.payload.max_hops,
+						confidence_threshold: msg.payload.confidence_threshold,
+					});
+					if (result.kind === 'ok') {
+						const updated: import('./messages.js').CanvasShowPayload = {
+							...lp,
+							hypothetical_impact: result.hypothetical_impact,
+							hypothetical_impact_error: null,
+						};
+						this.lastPayload = updated;
+						await this.rpc.show(updated);
+					} else {
+						await this.rpc.show({ ...lp, hypothetical_impact: null, hypothetical_impact_error: 'kernel-degraded' });
+					}
+				} catch {
+					await this.rpc.show({ ...lp, hypothetical_impact: null, hypothetical_impact_error: 'kernel-degraded' });
 				}
 			})();
 			return;

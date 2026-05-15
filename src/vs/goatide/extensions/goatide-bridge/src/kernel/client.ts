@@ -406,12 +406,13 @@ export class KernelClient {
 	}
 
 	/**
-	 * Phase 16 Plan 16-03 (DEEP-03) — Wave-0 throw-stub; Wave 2 (Plan 16-03) replaces with
-	 * `return this.sendWithTimeout(ConstraintLiftRequest, params)`. Typed compile surface
-	 * allows callers (bridge integration tests) to reference the method at Wave-0 close.
+	 * Phase 16 Plan 16-03 (DEEP-03) — hypothetical-impact ripple analysis.
+	 * Mirrors queryRationaleAt + queryGraphSnapshot sibling shape.
+	 * `params.asOf` MUST be the receipt's graph_snapshot_tx_time (Pitfall 1 / REC-03
+	 * single-snapshot invariant — NEVER new Date().toISOString() at click time).
 	 */
-	public constraintLift(_params: ConstraintLiftParams): Promise<ConstraintLiftResult> {
-		throw new Error('Wave 2 implements - Plan 16-03');
+	public constraintLift(params: ConstraintLiftParams): Promise<ConstraintLiftResult> {
+		return this.sendWithTimeout(ConstraintLiftRequest, params);
 	}
 
 	heartbeat(): Promise<HeartbeatResult> {

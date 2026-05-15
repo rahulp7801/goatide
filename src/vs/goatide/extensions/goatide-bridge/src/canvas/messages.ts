@@ -190,6 +190,12 @@ const CanvasShowPayloadSchema = z.object({
 	// fetch path. Set by panel.ts handleMessage when kernelClient.isConnected() is false or the
 	// RPC throws. Separates degraded-fork rendering (kernel offline) from empty-graph rendering.
 	hypothetical_impact_error: z.literal('kernel-degraded').nullable().optional(),
+	// Phase 16 Plan 16-03 (DEEP-03) — host-side computed button eligibility flag.
+	// True when payload.citations includes at least one citation whose cited node is a
+	// ConstraintNode (Open Decision 7 — host-side determination avoids coupling the
+	// webview to citation-payload shape). Wave 3 (Plan 16-04) DriftFindings.tsx reads
+	// this prop to render the constraint-lift button conditionally.
+	constraint_lift_eligible: z.boolean().optional(),
 });
 export type CanvasShowPayload = z.infer<typeof CanvasShowPayloadSchema>;
 

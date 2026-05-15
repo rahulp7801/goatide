@@ -286,7 +286,7 @@
 
 **No bridge package.json changes in this phase** — no mirror regen required.
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 - [ ] 16-01-wave0-migration-fingerprint-stubs-PLAN.md — Wave 0: migration 0008_cross_repo_identity.sql + drizzle schema + repo-fingerprint.ts + Wave-0 throw-stubs (dao.queryByRepo + constraint-lift.ts) + walkRippleEdges export + bridge mirror types + HypotheticalImpact stub + 8 RED tests + refuse-unbounded-ripple-walk widening + meta-test
 - [ ] 16-02-deep06-deep03-kernel-bodies-PLAN.md — Wave 1: dao.queryByRepo real body + queryByAnchor extension + constraint-lift.ts real body + graph.constraintLift handler under requireAuth + 13 RED → GREEN kernel tests + full-suite back-compat invariant
@@ -343,5 +343,5 @@
 | 13. v1.2 Closeout | — | Closed | 2026-05-13 |
 | 14. Foundation RPCs | 5/5 | Closed | 2026-05-14 |
 | 15. Graph Inspector Panel | 4/5 | Complete    | 2026-05-15 |
-| 16. Ripple Analysis + Cross-Repo Schema | 1/5 | In Progress|  |
+| 16. Ripple Analysis + Cross-Repo Schema | 2/5 | In Progress|  |
 | 17. Cross-Repo UI + Polish Cluster | 0/TBD | Not started | — |

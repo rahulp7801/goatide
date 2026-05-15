@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Closeout
 status: planning
-last_updated: "2026-05-15T04:22:08.175Z"
-last_activity: "2026-05-14 — Phase 15 Plan 04 closed (DEEP-02 Wave-3: 9 webview files + wireToInspectorRow adapter; 5 Wave-0 RED tests resolved [3 GREEN-flipped + 2 it.skip spike-fail downgrade]; Graphify dark theme + canonical-5 palette + first-fcose/subsequent-preset + 100ms slider debounce + Pitfall 1 carveout; dist/inspector/index.js produced; 23/23 inspector GREEN + 3 PENDING; 109/109 full bridge suite)"
+last_updated: "2026-05-15T04:50:07.295Z"
+last_activity: "2026-05-14 — Phase 16 Plan 01 closed (Wave-0: 0008_cross_repo_identity.sql migration + SHA-256 repo-fingerprint helper + dao.queryByRepo + walkRippleEdges export + constraint-lift.ts stub + ConstraintLiftRequest + bridge mirror types + HypotheticalImpact.tsx stub + 8 RED test files + refuse-unbounded-ripple-walk.sh widened + META PASS meta-test)"
 progress:
   total_phases: 19
   completed_phases: 3
   total_plans: 20
-  completed_plans: 17
+  completed_plans: 18
 ---
 
 # GoatIDE Project State
@@ -22,14 +22,14 @@ progress:
 
 - **Active milestone:** v2.0 — Deep Features + Polish + Windows auto-update (kickoff 2026-05-13)
 - **Active phase:** 16 — Ripple Analysis + Cross-Repo Schema Migration (DEEP-03 + DEEP-06-A) — in progress
-- **Plan:** 02 — next (Wave-1 queryByRepo body + runConstraintLiftAnalysis body + RPC handler)
+- **Plan:** 03 — next (Wave-2 bridge KernelClient.constraintLift real body)
 - **Status:** Ready to plan
 - **Last closed phase:** 15 — Graph Inspector Panel (DEEP-02) (closed 2026-05-14)
-- **Last closed plan:** 16-01 — Wave-0 migration + fingerprint + throw-stubs (closed 2026-05-14)
-- **Last activity:** 2026-05-14 — Phase 16 Plan 01 closed (Wave-0: 0008_cross_repo_identity.sql migration + SHA-256 repo-fingerprint helper + dao.queryByRepo + walkRippleEdges export + constraint-lift.ts stub + ConstraintLiftRequest + bridge mirror types + HypotheticalImpact.tsx stub + 8 RED test files + refuse-unbounded-ripple-walk.sh widened + META PASS meta-test)
-- **Last session:** 2026-05-14T21:21:00Z (stopped at: Completed 16-01-PLAN.md)
+- **Last closed plan:** 16-02 — Wave-1 queryByRepo body + runConstraintLiftAnalysis + ConstraintLiftRequest handler (closed 2026-05-15)
+- **Last activity:** 2026-05-15 — Phase 16 Plan 02 closed (Wave-1: dao.queryByRepo real Drizzle body + queryByAnchor repoId param + runConstraintLiftAnalysis BFS+confidence+sort + ConstraintLiftRequest handler via requireAuth + 13 RED→GREEN + 406/406 kernel suite PASS)
+- **Last session:** 2026-05-15T04:48:30Z (stopped at: Completed 16-02-PLAN.md)
 
-Progress bar (Phase 16 plans): `[██░░░]` 1/5 plans complete (20%)
+Progress bar (Phase 16 plans): `[████░]` 2/5 plans complete (40%)
 Progress bar (v2.0 phases):    `██░░` 2/4 phases complete (Phase 16 in progress)
 
 ---
@@ -42,6 +42,15 @@ Progress bar (v2.0 phases):    `██░░` 2/4 phases complete (Phase 16 in p
 > - v1.0 runtime blockers: incomplete `out/` (preLaunch sentinel-check bug) + `better-sqlite3` ABI mismatch — Phase 9 addressed sentinel; Phase 13 CLOSE-01 will close ABI scripting
 > - Working launch recipe (`reference_goatide_launch_recipe.md`): `npm install && npm run compile && npm run transpile-client && cd kernel && npm install && ...` — Phase 13 collapses the kernel npm-install dance into one step
 > - v2.0 milestone scope locked 2026-05-12
+
+### 2026-05-15 — Phase 16 Plan 02 closed (Wave-1 kernel real bodies — DEEP-03 + DEEP-06-A)
+
+- **Decision (queryByAnchor repoId default-param SQL position):** `AND repo_id = ?` placed after `json_extract(payload, ?) = ?` clause and before the bitemporal clauses. Consistent with Drizzle `queryByRepo` predicate ordering; all 2-arg callers default to 'primary' (back-compat — all pre-Phase-16 rows have repo_id='primary' via migration 0008).
+- **Decision (createRpcServer connection param IIFE pattern):** `args.connection ?? (() => { createMessageConnection(reader, writer) })()` — avoids conditional branching on the existing reader/writer default path. Test harness passes pre-built connection; stdio production uses reader/writer as before.
+- **Decision (generated_at = input.asOf in hypothetical_impact):** Pitfall 1 single-snapshot invariant. The constraint-lift report is anchored to the caller's bitemporal point, not the wall clock at query time. Zero Date.now/new Date in the handler path (awk-slice grep PASS).
+- **Decision (nodeCap default = 2000 for constraint-lift):** Plan-specified; different from ripple.ts default of 1000. Configurable via input.nodeCap for test truncation assertions.
+- **Decision (confidence_score = 1.0 when totalRows === 0):** Vacuously all-explicit for an empty walk — sensible default, consistent with "no evidence of inferred nodes" reading.
+- **Decision (migration-cross-repo.spec.ts test #5 uses separate temp DBs, not mocked ULIDs):** Simpler approach that directly demonstrates the DEEP-06 semantic: each repo carries its own SQLite DB. No vi.mock needed; separate DB isolation is the canonical test pattern.
 
 ### 2026-05-14 — Phase 16 Plan 01 closed (Wave-0 migration + fingerprint + throw-stubs — DEEP-03 + DEEP-06-A)
 
