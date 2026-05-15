@@ -16,6 +16,7 @@ export {
 	QueryRationaleAtRequest,
 	QueryGraphSnapshotRequest,
 	QueryTimelineTransitionsRequest,
+	ConstraintLiftRequest,
 	ProposeEditRequest,
 	RecordRejectionRequest,
 	RecordContractOverrideRequest,
@@ -50,4 +51,6 @@ export {
 	type HeartbeatResult,
 	type AuthenticateParams,
 	type AuthenticateResult,
+	type ConstraintLiftParams,
+	type ConstraintLiftResult,
 } from './methods.js';

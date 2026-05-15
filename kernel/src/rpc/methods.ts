@@ -530,3 +530,24 @@ export interface DriftProgressNotification {
 
 export const RunRippleProgressiveRequest = new RequestType<RunRippleProgressiveParams, RunRippleProgressiveResult, Error>('graph.runRippleProgressive');
 export const DriftProgressNotificationType = new NotificationType<DriftProgressNotification>('graph.driftProgress');
+
+// -------- graph.constraintLift (Phase 16 Plan 16-01 — DEEP-03 wire type; handler lands Wave 1 in Plan 16-02) --------
+//
+// Hypothetical-impact analyzer seeded from a ConstraintNode. Walks outgoing
+// (parent_of | references | derived_from | protects) edges up to maxHops (1|2|3 literal-union).
+// Mandate B: read-only — the handler NEVER calls atomicAccept/proposeEdit/recordRejection/
+// recordContractOverride. The bridge-side Mandate B regression test in
+// constraint-lift-no-graph-mutation.test.ts verifies this via KernelClient.prototype spy.
+// refuse-unbounded-ripple-walk.sh (widened in Plan 16-01 Task 5) CI-gates max_hops <= 3.
+
+export interface ConstraintLiftParams {
+	constraint_node_id: string;
+	asOf: string;
+	max_hops?: 1 | 2 | 3;          // default 3
+	confidence_threshold?: number;  // 0.0..1.0; default 0.5
+}
+export interface ConstraintLiftResult {
+	hypothetical_impact: ComplianceReport;
+	confidence_score: number;
+}
+export const ConstraintLiftRequest = new RequestType<ConstraintLiftParams, ConstraintLiftResult, Error>('graph.constraintLift');

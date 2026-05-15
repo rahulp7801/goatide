@@ -316,6 +316,14 @@ export class GraphDAO {
 	}
 
 	/**
+	 * Phase 16 Plan 16-02 DEEP-06 phase-A — repo-scoped node read.
+	 * Wave-0 throw-stub; Wave 1 fills the body via Drizzle eq(repo_id) + bitemporal clauses.
+	 */
+	queryByRepo(_repoId: string, _asOf: string): NodeRow[] {
+		throw new Error('Wave 1 implements - Plan 16-02');
+	}
+
+	/**
 	 * Bitemporal-filtered edges at the given asOf timestamp. Phase 15 Plan 15-01
 	 * (DEEP-02). Predicate identical to {@link queryAsOf} for nodes: edge is visible iff
 	 * `valid_from <= asOf` AND (`invalidated_at IS NULL` OR `invalidated_at > asOf`) AND

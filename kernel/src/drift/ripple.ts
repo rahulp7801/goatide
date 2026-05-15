@@ -200,8 +200,10 @@ export function runRippleAnalysis(input: RunRippleAnalysisInput): ComplianceRepo
  *
  * @returns rows including the anchor at level=0; caller filters as needed. edge_path for
  *          level=0 is `''`; for level≥1 is `/<kind>:<edge_id>[/...]`.
+ *
+ * Exported for sibling reuse by kernel/src/drift/constraint-lift.ts (Phase 16 DEEP-03).
  */
-function walkRippleEdges(
+export function walkRippleEdges(
 	sqlite: Database.Database,
 	anchorId: string,
 	maxHops: 1 | 2 | 3,
