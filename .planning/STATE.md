@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Closeout
-status: planning
-last_updated: "2026-05-15T05:05:31.685Z"
-last_activity: "2026-05-15 — Phase 16 Plan 02 closed (Wave-1: dao.queryByRepo real Drizzle body + queryByAnchor repoId param + runConstraintLiftAnalysis BFS+confidence+sort + ConstraintLiftRequest handler via requireAuth + 13 RED→GREEN + 406/406 kernel suite PASS)"
+status: executing
+last_updated: "2026-05-15T05:26:26.942Z"
+last_activity: "2026-05-15 — Phase 16 Plan 03 closed (Wave-2: KernelClient.constraintLift sendWithTimeout body + CanvasPanel.registerConstraintLiftHandler + handleMessage canvas.requestConstraintLift Pitfall-1-fenced + extension.ts handler closure + tier-dispatch constraint_lift_eligible + 5 Mandate B spy tests GREEN + 114/114 passing bridge tests)"
 progress:
   total_phases: 19
   completed_phases: 3
   total_plans: 20
-  completed_plans: 19
+  completed_plans: 20
 ---
 
 # GoatIDE Project State
@@ -22,14 +22,14 @@ progress:
 
 - **Active milestone:** v2.0 — Deep Features + Polish + Windows auto-update (kickoff 2026-05-13)
 - **Active phase:** 16 — Ripple Analysis + Cross-Repo Schema Migration (DEEP-03 + DEEP-06-A) — in progress
-- **Plan:** 04 — next (Wave-3 webview DriftFindings button + HypotheticalImpact render)
+- **Plan:** 05 — next (phase-verify: run VALIDATION.md + close phase 16)
 - **Status:** Ready to execute
 - **Last closed phase:** 15 — Graph Inspector Panel (DEEP-02) (closed 2026-05-14)
-- **Last closed plan:** 16-03 — Wave-2 bridge KernelClient.constraintLift real body + ConstraintLiftHandler + constraint_lift_eligible + 5 Mandate B GREEN (closed 2026-05-15)
-- **Last activity:** 2026-05-15 — Phase 16 Plan 03 closed (Wave-2: KernelClient.constraintLift sendWithTimeout body + CanvasPanel.registerConstraintLiftHandler + handleMessage canvas.requestConstraintLift Pitfall-1-fenced + extension.ts handler closure + tier-dispatch constraint_lift_eligible + 5 Mandate B spy tests GREEN + 114/114 passing bridge tests)
-- **Last session:** 2026-05-15T05:05:31.679Z
+- **Last closed plan:** 16-04 — Wave-3 webview UI: DriftFindings button + HypotheticalImpact real body + App.tsx integration + 6 RED GREEN + 120/120 passing bridge tests (closed 2026-05-15)
+- **Last activity:** 2026-05-15 — Phase 16 Plan 04 closed (Wave-3: DriftFindings constraintLiftEligible button + HypotheticalImpact real body + App.tsx HypotheticalImpact render + kernel-degraded notice + 6 Wave-0 RED GREEN + 120/120 passing bridge tests)
+- **Last session:** 2026-05-15T05:26:26.936Z
 
-Progress bar (Phase 16 plans): `[██████░░░░]` 3/5 plans complete (60%)
+Progress bar (Phase 16 plans): `[████████░░]` 4/5 plans complete (80%)
 Progress bar (v2.0 phases):    `██░░` 2/4 phases complete (Phase 16 in progress)
 
 ---
@@ -42,6 +42,13 @@ Progress bar (v2.0 phases):    `██░░` 2/4 phases complete (Phase 16 in p
 > - v1.0 runtime blockers: incomplete `out/` (preLaunch sentinel-check bug) + `better-sqlite3` ABI mismatch — Phase 9 addressed sentinel; Phase 13 CLOSE-01 will close ABI scripting
 > - Working launch recipe (`reference_goatide_launch_recipe.md`): `npm install && npm run compile && npm run transpile-client && cd kernel && npm install && ...` — Phase 13 collapses the kernel npm-install dance into one step
 > - v2.0 milestone scope locked 2026-05-12
+
+### 2026-05-15 — Phase 16 Plan 04 closed (Wave-3 webview UI — DEEP-03)
+
+- **Decision (DriftFindingsCitation flexible interface):** Test mocks supply `cited_payload.kind`; App.tsx adapter marks first citation as ConstraintNode when `constraintLiftEligible` (host-verified via tier-dispatch). Avoids coupling RenderedCitationForCanvas to DEEP-03 fields, keeps webview-side defensive check functional for both test and production paths.
+- **Decision (WebviewRpc.postConstraintLiftRequest typed method):** Added to WebviewRpc instead of inlining `vscode.postMessage` directly — consistent with postRationaleRequest shape; keeps all WebviewToHost message sends typed through the rpc facade.
+- **Decision (confidence_band defensive cast in HypotheticalImpact filterRow):** Phase 16-02 added `confidence_band` to ConstraintLiftRow but ComplianceRowSchema in messages.ts predates DEEP-03 and doesn't include it. Cast via `(r as unknown as {confidence_band?: string})` is explicit and commented; schema alignment deferred to v2.1.
+- **Auto-fix (Rule 1 Bug) hygiene gate blocked multi-line JSX comments with space-indented continuations:** Same hygiene pattern as Plan 16-03 (Unicode section sign) and Plan 15-01 (Pitfall comment rephrasing). JSX comment continuations must be single-line.
 
 ### 2026-05-15 — Phase 16 Plan 03 closed (Wave-2 bridge transport — DEEP-03)
 
