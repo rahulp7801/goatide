@@ -39,6 +39,10 @@ export const nodes = sqliteTable('nodes', {
 	// SQLite's self-referential FKs interact awkwardly with append-only triggers; the DAO
 	// owns this validation.
 	superseded_by: text('superseded_by'),
+	// Phase 16 Plan 16-01 DEEP-06 phase-A — cross-repo identity column. Backfills to
+	// 'primary' for all existing rows via ALTER TABLE (SQLite 3.42+ NOT NULL DEFAULT semantics).
+	// Used by dao.queryByRepo (Wave 1) + Phase 17 cross-repo enumeration (phase-B).
+	repo_id: text('repo_id').notNull().default('primary'),
 }, (t) => [
 	check('nodes_kind_allowlist',
 		sql`${t.kind} IN ('ConstraintNode','DecisionNode','ContractNode','OpenQuestion','Attempt')`),

@@ -40,6 +40,9 @@ describe('migrations', () => {
 				{ type: 'index', name: 'nodes_invalidated_at' },
 				{ type: 'index', name: 'edges_active_src' },
 				{ type: 'index', name: 'edges_active_dst' },
+				// Phase 16 Plan 16-01 DEEP-06 phase-A — cross-repo identity indexes.
+				{ type: 'index', name: 'nodes_repo_id' },
+				{ type: 'index', name: 'edges_repo_id' },
 			]));
 		} finally {
 			close();

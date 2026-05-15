@@ -57,6 +57,13 @@
       "when": 1778209260000,
       "tag": "0007_contract_overrides_metric",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1778817578000,
+      "tag": "0008_cross_repo_identity",
+      "breakpoints": true
     }
   ]
 }

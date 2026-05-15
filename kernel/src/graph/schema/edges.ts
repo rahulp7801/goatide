@@ -32,6 +32,10 @@ export const edges = sqliteTable('edges', {
 	recorded_at: text('recorded_at').notNull().default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
 	// Soft FK on superseded_by → nodes.id, enforced by the DAO (Wave 2). Same rationale as nodes.
 	superseded_by: text('superseded_by'),
+	// Phase 16 Plan 16-01 DEEP-06 phase-A — cross-repo identity column. Symmetric with nodes.repo_id.
+	// Backfills to 'primary' for all existing rows via ALTER TABLE (SQLite 3.42+ NOT NULL DEFAULT
+	// semantics). Used by dao.queryByRepo (Wave 1) + Phase 17 cross-repo enumeration (phase-B).
+	repo_id: text('repo_id').notNull().default('primary'),
 }, (t) => [
 	check('edges_kind_allowlist',
 		sql`${t.kind} IN ('parent_of','references','supersedes','derived_from','protects')`),
