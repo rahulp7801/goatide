@@ -817,3 +817,70 @@ button {
 	font-style: italic;
 	color: var(--vscode-editorWarning-foreground, #cca700);
 }
+
+/* ========================================================================================
+ * Phase 16 Plan 16-04 (DEEP-03) — Hypothetical Impact section + constraint-lift button
+ * Visual idiom: --vscode-editorWarning-foreground amber accent (consistent with Phase 14
+ * Superseded badge + rationale-chain__superseded idiom for amber emphasis).
+ * All selectors use only --vscode-* registered variables (Phase 15 Plan 15-04 discipline).
+ * ====================================================================================== */
+
+.hypothetical-impact-section {
+	margin-top: 1rem;
+	padding: 0.75rem;
+	border-left: 3px solid var(--vscode-editorWarning-foreground, #cca700);
+	background-color: var(--vscode-editorWarning-background, rgba(204, 167, 0, 0.08));
+	border-radius: 0 4px 4px 0;
+}
+
+.hypothetical-impact-badge {
+	display: inline-block;
+	padding: 0.125rem 0.5rem;
+	background: var(--vscode-editorWarning-foreground, #cca700);
+	color: var(--vscode-editor-background, #1e1e1e);
+	border-radius: 3px;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	margin-bottom: 0.5rem;
+}
+
+.hypothetical-impact-controls {
+	margin: 0.5rem 0;
+	display: flex;
+	gap: 1rem;
+	align-items: center;
+	font-size: 12px;
+	color: var(--vscode-foreground, #cccccc);
+}
+
+.hypothetical-impact-controls fieldset {
+	border: 1px solid var(--vscode-panel-border, #2b2b2b);
+	border-radius: 3px;
+	padding: 0.25rem 0.5rem;
+	display: flex;
+	gap: 0.75rem;
+	align-items: center;
+}
+
+.hypothetical-impact-controls legend {
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
+	padding: 0 0.25rem;
+}
+
+.drift-findings-constraint-lift-button {
+	margin-top: 0.5rem;
+	padding: 0.375rem 0.75rem;
+	background: var(--vscode-button-background, #0e639c);
+	color: var(--vscode-button-foreground, #ffffff);
+	border: 1px solid var(--vscode-button-border, transparent);
+	border-radius: 3px;
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 500;
+	transition: background-color 120ms ease;
+}
+
+.drift-findings-constraint-lift-button:hover {
+	background: var(--vscode-button-hoverBackground, #1177bb);
+}
