@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Closeout
 status: planning
-last_updated: "2026-05-15T04:50:07.295Z"
-last_activity: "2026-05-14 — Phase 16 Plan 01 closed (Wave-0: 0008_cross_repo_identity.sql migration + SHA-256 repo-fingerprint helper + dao.queryByRepo + walkRippleEdges export + constraint-lift.ts stub + ConstraintLiftRequest + bridge mirror types + HypotheticalImpact.tsx stub + 8 RED test files + refuse-unbounded-ripple-walk.sh widened + META PASS meta-test)"
+last_updated: "2026-05-15T05:05:31.685Z"
+last_activity: "2026-05-15 — Phase 16 Plan 02 closed (Wave-1: dao.queryByRepo real Drizzle body + queryByAnchor repoId param + runConstraintLiftAnalysis BFS+confidence+sort + ConstraintLiftRequest handler via requireAuth + 13 RED→GREEN + 406/406 kernel suite PASS)"
 progress:
   total_phases: 19
   completed_phases: 3
   total_plans: 20
-  completed_plans: 18
+  completed_plans: 19
 ---
 
 # GoatIDE Project State
@@ -22,14 +22,14 @@ progress:
 
 - **Active milestone:** v2.0 — Deep Features + Polish + Windows auto-update (kickoff 2026-05-13)
 - **Active phase:** 16 — Ripple Analysis + Cross-Repo Schema Migration (DEEP-03 + DEEP-06-A) — in progress
-- **Plan:** 03 — next (Wave-2 bridge KernelClient.constraintLift real body)
-- **Status:** Ready to plan
+- **Plan:** 04 — next (Wave-3 webview DriftFindings button + HypotheticalImpact render)
+- **Status:** Ready to execute
 - **Last closed phase:** 15 — Graph Inspector Panel (DEEP-02) (closed 2026-05-14)
-- **Last closed plan:** 16-02 — Wave-1 queryByRepo body + runConstraintLiftAnalysis + ConstraintLiftRequest handler (closed 2026-05-15)
-- **Last activity:** 2026-05-15 — Phase 16 Plan 02 closed (Wave-1: dao.queryByRepo real Drizzle body + queryByAnchor repoId param + runConstraintLiftAnalysis BFS+confidence+sort + ConstraintLiftRequest handler via requireAuth + 13 RED→GREEN + 406/406 kernel suite PASS)
-- **Last session:** 2026-05-15T04:48:30Z (stopped at: Completed 16-02-PLAN.md)
+- **Last closed plan:** 16-03 — Wave-2 bridge KernelClient.constraintLift real body + ConstraintLiftHandler + constraint_lift_eligible + 5 Mandate B GREEN (closed 2026-05-15)
+- **Last activity:** 2026-05-15 — Phase 16 Plan 03 closed (Wave-2: KernelClient.constraintLift sendWithTimeout body + CanvasPanel.registerConstraintLiftHandler + handleMessage canvas.requestConstraintLift Pitfall-1-fenced + extension.ts handler closure + tier-dispatch constraint_lift_eligible + 5 Mandate B spy tests GREEN + 114/114 passing bridge tests)
+- **Last session:** 2026-05-15T05:05:31.679Z
 
-Progress bar (Phase 16 plans): `[████░]` 2/5 plans complete (40%)
+Progress bar (Phase 16 plans): `[██████░░░░]` 3/5 plans complete (60%)
 Progress bar (v2.0 phases):    `██░░` 2/4 phases complete (Phase 16 in progress)
 
 ---
@@ -42,6 +42,14 @@ Progress bar (v2.0 phases):    `██░░` 2/4 phases complete (Phase 16 in p
 > - v1.0 runtime blockers: incomplete `out/` (preLaunch sentinel-check bug) + `better-sqlite3` ABI mismatch — Phase 9 addressed sentinel; Phase 13 CLOSE-01 will close ABI scripting
 > - Working launch recipe (`reference_goatide_launch_recipe.md`): `npm install && npm run compile && npm run transpile-client && cd kernel && npm install && ...` — Phase 13 collapses the kernel npm-install dance into one step
 > - v2.0 milestone scope locked 2026-05-12
+
+### 2026-05-15 — Phase 16 Plan 03 closed (Wave-2 bridge transport — DEEP-03)
+
+- **Decision (constraint_lift_eligible from citationDetails not raw citations):** `citationDetails` is already hydrated by `queryNodes` in `hydrateCitationDetails`; `.some(d => d.kind === 'ConstraintNode')` needs no extra RPC. Raw `citations` from the receipt don't carry node kind. Open Decision 7 host-side pattern preserved.
+- **Decision (extension.ts handler registered after panel creation, before registerSaveGate):** No prior `registerRationaleHandler` call existed in extension.ts (Phase 14 defined the method but never called it from extension activation). Placed constraint-lift registration in the nearest appropriate activation slot.
+- **Decision (Mandate B spy tests use disconnected KernelClient for tests 1-4):** `constraintLift` calls `sendWithTimeout` which rejects immediately when `connection === null`. No write RPCs are in the code path so `callCount === 0` is guaranteed without spawning a real kernel.
+- **Decision (Test 5 uses plain object stub with throw-on-write methods):** If any banned write RPC were invoked during the handler closure flow, the stub would throw and the test would fail. Pass = write-free bridge transport.
+- **Auto-fix (Rule 1 Bug) hygiene gate blocked Unicode section sign in comment:** messages.ts comment used `§7` (U+00A7); VS Code build hygiene gate blocks unexpected Unicode chars. Changed to `7` (ASCII digit). No semantic impact.
 
 ### 2026-05-15 — Phase 16 Plan 02 closed (Wave-1 kernel real bodies — DEEP-03 + DEEP-06-A)
 

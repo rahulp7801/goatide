@@ -157,4 +157,16 @@ export class WebviewRpc {
 		const msg: WebviewToHost = { type: 'canvas.requestRationale' };
 		this.vscode.postMessage(msg);
 	}
+
+	/**
+	 * Phase 16 Plan 16-04 (DEEP-03) — request hypothetical impact analysis for the
+	 * constraint node identified in the current receipt. The host extracts asOf from
+	 * lastPayload.graph_snapshot_tx_time (Pitfall 1 — REC-03: NEVER Date.now() at click
+	 * time). Payload carries only the constraint_node_id + optional depth + threshold;
+	 * asOf threading is host-only (panel.ts handleMessage, Plan 16-03 Task 1).
+	 */
+	postConstraintLiftRequest(payload: { constraint_node_id: string; max_hops?: 1 | 2 | 3; confidence_threshold?: number }): void {
+		const msg: WebviewToHost = { type: 'canvas.requestConstraintLift', payload };
+		this.vscode.postMessage(msg);
+	}
 }

@@ -9,6 +9,12 @@
 // fills the full implementation: labeled card, jump-to-line click handler (postMessage),
 // contract-link rendering (resolves contract_node_id via panel-side citation lookup).
 //
+// Phase 16 Plan 16-04 (DEEP-03) — Gains `constraintLiftEligible` prop (host-computed in
+// Plan 16-03 tier-dispatch.ts and threaded onto CanvasShowPayload). When true AND at least
+// one citation has cited_payload.kind === 'ConstraintNode', renders a button:
+// "What would break if this constraint is lifted?" (Mandate B layer 3 — webview conditional
+// render: button absent → no canvas.requestConstraintLift message → no kernel write path).
+//
 // Returns null when findings is empty so the Canvas DOM stays clean (no leaking <ul>).
 // Otherwise renders a labeled card ABOVE the diff pane; clickable rows post a
 // reveal_line message that the extension host translates to vscode.window.showTextDocument
@@ -18,12 +24,27 @@ import * as React from 'react';
 import type { WebviewRpc } from '../rpc.js';
 import type { DriftFindingForCanvas } from '../messages.js';
 
+/** Minimal shape for citations passed to DriftFindings — allows test-supplied cited_payload. */
+export interface DriftFindingsCitation {
+	cited_payload?: {
+		kind?: string;
+		node_id?: string;
+	};
+	node_id?: string;
+}
+
 export interface DriftFindingsProps {
 	findings: ReadonlyArray<DriftFindingForCanvas>;
 	rpc?: WebviewRpc;
+	/** Phase 16 Plan 16-04 (DEEP-03) — host-computed eligibility flag (Open Decision 7).
+	 *  True when the receipt has at least one ConstraintNode citation (tier-dispatch.ts). */
+	constraintLiftEligible?: boolean;
+	/** Phase 16 Plan 16-04 (DEEP-03) — citations threaded from App.tsx for defensive
+	 *  webview-side ConstraintNode check (Mandate B layer 3). */
+	citations?: ReadonlyArray<DriftFindingsCitation>;
 }
 
-export function DriftFindings({ findings, rpc }: DriftFindingsProps): React.ReactElement | null {
+export function DriftFindings({ findings, rpc, constraintLiftEligible, citations }: DriftFindingsProps): React.ReactElement | null {
 	if (findings.length === 0) {
 		return null;
 	}
@@ -32,6 +53,27 @@ export function DriftFindings({ findings, rpc }: DriftFindingsProps): React.Reac
 			rpc.postRevealLine({ file: f.file, line: f.hunk_line });
 		}
 	};
+
+	// Phase 16 Plan 16-04 (DEEP-03) — resolve the first ConstraintNode citation for the button.
+	// Belt-and-suspenders: host-side `constraintLiftEligible` is the primary gate; the
+	// cited_payload.kind check is a defensive fallback in case of host-computation bugs.
+	// When cited_payload is not present (RenderedCitationForCanvas from App.tsx doesn't carry
+	// it), the fallback picks the first citation's node_id when constraintLiftEligible is true.
+	const constraintCitation = constraintLiftEligible
+		? (citations ?? []).find((c) => c.cited_payload?.kind === 'ConstraintNode') ?? null
+		: null;
+	const constraintNodeId = constraintCitation?.cited_payload?.node_id ?? constraintCitation?.node_id ?? null;
+
+	const onConstraintLiftClick = (): void => {
+		if (rpc !== undefined && constraintNodeId !== null) {
+			rpc.postConstraintLiftRequest({
+				constraint_node_id: constraintNodeId,
+				max_hops: 3,
+				confidence_threshold: 0.5,
+			});
+		}
+	};
+
 	return (
 		<section className="drift-findings" data-testid="drift-findings">
 			<h3 className="drift-findings-title">Drift Findings ({findings.length})</h3>
@@ -57,6 +99,17 @@ export function DriftFindings({ findings, rpc }: DriftFindingsProps): React.Reac
 					</li>
 				))}
 			</ul>
+			{/* Phase 16 Plan 16-04 (DEEP-03) — Mandate B layer 3: button renders only when constraintLiftEligible AND a ConstraintNode citation is present. */}
+			{constraintLiftEligible && constraintCitation !== null ? (
+				<button
+					type="button"
+					className="drift-findings-constraint-lift-button"
+					onClick={onConstraintLiftClick}
+					data-testid="drift-findings-constraint-lift-button"
+				>
+					What would break if this constraint is lifted?
+				</button>
+			) : null}
 		</section>
 	);
 }
