@@ -332,6 +332,12 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		})();
 	}
 
+	// Phase 16 Plan 16-03 (DEEP-03) — host-side button eligibility (Open Decision 7).
+	// True when at least one citation's cited node is a ConstraintNode. Host-side
+	// determination avoids coupling the webview (App.tsx) to citation-payload shape.
+	// citationDetails is already hydrated above (via hydrateCitationDetails + queryNodes).
+	const constraint_lift_eligible = citationDetails.some((d) => d.kind === 'ConstraintNode');
+
 	// Phase 14 Plan 14-04 (DEEP-05) — read goatide.session.priority from VS Code config and
 	// thread BOTH the raw value (session_priority) AND the user-visible indicator label
 	// (session_priority_indicator) onto the payload. The webview consumes session_priority
@@ -378,6 +384,9 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		session_priority: sessionPriority,
 		session_priority_indicator: sessionPriorityIndicator,
 		graph_snapshot_tx_time: inputs.receipt.graph_snapshot_tx_time ?? null,
+		// Phase 16 Plan 16-03 (DEEP-03) — host-side computed eligibility flag for the
+		// constraint-lift button. Wave 3 (Plan 16-04) DriftFindings.tsx reads this prop.
+		constraint_lift_eligible,
 	};
 
 	let decision: CanvasDecision;

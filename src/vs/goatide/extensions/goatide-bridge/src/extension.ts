@@ -101,6 +101,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		return panel;
 	};
 
+	// Phase 16 Plan 16-03 (DEEP-03) — hypothetical-impact handler. Registered against the
+	// initial CanvasPanel singleton at activation. Note: getPanel() returns a live panel on
+	// each save; the handler closure captures `kernel` which persists for the extension
+	// lifetime. When the user triggers a constraint-lift button click, panel.ts's
+	// canvas.requestConstraintLift branch invokes this closure with the asOf extracted from
+	// lastPayload.graph_snapshot_tx_time (Pitfall 1 fence — NEVER a fresh Date at click time).
+	panel.registerConstraintLiftHandler(async (payload) => {
+		try {
+			const result = await kernel.constraintLift({
+				constraint_node_id: payload.constraint_node_id,
+				asOf: payload.asOf,
+				max_hops: payload.max_hops,
+				confidence_threshold: payload.confidence_threshold,
+			});
+			return {
+				kind: 'ok',
+				hypothetical_impact: result.hypothetical_impact,
+				confidence_score: result.confidence_score,
+			};
+		} catch {
+			return { kind: 'degraded' };
+		}
+	});
+
 	// Plan 04-06: pending-attempts queue rooted at the first workspace folder, falling
 	// back to the extension dir if no workspace is open (rare; degraded saves wouldn't
 	// have a target anyway).
