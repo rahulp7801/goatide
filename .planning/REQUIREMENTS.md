@@ -1,0 +1,230 @@
+# GoatIDE Requirements
+
+> **Reconstruction notice (2026-05-12):** This file was rebuilt from git history + Claude conversation context after a destructive subagent wiped `.planning/`. CLOSE-01/02/03 are verbatim. Historical requirements (FORK-*, TRAV-*, etc.) are reconstructed from commit subject lines and are *approximate* — they accurately reflect what was built but the originally-authored requirement prose is gone. v2.0 requirements are placeholders pending the planned `/gsd:new-milestone v2.0`.
+
+---
+
+## Open (Active milestone: v2.0)
+
+### v2.0 — Deep Features + Polish + Windows auto-update
+
+**Started:** 2026-05-13 via `/gsd:new-milestone v2.0` (path C — skeleton + user correction).
+
+**Source of locked scope:** `project_v2_milestone_locked.md` memory entry — IDs locked, prose lost. Descriptions below were re-authored 2026-05-13 via path C (skeleton + user `ok go` confirmation without line-by-line correction); they reflect the GoatIDE thesis applied to the locked IDs, not verbatim recovery of the wiped `.planning/v2.0-REQUIREMENTS.md`. DEEP-02 mapping is confirmed via `reference_v2_phase16_repos.md`; C3 scope (Squirrel.Windows only) confirmed via locked-scope memory.
+
+**Out of scope (deferred to v2.1):** C1 macOS notarization (no Apple Developer ID), C2 Windows EV code-signing (no cert procured), Sparkle macOS auto-update (ships with C1), **C3 Windows auto-update** (originally locked as Squirrel.Windows-only; deferred 2026-05-13 after research found Squirrel.Windows deprecated — keeps entire distribution track unified in v2.1 with C1+C2 + NSIS + electron-updater).
+
+#### Deep Features (graph-anchored read-time capabilities)
+
+- [x] **DEEP-02**: User can navigate the bitemporal graph through a visual time-travel inspector — visual style modeled on Graphify (https://github.com/safishamsi/graphify), large-repo fallback modeled on code-review-graph. Anchor for Phase 16.
+- [x] **DEEP-03**: User can ask "what would break if this constraint were lifted?" and receive a ripple analysis over outgoing edges with confidence-weighted impact ranking
+- [x] **DEEP-06**: User can stitch graphs across multiple repositories under one workspace and traverse cross-repo edges through the same retrieval/receipt API
+
+> DEEP-01, DEEP-04, DEEP-05 closed in Phase 14 — see [Phase 14 — Foundation RPCs — Closed 2026-05-14](#phase-14--foundation-rpcs--closed-2026-05-14) below.
+
+#### Polish
+
+- [ ] **POLISH-01**: User sees a first-run onboarding flow that explains the Verification Canvas + how to read a Reasoning Receipt before encountering one in anger
+- [ ] **POLISH-02**: User can configure save-gate strictness (suppress vs. confirm vs. block) per-workspace via a Settings UI rather than editing config files
+- [ ] **POLISH-03**: User sees improved empty-state UX in the Verification Canvas when the graph has no relevant citations (instead of a blank "Receipt: 0 citations")
+- [ ] **POLISH-04**: User sees compact, hover-driven receipt drilldown (vs. current full-modal-only) for low-tier saves to reduce friction
+
+#### Distribution
+
+(C3 deferred to v2.1 — see Out-of-scope note above. v2.0 ships as manual-install build.)
+
+---
+
+## Closed (Historical — reconstructed from git history)
+
+### Phase 14 — Foundation RPCs — Closed 2026-05-14
+
+| ID | What shipped | Closure commit(s) |
+|----|-------------|-------------------|
+| DEEP-01 | `composeRationaleChainAt` kernel composition + `graph.queryRationaleAt` RPC under requireAuth + bridge `KernelClient.queryRationaleAt` + `ReadonlyKernelClient` Pick<> extended to 9 methods + `CanvasShowPayloadSchema` 5 new fields (rationale_chain, rationale_error, graph_snapshot_tx_time, session_priority, session_priority_indicator) + `canvas.requestRationale` WebviewToHost variant + `panel.ts` `RationaleHandler` transport-only routing + `RationaleChain.tsx` webview component (4 render branches: idle / kernel-degraded / empty / loaded). Bitemporal asOf threads top-level field → handleMessage → RPC, zero `Date.now()` in the path. | `3ee5aa5baac`, `1d2dc4510ba`, `9889e8e0bdd`, `cb369286314`, `d45553548d8` |
+| DEEP-04 | `evaluateHistoricalConflict` kernel pure-function (DecisionNode-only filter + bitemporal asOf + null-successor defense + prefix-match) + `IntentDriftBadge` migrated to discriminated union (`kind: 'priority-mismatch' \| 'historical-conflict'`) across kernel `types.ts` + bridge Zod schema `messages.ts` + bridge type mirrors `kernel/methods.ts` + `save-gate/canvas-module.ts` + `CitationList.tsx` amber "Superseded `<date>`" variant render + `.intent-drift-badge--historical-conflict` CSS + Mandate D byte-identity regression (arity-3 + 5×3 tier-matrix snapshot + 2-hits-in-1-file caller-count fence). Historical-conflict wins over priority-mismatch on the same citation. | `9a1f3dd180c`, `8d382e9aea9`, `8807ba104ff` |
+| DEEP-05 | `ReadonlyKernelClient` type-only Pick<> + `refuse-deep05-write.sh` CI gate + hermetic meta-test (META PASS) + `rerankBySessionPriority` 11-line stable-sort body (binary drift-bearing classifier over both IntentDriftBadge variants) + App.tsx webview-side useMemo invocation + Canvas header indicator render path (`data-testid="canvas-header-session-priority"`) + `tier-dispatch.ts` threads `session_priority` + `session_priority_indicator` + `graph_snapshot_tx_time` onto CanvasShowPayload + Mandate B 5-case regression test (Attempt/Node/Edge count invariants + KernelClient.prototype spy fence + setSessionPriority command integration). Lens is webview-only; host-side payload assembly is kernel-degraded-fork-aware. | `c908b4c87e7`, `742ff1cb00b`, `781e4db7aba`, `2448b1b371c`, `941b5d1fa11`, `94e02ab39ef` |
+
+### Phase 13 — v1.2 Closeout (pre-requisite) — Closed 2026-05-13
+
+| ID | What shipped | Closure commit(s) |
+|----|-------------|-------------------|
+| CLOSE-01 | Root postinstall now auto-provisions kernel/node_modules with Electron-ABI 140 better-sqlite3 binary. `ensureKernelSqlitePrebuild()` added to `build/npm/postinstall.ts`; `install-electron-prebuild.cjs` enhanced with idempotency guard + Windows rename() safety. Core contract: ABI-OK:1 under Electron-as-Node. | `6d82e2ecaf8` (version pin), `5b8b604b5a5` (postinstall chain), `7ba846b2d0d` (GREEN verification) |
+| CLOSE-02 | Single-launch visual ceremony (11 surfaces, 1 Electron process) now produces 11/11 PASS deterministically. Three root causes fixed: (1) stale CanvasPanel singleton (dispose() singleton-clear ordering), (2) canvas.show dropped before React mount (canvas.ready handshake), (3) VS Code `_badListeners` throttle from `event.waitUntil(Promise.reject)` → switched to `Promise.resolve()`. | `5099b6ebd01` (canvas.ready + badListeners fix), `0b9d0a834b0` (VIS-02 tab-pin), `94cc0474415` (tab-active-before-save), `a8994785d94` (meta-test arithmetic fix), `3d539c981bd` (per-wave isolation lift) |
+| CLOSE-03 | `sc3-section-lock.spec.ts` order-dependent flake eliminated. Root cause: `asOf` captured BEFORE seeding — under suite load, 4 SQLite writes took >10ms, making `valid_from > asOf`. Fix: capture `asOf = new Date(Date.now() + 1).toISOString()` AFTER all seed writes. 5/10 meta-test runs PASS (0 FAIL) + 3 prior inline passes. | `6821aa4b817` (fix), `5760b1f0166` (meta-test detection hardening), `cfbe0ad7e58` (5/10 confirmation) |
+
+### Phase 01 — Fork Bringup
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| FORK-01 | Pin upstream microsoft/vscode at a known SHA | `f7392562f06` (1.117.0 pin) |
+| FORK-02 | Brand product.json + idempotent brander script | `8c659504187`, `ae212e15a60` |
+| FORK-03 | Clean-profile launch smoke test | `bde8635de16` |
+| FORK-04 | CI gate: refuse marketplace API usage | `4da8bdfaedd`, `b8eef169f5f`, `672ea31dfff` |
+| FORK-05 | Upstream-sync ceremony (dry-run) | `e16d0704be7`, `6c1ffa0abaf` |
+| FORK-06 | HTML rebranding + per-file allowlist | `f960ea101fd`, `8b51f353381` |
+| FORK-07 | Open-profile perf fix (docs) | `e48ee03097b` |
+| FORK-08 | Remove Open-VSX 404 extension recommendations | `db141e34484`, `224c59efacd` |
+
+### Phase 01.1 — Build Toolchain & Fork-Hygiene Gap Closure
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| FORK-TS-PIN | Pin typescript@~5.9.0 + brander preserves pin across upstream-sync | `78360fdb0f9`, `d995d904f51`, `00cda37038b` |
+| FORK-OPENVSX | JSONC strip-comments preprocessor for validate-openvsx | `224c59efacd` |
+
+### Phase 01.2 — LFS Push-Ability Gap Closure (GH008)
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| FORK-LFS | GitHub fork strategy (Path F) to resolve GH008 push-ability | `44a8cf474f0` |
+
+### Phase 02 — Bitemporal Graph Substrate
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| GRAPH-DEPS | Install Phase-2 deps + ESM in kernel/ | `1997757db23`, `6b7a171f20e`, `e0789da5e01` |
+| GRAPH-SCHEMA | Drizzle schema for nodes/edges/provenance + active_nodes view | `7201463c7ca` |
+| GRAPH-MIGRATIONS | Migrations + triggers + openDatabase bootstrap | `cee869a5eb5`, `6f164abb87b`, `75011c1b0a5` |
+| GRAPH-DAO | GraphDAO append-only mutation surface | `66e4f980624`, `dc41f0d008a` |
+| GRAPH-CLI | seed/supersede/query CLI subcommands + e2e | `dc21f85bb6e`, `0e8df7b61fe`, `42023531ff4` |
+
+### Phase 03 — Edge Traversal + Retrieval + Reasoning Receipt
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| TRAV-01..03 | traverse() recursive CTE + supersession-chain timestamps | `59734f25055`, `a99e95ac1c2`, `33bde7bf5f7` |
+| TRAV-04..06 | Anchor.ticket_id + queryByAnchor + refusal gate | `0f31c5bf0fd`, `9ad210bdfb8` |
+| REC-01..06 | citation schema + ReceiptDAO + buildReceipt + explainCitation | `59cebd10132`, `5fc4570d711`, `1aa1ac229d6` |
+| RPC-DAEMON | RPC daemon entry + LSP framing round-trip | `3bb30a9ce56`, `18d3d423e80` |
+
+### Phase 04 — Verification Canvas (per-save, tiered)
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| CANV-01..02 | Bridge deps + Wave-0 stubs + webview smoke | `3bfcf60ea06`, `b4c3234cfca` |
+| CANV-03..05 | Tier classifier + destructive detector + canvas types | `8fe170cd624`, `237c663465d`, `7404f43527d` |
+| CANV-06..09 | Webview React UI + RPC schemas + CanvasPanel host | `cc77bb177c8`, `e653a7dc5f4`, `cd479544c58`, `09457e55209` |
+| CANV-10 | Kernel-degraded fork + KernelDegradedBanner + reconnect + heartbeat | `37421dcfa2c`, `de1c993be4c`, `cadb69ceb06` |
+| CANV-PERF | AnchorResultCache (LRU+TTL) + partial-index seeks + 10K benchmark | `5a29d2cfed6`, `40c739f7bff`, `acdd2d8fa77`, `cfd23ecc568` |
+
+### Phase 05 — Telemetry Harvester + Portability Filter
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| TELE-01 | Claude JSONL chokidar watcher + offsets DAO | `e50cc9fe159`, `87e40afc9a4` |
+| TELE-02 | Editor-events watcher (debounced + Mandate-A) | `521ce021a1c`, `45b48865cad` |
+| TELE-03 | Terminal-events ANSI strip + 32KB cap | `1c6d03f87df`, `9761f46aec0`, `c87a01f8bad` |
+| TELE-05 | Kernel daemon module + TCP RPC auth gate + reconnect-or-spawn | `a2cecd8315f`, `0ea22f8c167`, `9e41879ddff`, `e1bfffd2ba8` |
+| PORT-01 | 6-gate portability filter cascade + credential-scrub | `cffe0f3acce`, `64a259cbb54`, `2c3715d8a46` |
+| PORT-03..06 | goatide-cli harvest + Liveness + HarvestMetricsDao + bridge LivenessBanner | `9c3fce39827`, `d4d66d187de`, `f26c7276dcb`, `eaa98591b5a`, `5c07f70e2d4` |
+
+### Phase 06 — MCP Gateway (consume 4, expose 1)
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| MCP-01 | stdio-client + 4-provider pool multiplexer | `8897b49f81d` |
+| MCP-02 | Registry + backoff + types + namespacing | `5dbcd79a503` |
+| MCP-03 | Keychain wrapper | `57964a15aea` |
+| MCP-04..05 | schema-mapper + observation-router | `0f589879ed8`, `513d8b42e5b` |
+| MCP-06 | TokenRefreshScheduler + revocation detectors | `57964a15aea` |
+| MCP-07 | Schema-drift snapshot + paths | `179da068bcb` |
+| MCP-EXPOSE | MCP HTTP server + bearer auth + Origin allowlist + graph.* tools | `d7dce53445a`, `94389d07fab` |
+| MCP-LIVENESS | Bridge LivenessBanner-ext + SchemaDriftBanner + reconnect command | `f7b20f2a76b`, `0be329763ca` |
+
+### Phase 07 — Drift Detection + Contract Locking
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| DRIFT-01..02 | DriftPattern + ContractPayload extensions + 'protects' edge + drift/patterns | `631c8f3b202`, `25d90a06a5c`, `b98be4897a4` |
+| DRIFT-03 | section-parser.ts ATX-only markdown parser | `a925d1afddf` |
+| DRIFT-04..05 | runRippleAnalysis + ripple-progressive | `b6c8a439b5c`, `513abd664c3` |
+| DRIFT-06 | graph.recordContractOverride RPC + metrics DAO + threshold | `da7da21b051`, `c5d81926797` |
+| DRIFT-INTEGRATION | Bridge save-gate + tier-dispatch + React DriftFindings + IntentDriftBadge | `91266c9ae71`, `f51fbb34dc0`, `7c25985860f`, `65e85369b5f` |
+
+### Phase 08 — Bridge Runtime Path Fixes (Durable)
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| BRIDGE-RT-01 | resolveKernelPath stat-then-fallback + dual-candidate dist | `2977601f865`, `140d73a2744` |
+| BRIDGE-RT-02 | Defensive spawn cwd belt+suspenders | `0afc087375e`, `81e055b331a` |
+| BRIDGE-RT-03 | DEFAULT_LOCKFILE_POLL_TIMEOUT_MS 5_000 → 15_000 | `04494ea6644` |
+| BRIDGE-RT-04 | Bridge mirror with production-deps + build-bridge npm script | `c3601baa1c2`, `d58ae62236f` |
+| BRIDGE-RT-05 | Exclude **/node_modules/** from gulp source walks | `edce2e1cc5b` |
+
+### Phase 09 — Build & Launch Ergonomics
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| BUILD-RT-01 | preLaunch.ensureCompiled sentinel-file check | `8468c2f33ec`, `dd5137ff77f` |
+| BUILD-RT-02 | Chain transpile-client into root compile script | `870c58cd15d` |
+| BUILD-RT-03 | (refusal meta gate per Wave-0 stub) | `e86bb75293b` |
+| BUILD-RT-04 | Kernel postinstall → install-electron-prebuild.cjs | `26c10860cd8`, `b6feaf305e3` |
+| BUILD-RT-SMOKE | freshclone-smoke.sh + Playwright _electron.launch harness + CDP harness | `724a7e29e48`, `16b09d6691d`, `5066bc917c1` |
+
+### Phase 10 — Bridge Production Polish
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| BRIDGE-POLISH-01 | 5 missing contributes.commands in bridge package.json + propagation | `c7c1b9ed109`, `aaacf0709c7` |
+| BRIDGE-POLISH-02 | mcp.listProviders end-to-end (kernel + bridge KernelClient + SchemaDriftBanner async bootstrap) | `e08a12d6e68`, `7591f1a378a`, `e516b2e75bb` |
+| BRIDGE-POLISH-04 | Live harvest-metrics-e2e harness | `3b4d46c829e` |
+| BRIDGE-POLISH-05 | renderer.log [error]-line meta-test + ext-host startup timeout 10s→20s | `049bdcf2868`, `2789021b4d2` |
+
+### Phase 11 — Visual Ceremony
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| VIS-01 | Verification Canvas chrome (runVis01) | `795ef1905ed`, `c8f34eb4ada` |
+| VIS-02 | Destructive ConfirmationPhrase assertion + migration.ts fixture | `35260fce782` |
+| VIS-03..05 | Wave-4 status-bar surfaces | `0dc64b42cd4` |
+| VIS-06..08 | Wave-3 drift/compliance/override harness | `8e1610374e7` |
+| VIS-09..10 | Wave-1 runVis09/runVis10 + ensureCanvasOpen + harness Wave-1 infra | `a3a2f130e62`, `c8f34eb4ada` |
+| VIS-WAVE0 | Visual-workspace fixture + seed driver + iframe smoke + 4 open-question audits | `079864dec23`, `a974e11e004` |
+| VIS-INTEGRATION | Visual-ceremony full sweep 11/11 via per-wave Electron isolation (CARVED OUT — Phase 13 CLOSE-02 will lift) | `540bd120618`, `b7fca36b7ff`, `8dc1a20a8ad` |
+
+### Phase 12 — Robustness Hardening
+
+| ID | Approx. ask | Closure commit(s) |
+|----|-------------|-------------------|
+| HARDEN-01 | P0 auto-save bypass — gate destructive + high-impact saves regardless of reason | `65281d49b7d`, `eca79cf5c21`, `8681625503a` |
+| HARDEN-02 | Sync-veto event.waitUntil + fire-and-forget readFile IIFE + save-gate-budget tests | `d9054bfbfa2`, `554b4e74017` |
+| HARDEN-03 | Panel dispose-on-reject + ViewColumn.Active fix | `fc6bb4dcba8`, `87df05fb9b8` |
+| HARDEN-04 | Regenerate bridge mirror + tighten refusal script to byte-equal | `1be2848ccdd` |
+| HARDEN-05 | Regression guard for BRIDGE-RT-01 dual-candidate dist | `0068317d7d1`, `e35354219b0` |
+| HARDEN-06 | Default VSCODE_DEV=1 for dev-checkout direct-binary launches + freshclone assert | `7876ff631d7`, `23d13994546` |
+| HARDEN-07 | Chain electron-binary provisioning into root postinstall | `e763f8c5b71` |
+| HARDEN-WAVE0 | 4 RED test stubs + refuse-stale-bridge-mirror.sh CI gate | `9afc039865e`, `b8c49ff4a39` |
+
+---
+
+## Traceability Index
+
+| Requirement | Phase | Status | Closure Commits |
+|-------------|-------|--------|-----------------|
+| FORK-01..08, FORK-TS-PIN, FORK-OPENVSX, FORK-LFS | 01, 01.1, 01.2 | Closed | (see Phase 01 section) |
+| GRAPH-* | 02 | Closed | (see Phase 02 section) |
+| TRAV-*, REC-*, RPC-DAEMON | 03 | Closed | (see Phase 03 section) |
+| CANV-*, CANV-PERF | 04 | Closed | (see Phase 04 section) |
+| TELE-*, PORT-* | 05 | Closed | (see Phase 05 section) |
+| MCP-* | 06 | Closed | (see Phase 06 section) |
+| DRIFT-* | 07 | Closed | (see Phase 07 section) |
+| BRIDGE-RT-* | 08 | Closed | (see Phase 08 section) |
+| BUILD-RT-*, BUILD-RT-SMOKE | 09 | Closed | (see Phase 09 section) |
+| BRIDGE-POLISH-* | 10 | Closed | (see Phase 10 section) |
+| VIS-* | 11 | Closed | (see Phase 11 section) |
+| HARDEN-* | 12 | Closed | (see Phase 12 section) |
+| CLOSE-01 | 13 | Closed | `6d82e2ecaf8`, `5b8b604b5a5`, `7ba846b2d0d` |
+| CLOSE-02 | 13 | Closed | `5099b6ebd01`, `0b9d0a834b0`, `94cc0474415`, `a8994785d94`, `3d539c981bd` |
+| CLOSE-03 | 13 | Closed | `6821aa4b817`, `5760b1f0166`, `cfbe0ad7e58` |
+| DEEP-01 | 14 | Closed 2026-05-14 | `3ee5aa5baac`, `1d2dc4510ba`, `9889e8e0bdd`, `cb369286314`, `d45553548d8` |
+| DEEP-02 | 15 | Closed 2026-05-14 | `42e30b5235a`, `630ffa35c40`, `a0307d4b785`, `4f767dae252`, `d75c157925c`, `11cb52095d8`, `73d2587cc00`, `a90de6d7a07`, `c84fb576d29`, `a654f417f1f`, `5271e3b5dec`, `92d32049e53`, `eb9a8782ea1`, `e3c32c0a05d`, `5d24e740a41` |
+| DEEP-03 | 16 | Complete | — |
+| DEEP-04 | 14 | Closed 2026-05-14 | `9a1f3dd180c`, `8d382e9aea9`, `8807ba104ff` |
+| DEEP-05 | 14 | Closed 2026-05-14 | `c908b4c87e7`, `742ff1cb00b`, `781e4db7aba`, `2448b1b371c`, `941b5d1fa11`, `94e02ab39ef` |
+| DEEP-06 | 16 (schema-A), 17 (UI-B) | Complete | — |
+| POLISH-01 | 17 | Pending | — |
+| POLISH-02 | 17 | Pending | — |
+| POLISH-03 | 17 | Pending | — |
+| POLISH-04 | 17 | Pending | — |
+| ~~C3~~ | v2.1 (deferred) | — | Deferred 2026-05-13 — see Out-of-scope note |
