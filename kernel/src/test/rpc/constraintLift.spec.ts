@@ -3,11 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// kernel/src/test/rpc/constraintLift.spec.ts — Phase 16 Plan 16-01 Task 3.
-// 3-case RED suite at Wave-0 close: graph.constraintLift handler not yet registered in
-// kernel/src/rpc/server.ts (Wave 1 — Plan 16-02 registers it). The RPC returns
-// MethodNotFound (-32601) at Wave-0 close, making all 3 cases fail expectation-wise.
-// Wave 1 (Plan 16-02) GREEN-flips all 3 by registering the handler.
+// kernel/src/test/rpc/constraintLift.spec.ts — Phase 16 Plan 16-02 Task 3.
+// 3-case GREEN suite: graph.constraintLift handler registered in server.ts via requireAuth.
+// All 3 cases flip GREEN from the Wave-0 MethodNotFound state.
 // VALIDATION.md task rows 16-00-16..18 grep target: verbatim case-name strings.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -47,6 +45,7 @@ describe('graph.constraintLift RPC', () => {
 			new rpc.StreamMessageReader(b),
 			new rpc.StreamMessageWriter(b),
 		);
+		// Phase 16 Plan 16-02: createRpcServer accepts pre-built connection for test harness.
 		createRpcServer({ connection: serverConn, dao, receiptDao, sqlite: handle.sqlite });
 		serverConn.listen();
 		clientConn.listen();
@@ -60,38 +59,73 @@ describe('graph.constraintLift RPC', () => {
 	});
 
 	it('RPC composes runConstraintLiftAnalysis end-to-end', async () => {
-		// Wave-0: handler not registered → MethodNotFound (Wave 1 registers it).
-		// Wave 1 asserts the full composition chain.
+		// Seed a ConstraintNode + 2 downstream nodes connected via parent_of and protects.
 		const { id: constraintId } = dao.seed({ payload: VALID_PAYLOADS.ConstraintNode, provenance: VALID_PROVENANCE });
-		const asOf = new Date().toISOString();
-		// At Wave-0, the RPC throws ResponseError (MethodNotFound -32601).
-		// Wave 1 (Plan 16-02) GREEN-flips with real ComplianceReport assertion.
-		await expect(clientConn.sendRequest(ConstraintLiftRequest, {
+		const { id: decisionId } = dao.seed({ payload: VALID_PAYLOADS.DecisionNode, provenance: VALID_PROVENANCE });
+		const { id: contractId } = dao.seed({ payload: VALID_PAYLOADS.ContractNode, provenance: VALID_PROVENANCE });
+		dao.writeEdge({ kind: 'protects', src_id: constraintId, dst_id: decisionId });
+		dao.writeEdge({ kind: 'parent_of', src_id: constraintId, dst_id: contractId });
+
+		// Capture asOf AFTER all writes.
+		await new Promise((r) => setTimeout(r, 5));
+		const lastEdge = handle.sqlite.prepare(`SELECT valid_from FROM edges ORDER BY recorded_at DESC LIMIT 1`).get() as { valid_from: string };
+		const asOf = new Date(Date.parse(lastEdge.valid_from) + 1).toISOString();
+
+		const result = await clientConn.sendRequest(ConstraintLiftRequest, {
 			constraint_node_id: constraintId,
 			asOf,
 			max_hops: 3,
-		})).rejects.toThrow();
+		});
+
+		// Assert full composition chain: hypothetical_impact + confidence_score.
+		expect(result.hypothetical_impact.contract_node_id).toBe(constraintId);
+		const allRows = [
+			...result.hypothetical_impact.definitely_affected,
+			...result.hypothetical_impact.potentially_affected,
+		];
+		expect(allRows.length).toBe(2);
+		expect(allRows.some((r) => r.node_id === decisionId)).toBe(true);
+		expect(allRows.some((r) => r.node_id === contractId)).toBe(true);
+		expect(typeof result.confidence_score).toBe('number');
+		expect(result.confidence_score).toBeGreaterThanOrEqual(0);
+		expect(result.confidence_score).toBeLessThanOrEqual(1);
 	});
 
 	it('handler is wrapped in requireAuth', async () => {
-		// Wave-0: handler not registered (Wave 1 registers + wraps with requireAuth).
-		// Wave 1 verifies the handler responds correctly on stdio (pass-through for stdio transport).
+		// Stdio transport (createRpcServer without authState) passes requireAuth through
+		// unconditionally — the gate only fires on TCP transport (authState.authenticated check).
+		// So on stdio: the request succeeds without any auth token. This mirrors the Phase 14/15
+		// handler precedent (queryRationaleAt + queryGraphSnapshot — both pass on stdio).
 		const { id: constraintId } = dao.seed({ payload: VALID_PAYLOADS.ConstraintNode, provenance: VALID_PROVENANCE });
-		// At Wave-0, any call throws. Wave 1 asserts requireAuth pass-through on stdio.
-		await expect(clientConn.sendRequest(ConstraintLiftRequest, {
+		const asOf = new Date().toISOString();
+
+		// On stdio transport, requireAuth is a no-op wrapper — the request must succeed.
+		const result = await clientConn.sendRequest(ConstraintLiftRequest, {
 			constraint_node_id: constraintId,
-			asOf: new Date().toISOString(),
-		})).rejects.toThrow();
+			asOf,
+		});
+		// No auth required on stdio — expect a valid result shape.
+		expect(result.hypothetical_impact).toBeDefined();
+		expect(typeof result.confidence_score).toBe('number');
 	});
 
 	it('returns Zod-shape-conforming ConstraintLiftResult', async () => {
-		// Wave-0: handler not registered (Wave 1 registers and asserts ComplianceReport shape).
-		// Wave 1 verifies hypothetical_impact is a valid ComplianceReport + confidence_score in [0,1].
+		// Seed a ConstraintNode and verify the response shape matches ConstraintLiftResult.
 		const { id: constraintId } = dao.seed({ payload: VALID_PAYLOADS.ConstraintNode, provenance: VALID_PROVENANCE });
-		// At Wave-0, any call throws. Wave 1 asserts { hypothetical_impact, confidence_score } shape.
-		await expect(clientConn.sendRequest(ConstraintLiftRequest, {
+		const asOf = new Date().toISOString();
+
+		const result = await clientConn.sendRequest(ConstraintLiftRequest, {
 			constraint_node_id: constraintId,
-			asOf: new Date().toISOString(),
-		})).rejects.toThrow();
+			asOf,
+		});
+
+		// Structural conformance checks (ConstraintLiftResult shape).
+		expect(typeof result.hypothetical_impact.contract_node_id).toBe('string');
+		expect(Array.isArray(result.hypothetical_impact.definitely_affected)).toBe(true);
+		expect(Array.isArray(result.hypothetical_impact.potentially_affected)).toBe(true);
+		expect(typeof result.hypothetical_impact.truncated).toBe('boolean');
+		expect(typeof result.confidence_score).toBe('number');
+		expect(result.confidence_score).toBeGreaterThanOrEqual(0);
+		expect(result.confidence_score).toBeLessThanOrEqual(1);
 	});
 });

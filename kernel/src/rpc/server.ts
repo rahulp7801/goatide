@@ -35,6 +35,7 @@ import {
 	QueryRationaleAtRequest,
 	QueryGraphSnapshotRequest,
 	QueryTimelineTransitionsRequest,
+	ConstraintLiftRequest,
 	ProposeEditRequest,
 	RecordRejectionRequest,
 	RecordContractOverrideRequest,
@@ -60,6 +61,7 @@ import {
 	type QueryTimelineTransitionsResult,
 	type SerializedNodeSnapshot,
 	type SerializedEdgeSnapshot,
+	type ConstraintLiftResult,
 	type ProposeEditResult,
 	type RecordRejectionResult,
 	type RecordContractOverrideResult,
@@ -87,6 +89,7 @@ import {
 	detectsContractLock,
 	runRippleAnalysis,
 } from '../drift/index.js';
+import { runConstraintLiftAnalysis } from '../drift/constraint-lift.js';
 
 export interface CreateRpcServerArgs {
 	dao: GraphDAO;
@@ -104,6 +107,13 @@ export interface CreateRpcServerArgs {
 	/** Override stdin/stdout for tests (defaults to process.stdin/process.stdout). */
 	reader?: rpc.MessageReader;
 	writer?: rpc.MessageWriter;
+	/**
+	 * Phase 16 Plan 16-02 — optional pre-built connection for tests that construct their own
+	 * reader/writer pair and pass an already-created connection. When provided, skips the
+	 * createMessageConnection(reader, writer) call and binds handlers directly to this connection.
+	 * Production stdio mode never passes this; it uses reader/writer (or process.stdin/stdout).
+	 */
+	connection?: rpc.MessageConnection;
 }
 
 /**
@@ -270,6 +280,23 @@ function bindHandlers(
 	connection.onRequest(QueryTimelineTransitionsRequest, requireAuth((): QueryTimelineTransitionsResult => {
 		const transitions = ctx.dao.queryTimelineTransitions();
 		return { transitions };
+	}));
+
+	// Phase 16 Plan 16-02 — graph.constraintLift (DEEP-03 hypothetical-impact analyzer).
+	// Composes runConstraintLiftAnalysis: walkRippleEdges BFS from ConstraintNode +
+	// confidence-classify + bucket-sort + score aggregate. Mirrors Phase 15 queryGraphSnapshot
+	// handler shape verbatim. Pitfall 1 fence: no Date.now()/new Date() in this handler —
+	// params.asOf is the sole timestamp source (threads verbatim to runConstraintLiftAnalysis).
+	// Mandate B: runConstraintLiftAnalysis is read-only (refuse-deep05-write.sh gate).
+	connection.onRequest(ConstraintLiftRequest, requireAuth((params): ConstraintLiftResult => {
+		return runConstraintLiftAnalysis({
+			constraintNodeId: params.constraint_node_id,
+			maxHops: params.max_hops ?? 3,
+			asOf: params.asOf,
+			confidenceThreshold: params.confidence_threshold ?? 0.5,
+			dao: ctx.dao,
+			sqlite: ctx.sqlite,
+		});
 	}));
 
 	connection.onRequest(ProposeEditRequest, requireAuth((params): ProposeEditResult => {
@@ -680,11 +707,18 @@ function bindHandlers(
  * process stdin/stdout streams. Caller invokes `.listen()` to start serving.
  *
  * Stdio mode: no auth gate (the kernel's parent owns the pipe).
+ *
+ * Phase 16 Plan 16-02: when `args.connection` is provided (test harness scenario), binds
+ * handlers directly to that connection instead of creating a new one from reader/writer.
+ * Production stdio mode never passes `connection`; it uses `reader`/`writer` (or
+ * process.stdin/process.stdout).
  */
 export function createRpcServer(args: CreateRpcServerArgs): rpc.MessageConnection {
-	const reader = args.reader ?? new rpc.StreamMessageReader(process.stdin);
-	const writer = args.writer ?? new rpc.StreamMessageWriter(process.stdout);
-	const connection = rpc.createMessageConnection(reader, writer);
+	const connection = args.connection ?? (() => {
+		const reader = args.reader ?? new rpc.StreamMessageReader(process.stdin);
+		const writer = args.writer ?? new rpc.StreamMessageWriter(process.stdout);
+		return rpc.createMessageConnection(reader, writer);
+	})();
 
 	const ctx: HandlerContext = {
 		dao: args.dao,
