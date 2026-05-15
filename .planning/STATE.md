@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Closeout
-status: executing
-last_updated: "2026-05-15T05:26:26.942Z"
-last_activity: "2026-05-15 — Phase 16 Plan 03 closed (Wave-2: KernelClient.constraintLift sendWithTimeout body + CanvasPanel.registerConstraintLiftHandler + handleMessage canvas.requestConstraintLift Pitfall-1-fenced + extension.ts handler closure + tier-dispatch constraint_lift_eligible + 5 Mandate B spy tests GREEN + 114/114 passing bridge tests)"
+milestone: v2.0
+milestone_name: Deep Features + Polish
+status: ready
+last_updated: "2026-05-15T05:55:00.000Z"
+last_activity: "2026-05-15 — Phase 16 closed (DEEP-03 ripple-impact + DEEP-06 phase-A schema migration GREEN — migration 0008_cross_repo_identity.sql + queryByRepo + repo-fingerprint helper + constraint-lift.ts sibling + What-would-break button + HypotheticalImpact UI + Mandate B 4-layer defense + refuse-unbounded-ripple-walk.sh widened)"
 progress:
-  total_phases: 19
+  total_phases: 4
   completed_phases: 3
-  total_plans: 20
-  completed_plans: 20
+  total_plans: 21
+  completed_plans: 21
 ---
 
 # GoatIDE Project State
@@ -21,20 +21,33 @@ progress:
 ## Current
 
 - **Active milestone:** v2.0 — Deep Features + Polish + Windows auto-update (kickoff 2026-05-13)
-- **Active phase:** 16 — Ripple Analysis + Cross-Repo Schema Migration (DEEP-03 + DEEP-06-A) — in progress
-- **Plan:** 05 — next (phase-verify: run VALIDATION.md + close phase 16)
-- **Status:** Ready to execute
-- **Last closed phase:** 15 — Graph Inspector Panel (DEEP-02) (closed 2026-05-14)
-- **Last closed plan:** 16-04 — Wave-3 webview UI: DriftFindings button + HypotheticalImpact real body + App.tsx integration + 6 RED GREEN + 120/120 passing bridge tests (closed 2026-05-15)
-- **Last activity:** 2026-05-15 — Phase 16 Plan 04 closed (Wave-3: DriftFindings constraintLiftEligible button + HypotheticalImpact real body + App.tsx HypotheticalImpact render + kernel-degraded notice + 6 Wave-0 RED GREEN + 120/120 passing bridge tests)
-- **Last session:** 2026-05-15T05:26:26.936Z
+- **Active phase:** 17 — Cross-Repo UI + Polish Cluster (next)
+- **Plan:** — (Phase 17 not yet started)
+- **Status:** Ready for Phase 17
+- **Last closed phase:** 16 — Ripple Analysis + Cross-Repo Schema Migration (DEEP-03 + DEEP-06-A) (closed 2026-05-15)
+- **Last closed plan:** 16-05 — Phase 16 phase-verify (closed 2026-05-15)
+- **Last activity:** 2026-05-15 — Phase 16 closed (DEEP-03 ripple-impact + DEEP-06 phase-A schema migration GREEN)
+- **Last session:** 2026-05-15T05:55:00.000Z
 
-Progress bar (Phase 16 plans): `[████████░░]` 4/5 plans complete (80%)
-Progress bar (v2.0 phases):    `██░░` 2/4 phases complete (Phase 16 in progress)
+Progress bar (Phase 16 plans): `[██████████]` 5/5 plans complete (100%) — CLOSED
+Progress bar (v2.0 phases):    `███░` 3/4 phases complete
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-15 — Phase 16 closed (DEEP-03 ripple-impact + DEEP-06 phase-A schema)
+
+- **Decision (Migration numbering reconciliation):** ROADMAP SC#3 originally said `0007_cross_repo_identity.sql` — but `0007_contract_overrides_metric.sql` already existed on master from Phase 7 DRIFT-06. Shipped as `0008_cross_repo_identity.sql`; ROADMAP text reconciled in this Wave-4 phase-close commit. Mirrors Phase 13 retroactive-numbering pattern (no behavioral impact; pure docs reconciliation).
+- **Decision (DEEP-03 sibling, not parameterize):** `runConstraintLiftAnalysis` lives in `kernel/src/drift/constraint-lift.ts` as a sibling to `runRippleAnalysis` (NOT a parameterized variant). Wave 0 added `export` to `walkRippleEdges` (one-line surgical change at ripple.ts:204) so the sibling can call it. Rationale: `runRippleAnalysis` returns a ComplianceReport with `contract_node_id` field — semantically wrong for a ConstraintNode seed. Sibling pattern keeps the two analyzers' evolutions independent.
+- **Decision (Mandate B 4-layer defense):** No single fence is sufficient. Layer 1: kernel-side `queryByKind('Attempt')` count invariant inside `constraint-lift.spec.ts` test #4 (Phase 14 Plan 14-04 pattern). Layer 2: bridge-side `KernelClient.prototype.{atomicAccept,proposeEdit,recordRejection,recordContractOverride}` spy across full constraint-lift flow. Layer 3: webview-side conditional render — button hidden when `constraint_lift_eligible: false` OR no ConstraintNode citation (no clickable surface → no canvas.requestConstraintLift message → no kernel write path reachable). Layer 4: structural CI gate `refuse-deep05-write.sh` continues exit 0 (Phase 16 doesn't touch inspector/, but the gate is the constitutional fence).
+- **Decision (Cross-repo identity deployment model — Open Decision 6):** Each repo carries its own SQLite DB; `repo_id` distinguishes rows ONLY when DBs are stitched at the bridge query layer (Phase 17 phase-B). Cross-repo identity prevents misattribution at the query level, NOT at the SQL primary-key level. Composite `(id, repo_id)` PK was rejected because it would require DROP+RECREATE on canonical tables (Mandate B forbids). Wave-0 collision-prevention test #5 uses two SEPARATE temp DBs to honor this model.
+- **Decision (refuse-unbounded-ripple-walk.sh widening):** `^${KERNEL_DRIFT}/ripple.*\\.ts$` → `^${KERNEL_DRIFT}/(ripple|constraint-lift).*\\.ts$`. New hermetic positive/negative meta-test `scripts/test/refuse-unbounded-ripple-walk.meta.sh`. The maxHops 1|2|3 literal-union at TypeScript type level is the contract; the grep gate is defense-in-depth.
+- **Decision (Confidence-weighted scoring formula — Open Decision 3 lock):** `confidence_score = num_explicit_rows / total_rows` aggregate (0.0..1.0). Within-bucket sort: Explicit-first, then `[hops asc, node_id asc]` secondary. `confidence_threshold` is a webview-side filter HINT (kernel returns all rows; toggle controls visibility). Default `confidenceThreshold = 0.5` is structural-only; not a hard filter.
+- **Decision (NO bridge package.json change in Phase 16):** Phase 15 already added `cytoscape` + `cytoscape-fcose` + `goatide.openGraphInspector`; Phase 16 needs neither a new dep nor a new command. The DriftFindings button is rendered inside the existing Verification Canvas (no new contributes.commands entry). `refuse-stale-bridge-mirror.sh` exit 0 throughout.
+- **Decision (Pitfall 1 single-snapshot fence is FOUR-LAYER):** Kernel handler region (zero Date.now/new Date in executable code — comments mention pattern but are not executable); bridge panel.ts new branch (asOf = lastPayload.graph_snapshot_tx_time, with defensive fallback to new Date() ONLY when lastPayload is null on first-open); webview (zero Date.now/new Date for asOf in HypotheticalImpact.tsx / DriftFindings.tsx; App.tsx Date.now() is pre-existing accept-latency measurement, not asOf); CanvasShowPayload top-level field convention (rationale_chain pattern from Phase 14 Plan 14-02 reused).
+- **Decision (Phase 17 handoff):** DEEP-06 phase-A schema is operationally-functional. Phase 17 phase-B inherits `dao.queryByRepo` + `fingerprint(remoteUrl)` + `dao.queryByAnchor(args, asOf, repoId)` and ships the cross-repo enumeration command + UI. The `'primary'` default + `INDEX nodes_repo_id` + `INDEX edges_repo_id` are forward-compatible scaffolding ready for cross-repo writes.
+- **Auto-fix (Rule 1 - Bug) ConstraintLiftAnalysisResult type fix (Plan 16-05):** `runConstraintLiftAnalysis` returned `hypothetical_impact: ComplianceReport` (bucket type = `ComplianceRow[]`). `ConstraintLiftRow extends ComplianceRow` adds `confidence_band`, but the field was not visible at tsc-level. Fix: introduced `ConstraintLiftReport` + renamed local result type to `ConstraintLiftAnalysisResult`. Runtime was always correct; tsc build now exits 0.
 
 > Historical decisions from phases 01-12 are gone. Notable surviving operational facts captured in user memory (`MEMORY.md`):
 > - Solo dogfood — no pull requests, push to master directly
@@ -271,3 +284,5 @@ Progress bar (v2.0 phases):    `██░░` 2/4 phases complete (Phase 16 in p
 | 12    | Robustness Hardening | 2026-05-12 |
 | 13    | v1.2 Closeout (pre-requisite) — CLOSE-01/02/03 | 2026-05-13 |
 | 14    | Foundation RPCs — DEEP-01 rationale-chain RPC + DEEP-04 historical-conflict + DEEP-05 session-priority lens | 2026-05-14 |
+| 15    | Graph Inspector Panel — DEEP-02 Cytoscape time-travel inspector + QueryGraphSnapshot + QueryTimelineTransitions RPCs | 2026-05-15 |
+| 16    | Ripple Analysis + Cross-Repo Schema Migration — DEEP-03 constraint-lift hypothetical-impact + DEEP-06-A repo_id migration | 2026-05-15 |

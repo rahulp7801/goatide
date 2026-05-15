@@ -17,10 +17,11 @@
 #### Deep Features (graph-anchored read-time capabilities)
 
 - [x] **DEEP-02**: User can navigate the bitemporal graph through a visual time-travel inspector — visual style modeled on Graphify (https://github.com/safishamsi/graphify), large-repo fallback modeled on code-review-graph. Anchor for Phase 16.
-- [x] **DEEP-03**: User can ask "what would break if this constraint were lifted?" and receive a ripple analysis over outgoing edges with confidence-weighted impact ranking
-- [x] **DEEP-06**: User can stitch graphs across multiple repositories under one workspace and traverse cross-repo edges through the same retrieval/receipt API
+- [x] **DEEP-06 phase-B** (cross-repo UI): User can stitch graphs across multiple repositories under one workspace via "GoatIDE: Open Cross-Repo Graph" command + inspector showing cross-repo edges — Phase 17 ships the enumeration command + UI on top of Phase 16's `repo_id` schema.
 
 > DEEP-01, DEEP-04, DEEP-05 closed in Phase 14 — see [Phase 14 — Foundation RPCs — Closed 2026-05-14](#phase-14--foundation-rpcs--closed-2026-05-14) below.
+> DEEP-02 closed in Phase 15 — see [Phase 15 — Graph Inspector Panel — Closed 2026-05-15](#phase-15--graph-inspector-panel--closed-2026-05-15) below.
+> DEEP-03 + DEEP-06 phase-A closed in Phase 16 — see [Phase 16 — Ripple Analysis + Cross-Repo Schema Migration — Closed 2026-05-15](#phase-16--ripple-analysis--cross-repo-schema-migration--closed-2026-05-15) below.
 
 #### Polish
 
@@ -44,6 +45,19 @@
 | DEEP-01 | `composeRationaleChainAt` kernel composition + `graph.queryRationaleAt` RPC under requireAuth + bridge `KernelClient.queryRationaleAt` + `ReadonlyKernelClient` Pick<> extended to 9 methods + `CanvasShowPayloadSchema` 5 new fields (rationale_chain, rationale_error, graph_snapshot_tx_time, session_priority, session_priority_indicator) + `canvas.requestRationale` WebviewToHost variant + `panel.ts` `RationaleHandler` transport-only routing + `RationaleChain.tsx` webview component (4 render branches: idle / kernel-degraded / empty / loaded). Bitemporal asOf threads top-level field → handleMessage → RPC, zero `Date.now()` in the path. | `3ee5aa5baac`, `1d2dc4510ba`, `9889e8e0bdd`, `cb369286314`, `d45553548d8` |
 | DEEP-04 | `evaluateHistoricalConflict` kernel pure-function (DecisionNode-only filter + bitemporal asOf + null-successor defense + prefix-match) + `IntentDriftBadge` migrated to discriminated union (`kind: 'priority-mismatch' \| 'historical-conflict'`) across kernel `types.ts` + bridge Zod schema `messages.ts` + bridge type mirrors `kernel/methods.ts` + `save-gate/canvas-module.ts` + `CitationList.tsx` amber "Superseded `<date>`" variant render + `.intent-drift-badge--historical-conflict` CSS + Mandate D byte-identity regression (arity-3 + 5×3 tier-matrix snapshot + 2-hits-in-1-file caller-count fence). Historical-conflict wins over priority-mismatch on the same citation. | `9a1f3dd180c`, `8d382e9aea9`, `8807ba104ff` |
 | DEEP-05 | `ReadonlyKernelClient` type-only Pick<> + `refuse-deep05-write.sh` CI gate + hermetic meta-test (META PASS) + `rerankBySessionPriority` 11-line stable-sort body (binary drift-bearing classifier over both IntentDriftBadge variants) + App.tsx webview-side useMemo invocation + Canvas header indicator render path (`data-testid="canvas-header-session-priority"`) + `tier-dispatch.ts` threads `session_priority` + `session_priority_indicator` + `graph_snapshot_tx_time` onto CanvasShowPayload + Mandate B 5-case regression test (Attempt/Node/Edge count invariants + KernelClient.prototype spy fence + setSessionPriority command integration). Lens is webview-only; host-side payload assembly is kernel-degraded-fork-aware. | `c908b4c87e7`, `742ff1cb00b`, `781e4db7aba`, `2448b1b371c`, `941b5d1fa11`, `94e02ab39ef` |
+
+### Phase 16 — Ripple Analysis + Cross-Repo Schema Migration — Closed 2026-05-15
+
+| ID | What shipped | Closure commit(s) |
+|----|-------------|-------------------|
+| DEEP-03 | `graph.constraintLift` RPC under requireAuth + kernel `runConstraintLiftAnalysis` sibling to `runRippleAnalysis` (reuses exported `walkRippleEdges`) + bridge `KernelClient.constraintLift` + `CanvasPanel.registerConstraintLiftHandler` + `canvas.requestConstraintLift` discriminator + `DriftFindings.tsx` conditional "What would break if this constraint is lifted?" button + `HypotheticalImpact.tsx` (Hypothetical badge + depth radio 1/2/3 + show-all toggle) + tier-dispatch host-side `constraint_lift_eligible` eligibility + Mandate B 4-layer defense (kernel queryByKind('Attempt') invariant + bridge KernelClient.prototype spy + webview conditional render + refuse-deep05-write.sh structural gate) + Pitfall 1 single-snapshot asOf threading + `refuse-unbounded-ripple-walk.sh` widened to cover `constraint-lift*.ts` + new `refuse-unbounded-ripple-walk.meta.sh` hermetic positive/negative meta-test. Confidence-weighted score: `num_explicit / total_rows` aggregate; Explicit-first within-bucket sort. Phase 16-05 Rule 1 fix: `ConstraintLiftAnalysisResult` type introduced so `confidence_band` is visible at tsc-level. | `8421cc7874c`, `a10800df961`, `e03bfe2b1d0`, `0679f656f22`, `8130ecfa367`, `0e62b0885be`, `6e900d566ed`, `fb9a393cf63`, `c822ccb4ffe`, `861c8604842`, `7cc5cce1d8b`, `2fd84176ce3`, `4c239fd24cc`, `ac7af7cb022`, `b44f55f355e` |
+| DEEP-06 phase-A | Migration `0008_cross_repo_identity.sql` adds `repo_id TEXT NOT NULL DEFAULT 'primary'` to nodes + edges + creates `nodes_repo_id` + `edges_repo_id` indexes (SQLite 3.42+ ALTER TABLE backfill semantics). Drizzle schema sync in `schema/nodes.ts` + `schema/edges.ts`. New `repo-fingerprint.ts` SHA-256 helper (12-char hex, normalized URL — Pitfall 6 security mitigation). DAO `queryByRepo(repoId, asOf)` + `queryByAnchor` extended with optional `repoId: string = 'primary'` default-param. `migrations.spec.ts` sqlite_master allowlist extended. Backward-compat regression invariant: full kernel suite passes byte-equal (119 files / 406 tests; sentries as-of/query-by-anchor/traverse byte-equal). Deployment model: one DB per repo + bridge-side query-layer stitching (Open Decision 6) — Phase 17 phase-B implements the cross-repo enumeration UI. Note: ROADMAP originally referenced `0007_cross_repo_identity.sql`; reconciled to `0008_*` (0007_contract_overrides_metric.sql already existed from Phase 7 DRIFT-06). | `8421cc7874c`, `a10800df961`, `0e62b0885be`, `fb9a393cf63` |
+
+### Phase 15 — Graph Inspector Panel — Closed 2026-05-15
+
+| ID | What shipped | Closure commit(s) |
+|----|-------------|-------------------|
+| DEEP-02 | `GraphInspectorPanel` (VS Code WebviewPanel VIEW_TYPE `goatide.graphInspector`) + `graph.queryGraphSnapshot` + `graph.queryTimelineTransitions` kernel RPCs under requireAuth + bridge `KernelClient.queryGraphSnapshot/queryTimelineTransitions` + `ReadonlyKernelClient` extended to 11 methods + `kernelRowToCyElement` + `edgeRowToCyElement` projection utilities (pure copy — Pitfall 1 mutation fence) + Cytoscape.js canvas renderer with fcose layout + Graphify dark-theme palette (`#0f172a` background + 5-kind color coding) + time-travel Slider component + `TruncationBanner` + `App.tsx` (orphan-edge filter + phase-A bitemporal snapshot) + `styles.css` (--vscode-* variables only + inlined Graphify hex) + Graph.tsx Cytoscape mount with try/catch jsdom guard + bridge command `goatide.openGraphInspector` + `cytoscape@^3.33.0` + `cytoscape-fcose@^2.2.0` in devDependencies + `refuse-cytoscape-in-mirror.meta.sh` hermetic meta-test. Jsom-compatible tests: 5 passing (header read-only / truncation banner / slider asOf change); 3 skipped (canvas-dependent — playwright follow-up). | `42e30b5235a`, `630ffa35c40`, `a0307d4b785`, `4f767dae252`, `d75c157925c`, `11cb52095d8`, `73d2587cc00`, `a90de6d7a07`, `c84fb576d29`, `a654f417f1f`, `5271e3b5dec`, `92d32049e53`, `eb9a8782ea1`, `e3c32c0a05d`, `5d24e740a41` |
 
 ### Phase 13 — v1.2 Closeout (pre-requisite) — Closed 2026-05-13
 
@@ -219,10 +233,10 @@
 | CLOSE-03 | 13 | Closed | `6821aa4b817`, `5760b1f0166`, `cfbe0ad7e58` |
 | DEEP-01 | 14 | Closed 2026-05-14 | `3ee5aa5baac`, `1d2dc4510ba`, `9889e8e0bdd`, `cb369286314`, `d45553548d8` |
 | DEEP-02 | 15 | Closed 2026-05-14 | `42e30b5235a`, `630ffa35c40`, `a0307d4b785`, `4f767dae252`, `d75c157925c`, `11cb52095d8`, `73d2587cc00`, `a90de6d7a07`, `c84fb576d29`, `a654f417f1f`, `5271e3b5dec`, `92d32049e53`, `eb9a8782ea1`, `e3c32c0a05d`, `5d24e740a41` |
-| DEEP-03 | 16 | Complete | — |
+| DEEP-03 | 16 | Closed 2026-05-15 | `8421cc7874c`, `e03bfe2b1d0`, `0679f656f22`, `0e62b0885be`, `6e900d566ed`, `fb9a393cf63`, `c822ccb4ffe`, `861c8604842`, `7cc5cce1d8b`, `2fd84176ce3`, `4c239fd24cc`, `ac7af7cb022`, `b44f55f355e` |
 | DEEP-04 | 14 | Closed 2026-05-14 | `9a1f3dd180c`, `8d382e9aea9`, `8807ba104ff` |
 | DEEP-05 | 14 | Closed 2026-05-14 | `c908b4c87e7`, `742ff1cb00b`, `781e4db7aba`, `2448b1b371c`, `941b5d1fa11`, `94e02ab39ef` |
-| DEEP-06 | 16 (schema-A), 17 (UI-B) | Complete | — |
+| DEEP-06 | 16 (schema-A), 17 (UI-B) | Phase-A Closed 2026-05-15; Phase-B Pending | `8421cc7874c`, `a10800df961`, `0e62b0885be`, `fb9a393cf63` |
 | POLISH-01 | 17 | Pending | — |
 | POLISH-02 | 17 | Pending | — |
 | POLISH-03 | 17 | Pending | — |

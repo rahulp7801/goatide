@@ -36,7 +36,7 @@
 - [x] **Phase 13: v1.2 Closeout** - CLOSE-01 ABI rebuild, CLOSE-02 single-launch, CLOSE-03 sc3 flake
 - [x] **Phase 14: Foundation RPCs** - Rationale chain query, historical IntentDrift, session-priority lens
 - [x] **Phase 15: Graph Inspector Panel** - Time-travel Cytoscape.js inspector, new WebviewPanel (completed 2026-05-15)
-- [ ] **Phase 16: Ripple Analysis + Cross-Repo Schema** - Constraint-lift analysis, repo_id migration
+- [x] **Phase 16: Ripple Analysis + Cross-Repo Schema** - Constraint-lift analysis, repo_id migration (closed 2026-05-15)
 - [ ] **Phase 17: Cross-Repo UI + Polish Cluster** - Cross-repo stitching UI, onboarding, settings UI, empty-state, hover receipt
 
 ---
@@ -275,7 +275,7 @@
 **DEEP-06 split decision:** DEEP-06 is one requirement delivered in two phases. Phase 16 ships the backward-compatible `ALTER TABLE ADD COLUMN repo_id` migration and `queryByRepo()` DAO method. Phase 17 ships the cross-repo workspace enumeration command and UI. The primary phase mapping for DEEP-06 is Phase 16 (first delivery point); Phase 17 completes it.
 
 **Wave-0 imperatives (before any feature code):**
-- Author migration meta-test: `0007_cross_repo_identity.sql` must add `repo_id TEXT NOT NULL DEFAULT 'primary'` with backfill to both `nodes` and `edges`; a kernel vitest spec seeds two "repos" with identical ULID sequences (mock `ulid()`) and confirms `repo_id` namespacing prevents collision
+- Author migration meta-test: `0008_cross_repo_identity.sql` must add `repo_id TEXT NOT NULL DEFAULT 'primary'` with backfill to both `nodes` and `edges`; a kernel vitest spec seeds two "repos" with identical ULID sequences (mock `ulid()`) and confirms `repo_id` namespacing prevents collision. (Note: ROADMAP originally referenced `0007_*`; reconciled to `0008_*` during Phase 16 close — `0007_contract_overrides_metric.sql` already existed on master from Phase 7 DRIFT-06. See 16-SUMMARY.md decisions ledger.)
 - Define SHA-256 fingerprint helper `fingerprint(remoteUrl: string): string` using `crypto.createHash('sha256').update(url).digest('hex').slice(0, 12)` — used as the canonical `repoId` value; never inject raw remote URL into SQL
 
 **Success Criteria** (what must be TRUE when Phase 16 completes):
@@ -286,13 +286,13 @@
 
 **No bridge package.json changes in this phase** — no mirror regen required.
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 — CLOSED 2026-05-15
 
-- [ ] 16-01-wave0-migration-fingerprint-stubs-PLAN.md — Wave 0: migration 0008_cross_repo_identity.sql + drizzle schema + repo-fingerprint.ts + Wave-0 throw-stubs (dao.queryByRepo + constraint-lift.ts) + walkRippleEdges export + bridge mirror types + HypotheticalImpact stub + 8 RED tests + refuse-unbounded-ripple-walk widening + meta-test
-- [ ] 16-02-deep06-deep03-kernel-bodies-PLAN.md — Wave 1: dao.queryByRepo real body + queryByAnchor extension + constraint-lift.ts real body + graph.constraintLift handler under requireAuth + 13 RED → GREEN kernel tests + full-suite back-compat invariant
-- [ ] 16-03-deep03-bridge-transport-PLAN.md — Wave 2: KernelClient.constraintLift real body + CanvasPanel.registerConstraintLiftHandler + handleMessage branch + extension.ts wiring + tier-dispatch constraint_lift_eligible + Mandate B bridge regression (5 RED → GREEN)
-- [ ] 16-04-deep03-webview-ui-PLAN.md — Wave 3: DriftFindings conditional 'What would break?' button + HypotheticalImpact body (badge + radio + show-all) + App.tsx integration + styles.css extension + 6 RED → GREEN jsdom tests
-- [ ] 16-05-phase-verify-PLAN.md — Wave 4: full verification battery + SC#3 manual sqlite3 verification (checkpoint) + 0007→0008 ROADMAP reconciliation + REQUIREMENTS.md DEEP-03 closure + STATE.md update + 16-VERIFICATION.md + 16-SUMMARY.md + phase-close commit
+- [x] 16-01-wave0-migration-fingerprint-stubs-PLAN.md — Wave 0: migration 0008_cross_repo_identity.sql + drizzle schema + repo-fingerprint.ts + Wave-0 throw-stubs (dao.queryByRepo + constraint-lift.ts) + walkRippleEdges export + bridge mirror types + HypotheticalImpact stub + 8 RED tests + refuse-unbounded-ripple-walk widening + meta-test
+- [x] 16-02-deep06-deep03-kernel-bodies-PLAN.md — Wave 1: dao.queryByRepo real body + queryByAnchor extension + constraint-lift.ts real body + graph.constraintLift handler under requireAuth + 13 RED → GREEN kernel tests + full-suite back-compat invariant
+- [x] 16-03-deep03-bridge-transport-PLAN.md — Wave 2: KernelClient.constraintLift real body + CanvasPanel.registerConstraintLiftHandler + handleMessage branch + extension.ts wiring + tier-dispatch constraint_lift_eligible + Mandate B bridge regression (5 RED → GREEN)
+- [x] 16-04-deep03-webview-ui-PLAN.md — Wave 3: DriftFindings conditional 'What would break?' button + HypotheticalImpact body (badge + radio + show-all) + App.tsx integration + styles.css extension + 6 RED → GREEN jsdom tests
+- [x] 16-05-phase-verify-PLAN.md — Wave 4: full verification battery + SC#3 0008_cross_repo_identity.sql (reconciled from ROADMAP's 0007_* draft text) + REQUIREMENTS.md DEEP-03 closure + STATE.md update + 16-VERIFICATION.md + 16-SUMMARY.md + phase-close commit
 
 ---
 
@@ -342,6 +342,6 @@
 | 12. Robustness Hardening | — | Closed | 2026-05-12 |
 | 13. v1.2 Closeout | — | Closed | 2026-05-13 |
 | 14. Foundation RPCs | 5/5 | Closed | 2026-05-14 |
-| 15. Graph Inspector Panel | 4/5 | Complete    | 2026-05-15 |
-| 16. Ripple Analysis + Cross-Repo Schema | 4/5 | In Progress|  |
+| 15. Graph Inspector Panel | 5/5 | Closed | 2026-05-15 |
+| 16. Ripple Analysis + Cross-Repo Schema | 5/5 | Closed | 2026-05-15 |
 | 17. Cross-Repo UI + Polish Cluster | 0/TBD | Not started | — |
