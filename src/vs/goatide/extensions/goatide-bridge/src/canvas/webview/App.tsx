@@ -16,9 +16,10 @@ import type { CanvasShowPayload } from '../messages.js';
 import { DiffPane as DefaultDiffPane, type DiffPaneProps } from './DiffPane.js';
 import { CitationList } from './CitationList.js';
 import { ConfirmationPhrase } from './ConfirmationPhrase.js';
-import { DriftFindings } from './DriftFindings.js';
+import { DriftFindings, type DriftFindingsCitation } from './DriftFindings.js';
 import { ComplianceReportView } from './ComplianceReport.js';
 import { RationaleChain } from './RationaleChain.js';
+import { HypotheticalImpact } from './HypotheticalImpact.js';
 import { rerankBySessionPriority } from '../../inspector/session-priority-lens.js';
 
 export interface AppProps {
@@ -81,6 +82,11 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 	const [rejectNote, setRejectNote] = useState('');
 	const [confirmedDestructive, setConfirmedDestructive] = useState(!payload.destructive);
 
+	// Phase 16 Plan 16-04 (DEEP-03) — local state for HypotheticalImpact controls.
+	// Depth and showAll are render-time concerns (no kernel touch, no graph mutation).
+	const [hypotheticalDepth, setHypotheticalDepth] = useState<1 | 2 | 3>(3);
+	const [hypotheticalShowAll, setHypotheticalShowAll] = useState<boolean>(false);
+
 	const onAccept = useCallback(() => {
 		const latencyMs = Date.now() - startMs;
 		rpc.postAccept(payload.change_id, latencyMs);
@@ -131,6 +137,45 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 		}).citations;
 	}, [payload.citations, payload.drift_findings, sessionPriority]);
 
+	// Phase 16 Plan 16-04 (DEEP-03) — build DriftFindingsCitation[] for DriftFindings.
+	// When constraint_lift_eligible is true, the host has already verified (via citationDetails
+	// hydration in tier-dispatch.ts) that at least one cited node is a ConstraintNode.
+	// We annotate the first citation as a ConstraintNode so DriftFindings' webview-side
+	// defensive check finds it (the check guards against cited_payload.kind; RenderedCitation
+	// from CanvasShowPayload lacks cited_payload). Subsequent citations are passed as-is.
+	const constraintLiftEligible = payload.constraint_lift_eligible ?? false;
+	const driftFindingsCitations = useMemo((): DriftFindingsCitation[] => {
+		if (!constraintLiftEligible || rerankedCitations.length === 0) {
+			return rerankedCitations.map((c) => ({ node_id: c.node_id }));
+		}
+		// Mark the first citation as the picked ConstraintNode (host-verified). Remaining
+		// citations pass through without a cited_payload annotation.
+		return rerankedCitations.map((c, idx) => idx === 0
+			? { cited_payload: { kind: 'ConstraintNode', node_id: c.node_id }, node_id: c.node_id }
+			: { node_id: c.node_id }
+		);
+	}, [constraintLiftEligible, rerankedCitations]);
+
+	// Phase 16 Plan 16-04 (DEEP-03) — depth change handler for HypotheticalImpact.
+	// When depth changes, re-fire canvas.requestConstraintLift with the new max_hops.
+	// asOf is host-only (Pitfall 1 fence — NEVER Date.now() or new Date() here).
+	const onHypotheticalDepthChange = useCallback((d: 1 | 2 | 3) => {
+		setHypotheticalDepth(d);
+		const constraintCitation = driftFindingsCitations.find(
+			(c) => c.cited_payload?.kind === 'ConstraintNode',
+		);
+		if (constraintCitation) {
+			const nodeId = constraintCitation.cited_payload?.node_id ?? constraintCitation.node_id;
+			if (nodeId) {
+				rpc.postConstraintLiftRequest({
+					constraint_node_id: nodeId,
+					max_hops: d,
+					confidence_threshold: 0.5,
+				});
+			}
+		}
+	}, [rpc, driftFindingsCitations]);
+
 	const friendlyFile = formatFileUri(payload.file_uri);
 
 	return (
@@ -153,9 +198,14 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 				) : null}
 			</header>
 			<div className="goatide-canvas-body">
-				{/* Phase 7 Plan 07-07 — DriftFindings rendered above diff pane when present. */}
+				{/* Phase 7 Plan 07-07 — DriftFindings rendered above diff pane when present. Phase 16 Plan 16-04 (DEEP-03) — threads constraintLiftEligible + citations. */}
 				{payload.drift_findings && payload.drift_findings.length > 0 ? (
-					<DriftFindings findings={payload.drift_findings} rpc={rpc} />
+					<DriftFindings
+						findings={payload.drift_findings}
+						rpc={rpc}
+						constraintLiftEligible={constraintLiftEligible}
+						citations={driftFindingsCitations}
+					/>
 				) : null}
 				{/* Phase 7 Plan 07-07 — ComplianceReport above diff pane when lock_trigger fires. */}
 				{payload.lock_trigger ? (
@@ -181,6 +231,24 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 					error={rationaleError}
 					onRequest={onRationaleRequest}
 				/>
+				{/* Phase 16 Plan 16-04 (DEEP-03) — HypotheticalImpact section. Mirrors Phase 14 RationaleChain.tsx four-branch rendering pattern. Rendered after DiffPane + RationaleChain; before CitationList. */}
+				{payload.hypothetical_impact_error === 'kernel-degraded' ? (
+					<div
+						className="hypothetical-impact-kernel-degraded goatide-degraded-banner"
+						data-testid="hypothetical-impact-kernel-degraded"
+					>
+						Kernel is offline — hypothetical impact unavailable.
+					</div>
+				) : null}
+				{payload.hypothetical_impact ? (
+					<HypotheticalImpact
+						report={payload.hypothetical_impact}
+						depth={hypotheticalDepth}
+						onDepthChange={onHypotheticalDepthChange}
+						showAll={hypotheticalShowAll}
+						onShowAllChange={setHypotheticalShowAll}
+					/>
+				) : null}
 				<section className="goatide-canvas-citations">
 					<CitationList citations={rerankedCitations} onExplain={onCitationExplain} />
 				</section>

@@ -57,8 +57,8 @@ export function DriftFindings({ findings, rpc, constraintLiftEligible, citations
 	// Phase 16 Plan 16-04 (DEEP-03) — resolve the first ConstraintNode citation for the button.
 	// Belt-and-suspenders: host-side `constraintLiftEligible` is the primary gate; the
 	// cited_payload.kind check is a defensive fallback in case of host-computation bugs.
-	// When cited_payload is not present (RenderedCitationForCanvas from App.tsx doesn't carry
-	// it), the fallback picks the first citation's node_id when constraintLiftEligible is true.
+	// App.tsx passes citations adapted to include cited_payload when constraintLiftEligible,
+	// so this check correctly finds the ConstraintNode even for RenderedCitationForCanvas.
 	const constraintCitation = constraintLiftEligible
 		? (citations ?? []).find((c) => c.cited_payload?.kind === 'ConstraintNode') ?? null
 		: null;
