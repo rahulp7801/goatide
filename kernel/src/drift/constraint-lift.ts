@@ -34,8 +34,17 @@ export interface ConstraintLiftRow extends ComplianceRow {
 	readonly confidence_band: 'explicit' | 'inferred';
 }
 
-export interface ConstraintLiftResult {
-	readonly hypothetical_impact: ComplianceReport;
+/**
+ * Constraint-lift variant of ComplianceReport where each bucket contains ConstraintLiftRow
+ * (with confidence_band) rather than the base ComplianceRow.
+ */
+export interface ConstraintLiftReport extends Omit<ComplianceReport, 'definitely_affected' | 'potentially_affected'> {
+	readonly definitely_affected: readonly ConstraintLiftRow[];
+	readonly potentially_affected: readonly ConstraintLiftRow[];
+}
+
+export interface ConstraintLiftAnalysisResult {
+	readonly hypothetical_impact: ConstraintLiftReport;
 	readonly confidence_score: number;   // 0.0..1.0 aggregate
 }
 
@@ -112,9 +121,9 @@ function sortByConfidenceThenHops(rows: ConstraintLiftRow[]): void {
  * Mandate B fence: no write-RPC call (proposeEdit / atomicAccept / recordRejection /
  * recordContractOverride). The constraint-lift flow is read-only end-to-end.
  *
- * @returns ConstraintLiftResult — hypothetical_impact (ComplianceReport) + confidence_score.
+ * @returns ConstraintLiftAnalysisResult — hypothetical_impact (ConstraintLiftReport with confidence_band rows) + confidence_score.
  */
-export function runConstraintLiftAnalysis(input: RunConstraintLiftInput): ConstraintLiftResult {
+export function runConstraintLiftAnalysis(input: RunConstraintLiftInput): ConstraintLiftAnalysisResult {
 	const nodeCap = input.nodeCap ?? 2000;  // same default as Plan 14 — configurable for tests
 
 	// Walk the BFS from the ConstraintNode anchor; includes the anchor itself at level=0.

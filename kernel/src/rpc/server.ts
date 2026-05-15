@@ -289,7 +289,7 @@ function bindHandlers(
 	// params.asOf is the sole timestamp source (threads verbatim to runConstraintLiftAnalysis).
 	// Mandate B: runConstraintLiftAnalysis is read-only (refuse-deep05-write.sh gate).
 	connection.onRequest(ConstraintLiftRequest, requireAuth((params): ConstraintLiftResult => {
-		return runConstraintLiftAnalysis({
+		const result = runConstraintLiftAnalysis({
 			constraintNodeId: params.constraint_node_id,
 			maxHops: params.max_hops ?? 3,
 			asOf: params.asOf,
@@ -297,6 +297,9 @@ function bindHandlers(
 			dao: ctx.dao,
 			sqlite: ctx.sqlite,
 		});
+		// Cast: ConstraintLiftAnalysisResult has readonly ConstraintLiftRow[] buckets;
+		// wire type uses ComplianceRow[] (same shape at runtime — confidence_band is additive).
+		return result as unknown as ConstraintLiftResult;
 	}));
 
 	connection.onRequest(ProposeEditRequest, requireAuth((params): ProposeEditResult => {
