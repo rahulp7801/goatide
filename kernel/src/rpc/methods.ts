@@ -103,6 +103,8 @@ export interface SerializedNodeSnapshot {
 	label: string;
 	valid_from: string;
 	invalidated_at: string | null;
+	/** Phase 17 Plan 17-04 DEEP-06 phase-B — Pitfall D defense. Projected from SQLite repo_id column (migration 0008). Default 'primary' for all pre-Phase-16 rows. */
+	repo_id: string;
 }
 
 export interface SerializedEdgeSnapshot {
@@ -112,6 +114,8 @@ export interface SerializedEdgeSnapshot {
 	dst_id: string;
 	valid_from: string;
 	invalidated_at: string | null;
+	/** Phase 17 Plan 17-04 DEEP-06 phase-B — Pitfall D defense. Projected from SQLite repo_id column (migration 0008). Default 'primary' for all pre-Phase-16 rows. */
+	repo_id: string;
 }
 
 export interface QueryGraphSnapshotResult {

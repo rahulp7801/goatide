@@ -85,6 +85,8 @@ export interface NodeRow {
 	invalidated_at: string | null;
 	recorded_at: string;
 	superseded_by: string | null;
+	/** Phase 17 Plan 17-04 DEEP-06 phase-B — repo_id from migration 0008. Default 'primary' for all pre-Phase-16 rows. */
+	repo_id: string;
 }
 
 /**
@@ -101,6 +103,8 @@ export interface EdgeRow {
 	invalidated_at: string | null;
 	recorded_at: string;
 	superseded_by: string | null;
+	/** Phase 17 Plan 17-04 DEEP-06 phase-B — repo_id from migration 0008. Default 'primary' for all pre-Phase-16 rows. */
+	repo_id: string;
 }
 
 export interface ProvenanceRow {
@@ -363,6 +367,10 @@ export class GraphDAO {
 			invalidated_at: r.invalidated_at,
 			recorded_at: r.recorded_at,
 			superseded_by: r.superseded_by,
+			// Phase 17 Plan 17-04 DEEP-06 phase-B (B1 prerequisite): project repo_id from the
+			// SQLite column. Migration 0008 backfilled all pre-Phase-16 rows to 'primary'.
+			// Symmetric with NodeRow materialize() extension above.
+			repo_id: r.repo_id,
 		}));
 	}
 
@@ -547,6 +555,11 @@ export class GraphDAO {
 			invalidated_at: raw.invalidated_at,
 			recorded_at: raw.recorded_at,
 			superseded_by: raw.superseded_by,
+			// Phase 17 Plan 17-04 DEEP-06 phase-B (B1 prerequisite): project repo_id from the
+			// SQLite column. Migration 0008 added repo_id and backfilled all pre-Phase-16 rows to
+			// 'primary'. This copy ensures the typed NodeRow shape carries repo_id so the
+			// queryGraphSnapshot handler can project it to the wire (Pitfall D defense).
+			repo_id: raw.repo_id,
 		};
 	}
 }

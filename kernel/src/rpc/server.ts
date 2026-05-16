@@ -252,6 +252,10 @@ function bindHandlers(
 				label,
 				valid_from: r.valid_from,
 				invalidated_at: r.invalidated_at,
+				// Phase 17 Plan 17-04 DEEP-06 phase-B — Pitfall D defense. Projects repo_id from
+				// NodeRow (B1 prerequisite: dao.ts materialize() now copies raw.repo_id). All
+				// pre-Phase-16 rows are 'primary' via migration 0008 backfill.
+				repo_id: r.repo_id,
 			};
 		});
 
@@ -269,6 +273,9 @@ function bindHandlers(
 				dst_id: e.dst_id,
 				valid_from: e.valid_from,
 				invalidated_at: e.invalidated_at,
+				// Phase 17 Plan 17-04 DEEP-06 phase-B — Pitfall D defense. Projects repo_id from
+				// EdgeRow (B1 prerequisite: dao.ts queryEdgesAsOf mapper now copies r.repo_id).
+				repo_id: e.repo_id,
 			}));
 
 		return { nodes, edges, truncated };
