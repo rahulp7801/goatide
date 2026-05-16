@@ -27,6 +27,8 @@ export interface InspectorNodeRow {
 	readonly label: string;
 	readonly valid_from: string;
 	readonly invalidated_at: string | null;
+	/** Phase 17 Plan 17-04 DEEP-06 phase-B — Pitfall D defense. Threaded from kernel wire shape. Default 'primary' for all pre-Phase-16 rows. */
+	readonly repo_id: string;
 }
 
 export interface CytoscapeNodeElement {

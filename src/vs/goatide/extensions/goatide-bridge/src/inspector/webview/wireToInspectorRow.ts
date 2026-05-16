@@ -31,6 +31,8 @@ import type { InspectorEdgeRow } from '../edgeRowToCyElement.js';
  * QueryGraphSnapshotResult.nodes byte-for-byte; the 5 canonical kernel kinds are
  * pinned here too (RESEARCH Risk 1 — Phase 15 uses the canonical kinds verbatim,
  * not the additional ROADMAP-narrative names which do not exist in the kernel).
+ *
+ * Phase 17 Plan 17-04 DEEP-06 phase-B: repo_id field added (Pitfall D defense).
  */
 export interface WireNodeSnapshot {
 	readonly node_id: string;
@@ -38,9 +40,11 @@ export interface WireNodeSnapshot {
 	readonly label: string;
 	readonly valid_from: string;
 	readonly invalidated_at: string | null;
+	/** Phase 17 Plan 17-04 DEEP-06 phase-B — propagated from kernel wire shape. Default 'primary' for all pre-Phase-16 rows. */
+	readonly repo_id: string;
 }
 
-/** Mirror of kernel SerializedEdgeSnapshot — wire shape over inspector.show. */
+/** Mirror of kernel SerializedEdgeSnapshot — wire shape over inspector.show. Phase 17 Plan 17-04 DEEP-06 phase-B: repo_id field added. */
 export interface WireEdgeSnapshot {
 	readonly edge_id: string;
 	readonly kind: string;
@@ -48,12 +52,18 @@ export interface WireEdgeSnapshot {
 	readonly dst_id: string;
 	readonly valid_from: string;
 	readonly invalidated_at: string | null;
+	/** Phase 17 Plan 17-04 DEEP-06 phase-B — propagated from kernel wire shape. Default 'primary' for all pre-Phase-16 rows. */
+	readonly repo_id: string;
 }
 
 /**
  * Translate a wire-shape node snapshot to the InspectorNodeRow shape. Pure — `wire`
  * is never mutated. Explicit per-field copy keeps the Pitfall 1 mutation invariant
  * trivially auditable in the source text (no object spread / no Object.assign).
+ *
+ * Phase 17 Plan 17-04 DEEP-06 phase-B: threads repo_id from wire to InspectorNodeRow
+ * (Pitfall D defense — repo_id was carried from SQLite through the kernel wire, now
+ * propagated into the webview's row shape for cross-repo edge detection).
  */
 export function wireToInspectorNodeRow(wire: WireNodeSnapshot): InspectorNodeRow {
 	return {
@@ -62,6 +72,7 @@ export function wireToInspectorNodeRow(wire: WireNodeSnapshot): InspectorNodeRow
 		label: wire.label,
 		valid_from: wire.valid_from,
 		invalidated_at: wire.invalidated_at,
+		repo_id: wire.repo_id,
 	};
 }
 
@@ -70,6 +81,8 @@ export function wireToInspectorNodeRow(wire: WireNodeSnapshot): InspectorNodeRow
  * is never mutated. The `src_id` / `dst_id` field names are preserved verbatim;
  * downstream `edgeRowToCyElement` renames them to Cytoscape's `source` / `target`
  * convention at the projection boundary.
+ *
+ * Phase 17 Plan 17-04 DEEP-06 phase-B: threads repo_id from wire to InspectorEdgeRow.
  */
 export function wireToInspectorEdgeRow(wire: WireEdgeSnapshot): InspectorEdgeRow {
 	return {
@@ -79,5 +92,6 @@ export function wireToInspectorEdgeRow(wire: WireEdgeSnapshot): InspectorEdgeRow
 		dst_id: wire.dst_id,
 		valid_from: wire.valid_from,
 		invalidated_at: wire.invalidated_at,
+		repo_id: wire.repo_id,
 	};
 }

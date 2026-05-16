@@ -33,6 +33,7 @@ describe('wireToInspectorRow adapter', () => {
 			label: 'Use Postgres for OLTP',
 			valid_from: '2026-05-14T12:00:00.000Z',
 			invalidated_at: null,
+			repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B Risk §5 fixture extension
 		};
 		const snapshotBefore = structuredClone(wire);
 		const result = wireToInspectorNodeRow(wire);
@@ -44,6 +45,7 @@ describe('wireToInspectorRow adapter', () => {
 				label: 'Use Postgres for OLTP',
 				valid_from: '2026-05-14T12:00:00.000Z',
 				invalidated_at: null,
+				repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B — threaded through
 			},
 			'translated row must have id (not node_id) and all other fields preserved verbatim',
 		);
@@ -58,6 +60,7 @@ describe('wireToInspectorRow adapter', () => {
 			dst_id: '01JDST12345678901234567890B',
 			valid_from: '2026-05-14T13:00:00.000Z',
 			invalidated_at: '2026-05-14T14:00:00.000Z',
+			repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B Risk §5 fixture extension
 		};
 		const snapshotBefore = structuredClone(wire);
 		const result = wireToInspectorEdgeRow(wire);
@@ -70,6 +73,7 @@ describe('wireToInspectorRow adapter', () => {
 				dst_id: '01JDST12345678901234567890B',
 				valid_from: '2026-05-14T13:00:00.000Z',
 				invalidated_at: '2026-05-14T14:00:00.000Z',
+				repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B — threaded through
 			},
 			'translated edge must have id (not edge_id) and src_id / dst_id preserved verbatim for the InspectorEdgeRow shape (edgeRowToCyElement renames them downstream)',
 		);

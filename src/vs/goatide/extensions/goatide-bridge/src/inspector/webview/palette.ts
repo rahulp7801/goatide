@@ -45,6 +45,11 @@ export const PALETTE = {
 	nodeSelectedRing: '#facc15',              // yellow-400
 	nodeLabel: '#e2e8f0',                     // slate-200
 	nodeBorderInvalidated: '#94a3b8',         // slate-400 dashed for superseded
+	// Phase 17 Plan 17-04 DEEP-06 phase-B — cross-repo edge accent. Amber-400 matches the
+	// contractNode amber semantic and aligns with --vscode-editorWarning-foreground. Single
+	// source-of-truth: referenced via PALETTE.crossRepoEdge in GRAPHIFY_STYLE below; never
+	// duplicated as a hex literal in Graph.tsx or other consumers (M6 correction).
+	crossRepoEdge: '#fbbf24',                 // amber-400 — same semantic as --vscode-editorWarning-foreground
 } as const;
 
 /**
@@ -104,6 +109,21 @@ export const GRAPHIFY_STYLE: Stylesheet[] = [
 		style: {
 			'line-color': PALETTE.edgeSupersedes,
 			'line-style': 'dashed',
+		},
+	},
+	// Phase 17 Plan 17-04 DEEP-06 phase-B — cross-repo edge styling. Activated when
+	// data.crossRepo === true (set by edgeRowToCyElement when src.repo_id !== dst.repo_id).
+	// Dashed line + amber accent distinguishes cross-repo edges from same-repo edges.
+	// Color reference: PALETTE.crossRepoEdge (single source-of-truth — no hex duplication).
+	// In v2.0 all nodes are repo_id='primary' so this selector is dormant; v2.1 cross-repo
+	// writes will activate it. Graph.tsx imports GRAPHIFY_STYLE from this file and passes
+	// it to the Cytoscape instance — no Graph.tsx edits needed for the stylesheet portion.
+	{
+		selector: 'edge[?crossRepo]',
+		style: {
+			'line-style': 'dashed',
+			'line-color': PALETTE.crossRepoEdge,
+			'target-arrow-color': PALETTE.crossRepoEdge,
 		},
 	},
 ];

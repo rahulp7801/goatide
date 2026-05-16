@@ -38,6 +38,8 @@ const InspectorNodeSnapshotSchema = z.object({
 	label: z.string(),
 	valid_from: z.string(),
 	invalidated_at: z.string().nullable(),
+	/** Phase 17 Plan 17-04 DEEP-06 phase-B — Pitfall D defense. Propagated from kernel wire shape. Default 'primary' for all pre-Phase-16 rows. */
+	repo_id: z.string(),
 });
 
 const InspectorEdgeSnapshotSchema = z.object({
@@ -47,12 +49,28 @@ const InspectorEdgeSnapshotSchema = z.object({
 	dst_id: z.string(),
 	valid_from: z.string(),
 	invalidated_at: z.string().nullable(),
+	/** Phase 17 Plan 17-04 DEEP-06 phase-B — Pitfall D defense. Propagated from kernel wire shape. Default 'primary' for all pre-Phase-16 rows. */
+	repo_id: z.string(),
 });
 
 export const InspectorWebviewToHostSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('inspector.ready') }),
 	z.object({ type: z.literal('inspector.requestSnapshot'), asOf: z.string() }),
 ]);
+
+/**
+ * Phase 17 Plan 17-04 DEEP-06 phase-B — serialized WorkspaceRepo shape for the
+ * cross-repo inspector.show payload. Mirrors WorkspaceRepo from workspace-repos.ts
+ * but flattened to a JSON-safe shape (vscode.WorkspaceFolder.uri serialized as string).
+ *
+ * Mandate B fence: schema field names MUST NOT mention any of the four banned
+ * write-RPC token identifiers — see scripts/ci/refuse-deep05-write.sh BANNED array.
+ */
+const SerializedWorkspaceRepoSchema = z.object({
+	folder_uri: z.string(),
+	repo_id: z.string(),
+	remote_url: z.string().nullable(),
+});
 
 export const InspectorHostToWebviewSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('inspector.error'), reason: z.string() }),
@@ -66,6 +84,12 @@ export const InspectorHostToWebviewSchema = z.discriminatedUnion('type', [
 		// inspector.requestSnapshot responses omit this field; the webview keeps its previously
 		// rendered transitions[] array.
 		transitions: z.array(z.string()).optional(),
+		// Phase 17 Plan 17-04 DEEP-06 phase-B — cross-repo activation fields. Optional: present
+		// only when getOrCreateForCrossRepo() triggers the initial show. Absent for single-repo
+		// inspector sessions. Pitfall 2 avoidance: cross-repo distinction is a flag on the show
+		// payload, NOT a separate panel class or VIEW_TYPE.
+		cross_repo_mode: z.boolean().optional(),
+		workspace_repos: z.array(SerializedWorkspaceRepoSchema).optional(),
 	}),
 ]);
 

@@ -102,6 +102,7 @@ describe('inspector slider asOf change', () => {
 						label: 'd1',
 						valid_from: initialAsOf,
 						invalidated_at: null,
+						repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B Risk §5 fixture extension
 					}],
 					edges: [],
 					truncated: false,

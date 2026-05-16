@@ -32,6 +32,7 @@ describe('kernelRowToCyElement', () => {
 			label: 'D1',
 			valid_from: '2026-05-14T00:00:00.000Z',
 			invalidated_at: null,
+			repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B Risk §5 fixture extension
 		};
 		const snapshot = structuredClone(row);
 		kernelRowToCyElement(row);
@@ -45,6 +46,7 @@ describe('kernelRowToCyElement', () => {
 			label: 'C1',
 			valid_from: '2026-05-14T00:00:00.000Z',
 			invalidated_at: '2026-05-14T01:00:00.000Z',
+			repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B Risk §5 fixture extension
 		};
 		const el = kernelRowToCyElement(row);
 		assert.deepStrictEqual(el, {
@@ -66,6 +68,7 @@ describe('kernelRowToCyElement', () => {
 			label: 'A1',
 			valid_from: '2026-05-14T00:00:00.000Z',
 			invalidated_at: null,
+			repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B Risk §5 fixture extension
 		};
 		const el = kernelRowToCyElement(row);
 		assert.strictEqual(el.data.invalidated_at, null);

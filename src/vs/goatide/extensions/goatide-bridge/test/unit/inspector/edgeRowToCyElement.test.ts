@@ -26,6 +26,7 @@ describe('edgeRowToCyElement', () => {
 			dst_id: '01JN' + 'B'.repeat(22),
 			valid_from: '2026-05-14T00:00:00.000Z',
 			invalidated_at: null,
+			repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B Risk §5 fixture extension
 		};
 		const snapshot = structuredClone(row);
 		edgeRowToCyElement(row);
@@ -40,6 +41,7 @@ describe('edgeRowToCyElement', () => {
 			dst_id: '01JN' + 'D'.repeat(22),
 			valid_from: '2026-05-14T00:00:00.000Z',
 			invalidated_at: '2026-05-14T01:00:00.000Z',
+			repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B Risk §5 fixture extension
 		};
 		const el = edgeRowToCyElement(row);
 		assert.deepStrictEqual(el, {
@@ -51,6 +53,7 @@ describe('edgeRowToCyElement', () => {
 				kind: row.kind,
 				valid_from: row.valid_from,
 				invalidated_at: row.invalidated_at,
+				crossRepo: false, // Phase 17 Plan 17-04 DEEP-06 phase-B — same-repo edge (primary === primary)
 			},
 		});
 	});
@@ -63,6 +66,7 @@ describe('edgeRowToCyElement', () => {
 			dst_id: '01JN' + 'F'.repeat(22),
 			valid_from: '2026-05-14T00:00:00.000Z',
 			invalidated_at: null,
+			repo_id: 'primary', // Phase 17 Plan 17-04 DEEP-06 phase-B Risk §5 fixture extension
 		};
 		const el = edgeRowToCyElement(row);
 		assert.strictEqual(el.data.kind, 'supersedes');

@@ -105,9 +105,14 @@ export function Graph(props: GraphProps): React.ReactElement {
 			}
 			const cy = cyRef.current;
 
+			// Phase 17 Plan 17-04 DEEP-06 phase-B — build a nodesById map so edgeRowToCyElement
+			// can compute data.crossRepo (src.repo_id !== dst.repo_id). Map construction is O(n)
+			// over the node set; the per-edge lookup is O(1). In v2.0 all nodes are 'primary' so
+			// crossRepo is always false; v2.1 cross-repo writes will activate the dashed styling.
+			const nodesById = new Map(props.snapshot.nodes.map(n => [n.id, n]));
 			const elements: cytoscape.ElementDefinition[] = [
 				...props.snapshot.nodes.map(kernelRowToCyElement),
-				...props.snapshot.edges.map(edgeRowToCyElement),
+				...props.snapshot.edges.map(e => edgeRowToCyElement(e, nodesById)),
 			];
 
 			cy.batch(() => {
