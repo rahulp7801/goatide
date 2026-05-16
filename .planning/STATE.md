@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Deep Features + Polish
-status: ready
-last_updated: "2026-05-15T05:57:15.319Z"
-last_activity: "2026-05-15 — Phase 16 closed (DEEP-03 ripple-impact + DEEP-06 phase-A schema migration GREEN — migration 0008_cross_repo_identity.sql + queryByRepo + repo-fingerprint helper + constraint-lift.ts sibling + What-would-break button + HypotheticalImpact UI + Mandate B 4-layer defense + refuse-unbounded-ripple-walk.sh widened)"
+milestone: v1.2
+milestone_name: Closeout
+status: executing
+last_updated: "2026-05-16T04:52:17.719Z"
+last_activity: "2026-05-15 — Phase 17 Plan 17-01 closed (Wave-0 scaffold: 6 RED tests, walkthrough-completion + workspace-repos real bodies, bridge package.json extended, mirror regen, 2 new meta-tests)"
 progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 21
-  completed_plans: 21
+  total_phases: 19
+  completed_phases: 4
+  total_plans: 25
+  completed_plans: 22
 ---
 
 # GoatIDE Project State
@@ -21,20 +21,27 @@ progress:
 ## Current
 
 - **Active milestone:** v2.0 — Deep Features + Polish + Windows auto-update (kickoff 2026-05-13)
-- **Active phase:** 17 — Cross-Repo UI + Polish Cluster (next)
-- **Plan:** — (Phase 17 not yet started)
-- **Status:** Ready for Phase 17
+- **Active phase:** 17 — Cross-Repo UI + Polish Cluster
+- **Plan:** 1 of 4 (17-01 complete — Wave-0 stubs + RED tests + bridge mirror regen + Mandate A/D fences)
+- **Status:** Phase 17 in progress — Plan 17-01 closed
 - **Last closed phase:** 16 — Ripple Analysis + Cross-Repo Schema Migration (DEEP-03 + DEEP-06-A) (closed 2026-05-15)
-- **Last closed plan:** 16-05 — Phase 16 phase-verify (closed 2026-05-15)
-- **Last activity:** 2026-05-15 — Phase 16 closed (DEEP-03 ripple-impact + DEEP-06 phase-A schema migration GREEN)
-- **Last session:** 2026-05-15T05:57:15.313Z
+- **Last closed plan:** 17-01 — Wave-0 stubs + RED tests + bridge mirror regen (closed 2026-05-15)
+- **Last activity:** 2026-05-15 — Phase 17 Plan 17-01 closed (Wave-0 scaffold: 6 RED tests, walkthrough-completion + workspace-repos real bodies, bridge package.json extended, mirror regen, 2 new meta-tests)
+- **Last session:** 2026-05-16T04:52:17.710Z
 
 Progress bar (Phase 16 plans): `[██████████]` 5/5 plans complete (100%) — CLOSED
-Progress bar (v2.0 phases):    `███░` 3/4 phases complete
+Progress bar (Phase 17 plans): `[██░░░░░░░░]` 1/4 plans complete (25%)
+Progress bar (v2.0 phases):    `███░` 3/4 phases complete (Phase 17 in progress)
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-15 — Phase 17 Plan 17-01 closed (Wave-0 scaffold)
+
+- **Decision (Dual-real-body Wave 0):** walkthrough-completion.ts and workspace-repos.ts ship REAL bodies (not throw-stubs) in Wave 0 because they are tiny (~50 lines each). Their tests GREEN-flip at Wave-0 close; all other 4 RED test files (save-gate-resource-scope, mandate-d, empty-state, cross-repo-command) wait for Plans 17-02/03/04.
+- **Decision (Mirror regen via direct cp for iteration, prepare_goatide.sh extended for canonical path):** Quick iteration used manual `cp` for package.json + media/walkthrough/*.md. `prepare_goatide.sh` extended with conditional `cp media/walkthrough/*.md` block for future canonical runs. `refuse-stale-bridge-mirror.sh` extended with `diff -r media/walkthrough/` assertion.
+- **Decision (Formatter compliance: empty arrow function bodies):** TypeScript hygiene gate (build/lib/formatter.ts) requires `() => { }` with space inside empty braces. Fixed two test files before commit.
 
 ### 2026-05-15 — Phase 16 closed (DEEP-03 ripple-impact + DEEP-06 phase-A schema)
 

@@ -318,7 +318,13 @@
 
 **Bridge mirror regen REQUIRED** in this phase (`scripts/prepare_goatide.sh`).
 
-**Plans:** TBD
+**Plans:** 1/5 plans executed
+
+- [x] 17-01-wave0-stubs-tests-bridge-mirror-PLAN.md — Wave 0: package.json walkthroughs + 3 saveGate.* properties + 3 new commands + walkthrough-completion.ts + workspace-repos.ts + 6 RED tests + 2 new meta-tests (refuse-llm-in-canvas + refuse-stale-bridge-mirror-after-walkthrough) + 5 walkthrough markdown placeholders + bridge mirror regen via prepare_goatide.sh (CLOSED 2026-05-15)
+- [ ] 17-02-polish02-polish04-saveGate-hover-PLAN.md — Wave 1: POLISH-02 resource-scoped getConfiguration read at dispatchTier entry + POLISH-04 dispatchHover private function (status-bar message + 'Open full receipt' fallback) + Mandate D byte-identity 3x3 matrix GREEN
+- [ ] 17-03-polish01-polish03-walkthrough-emptyState-PLAN.md — Wave 2: POLISH-01 extension.ts wiring (registerWalkthroughCompletion + maybeAutoOpenWalkthrough + placeholder addDecisionNode command) + walkthrough markdown copy refinement + POLISH-03 CitationList.tsx empty-state JSX (icon + literal 'No rationale recorded yet' + CTA) + Mandate A static-text fence
+- [ ] 17-04-deep06-phase-b-cross-repo-command-PLAN.md — Wave 3: Kernel wire-schema extension (SerializedNode/EdgeSnapshot gain repo_id + queryGraphSnapshot handler projects) + bridge Zod schema + wireToInspectorRow + edgeRowToCyElement crossRepo flag + Graph.tsx Cytoscape stylesheet selector + goatide.openCrossRepoGraph command + GraphInspectorPanel.getOrCreateForCrossRepo factory + Risk §5 Phase 15 fixture migration
+- [ ] 17-05-phase-verify-PLAN.md — Wave 4: full verification battery (kernel + bridge suites + 5 CI gates + 5 meta-tests + freshclone-smoke SC#5 + bridge mirror byte-equal) + 5 manual checkpoint:human-verify items + REQUIREMENTS/ROADMAP/STATE flips + 17-VERIFICATION.md + 17-SUMMARY.md + v2.0 milestone closure + phase-close commit
 
 ---
 
@@ -344,4 +350,4 @@
 | 14. Foundation RPCs | 5/5 | Closed | 2026-05-14 |
 | 15. Graph Inspector Panel | 5/5 | Closed | 2026-05-15 |
 | 16. Ripple Analysis + Cross-Repo Schema | 5/5 | Closed | 2026-05-15 |
-| 17. Cross-Repo UI + Polish Cluster | 0/TBD | Not started | — |
+| 17. Cross-Repo UI + Polish Cluster | 1/5 | In Progress|  |
