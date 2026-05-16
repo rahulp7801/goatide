@@ -22,20 +22,30 @@ progress:
 
 - **Active milestone:** v2.0 — Deep Features + Polish + Windows auto-update (kickoff 2026-05-13)
 - **Active phase:** 17 — Cross-Repo UI + Polish Cluster
-- **Plan:** 3 of 4 (17-03 complete — POLISH-01 walkthrough wiring + POLISH-03 empty-state Mandate A GREEN)
-- **Status:** Phase 17 in progress — Plan 17-03 closed
+- **Plan:** 4 of 5 (17-04 complete — DEEP-06 phase-B cross-repo command + wire-schema repo_id projection GREEN)
+- **Status:** Phase 17 in progress — Plan 17-04 closed
 - **Last closed phase:** 16 — Ripple Analysis + Cross-Repo Schema Migration (DEEP-03 + DEEP-06-A) (closed 2026-05-15)
-- **Last closed plan:** 17-03 — POLISH-01 walkthrough wiring + POLISH-03 empty-state Mandate A (closed 2026-05-16)
-- **Last activity:** 2026-05-16 — Phase 17 Plan 17-03 closed (POLISH-01 walkthrough wiring + POLISH-03 empty-state Mandate A GREEN + CTA canvas.requestAddDecisionNode routing)
-- **Last session:** 2026-05-16T05:56:05.196Z
+- **Last closed plan:** 17-04 — DEEP-06 phase-B cross-repo UI + wire-schema repo_id projection GREEN (closed 2026-05-16)
+- **Last activity:** 2026-05-16 — Phase 17 Plan 17-04 closed (DEEP-06 phase-B kernel wire-schema + bridge Zod + Cytoscape cross-repo edge styling + openCrossRepoGraph command; 18/18 Wave-0 tests GREEN)
+- **Last session:** 2026-05-16T19:50:23Z
 
 Progress bar (Phase 16 plans): `[██████████]` 5/5 plans complete (100%) — CLOSED
-Progress bar (Phase 17 plans): `[██████░░░░]` 3/4 plans complete (75%)
+Progress bar (Phase 17 plans): `[████████░░]` 4/5 plans complete (80%)
 Progress bar (v2.0 phases):    `███░` 3/4 phases complete (Phase 17 in progress)
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-16 — Phase 17 Plan 17-04 closed (DEEP-06 phase-B)
+
+- **Decision (B1 dao-first ordering):** `NodeRow`+`EdgeRow` interfaces and `materialize()` extended BEFORE `SerializedNodeSnapshot`/`SerializedEdgeSnapshot` and the `queryGraphSnapshot` handler. The dao-level sentry (`dao-repo-id.spec.ts`) GREEN-flips before the wire-schema extension, providing defense-in-depth at the dao boundary.
+- **Decision (command handler extracted to cross-repo-command.ts):** `registerCrossRepoGraphCommand()` extracted from `extension.ts activate()` to `src/inspector/cross-repo-command.ts` so the mocha test setup can register the command without calling activate() (which requires a real extension host).
+- **Decision (Pitfall 2 avoidance -- single VIEW_TYPE):** `getOrCreateForCrossRepo` returns the SAME `GraphInspectorPanel` singleton as `getOrCreate`. Cross-repo distinction stored as `pendingCrossRepoRepos` state on the instance; consumed and cleared on next `inspector.ready` dispatch.
+- **Decision (DEEP-06 single-DB deployment model locked):** `kernel/src/cli/db-path.ts` NOT modified. All nodes carry `repo_id='primary'` in v2.0; the cross-repo `edge[?crossRepo]` Cytoscape selector is dormant until v2.1 cross-repo writes ship.
+- **Decision (crossRepoEdge amber-400 single source-of-truth):** `PALETTE.crossRepoEdge: '#fbbf24'`; `GRAPHIFY_STYLE` references this constant directly -- no hex duplication in Graph.tsx.
+- **Auto-fix (Rule 3 - Blocking) Drizzle materialize() silently dropped repo_id:** `materialize(raw)` enumerated fields explicitly and omitted `repo_id` even though migration 0008 added the column. Added `repo_id: raw.repo_id` to the materializer and edge mapper.
+- **Auto-fix (Rule 3 - Blocking) activate() not called in mocha -- command not reachable:** Command extracted to standalone module + `test/setup/register-commands.ts` mocha `file:` entry pre-registers it with null-coerced stubs before specs load.
 
 ### 2026-05-16 — Phase 17 Plan 17-03 closed (POLISH-01 + POLISH-03)
 
