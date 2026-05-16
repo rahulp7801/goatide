@@ -481,6 +481,14 @@ export class CanvasPanel {
 			})();
 			return;
 		}
+		if (msg.type === 'canvas.requestAddDecisionNode') {
+			// Phase 17 Plan 17-03 POLISH-03 — route the empty-state CTA to the placeholder authoring command.
+			// The command is registered in extension.ts activate() and shows a v2.1
+			// informational message body. Pattern matches the existing if-chain at lines
+			// 333-361 (canvas.ready, citation.explain, reveal_line, canvas.requestRationale).
+			void vscode.commands.executeCommand('goatide.canvas.addDecisionNode');
+			return;
+		}
 		if (!this.pendingResolve) {
 			return;   // stale message after the promise already resolved
 		}

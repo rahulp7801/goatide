@@ -169,4 +169,15 @@ export class WebviewRpc {
 		const msg: WebviewToHost = { type: 'canvas.requestConstraintLift', payload };
 		this.vscode.postMessage(msg);
 	}
+
+	/**
+	 * Phase 17 Plan 17-03 POLISH-03 — request the host register the 'Add DecisionNode' command.
+	 * Fires the canvas.requestAddDecisionNode message variant; host routes it to
+	 * vscode.commands.executeCommand('goatide.canvas.addDecisionNode') via panel.ts handleMessage.
+	 * Pure trigger message — no payload.
+	 */
+	postAddDecisionNode(): void {
+		const msg: WebviewToHost = { type: 'canvas.requestAddDecisionNode' };
+		this.vscode.postMessage(msg);
+	}
 }

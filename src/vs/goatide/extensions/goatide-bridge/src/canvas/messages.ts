@@ -295,5 +295,10 @@ export const WebviewToHostSchema = z.discriminatedUnion('type', [
 			confidence_threshold: z.number().min(0).max(1).optional(),
 		}),
 	}),
+	// Phase 17 Plan 17-03 POLISH-03 — empty-state CTA trigger. Posted by CitationList.tsx
+	// when the developer clicks "Add DecisionNode" on the empty Verification Canvas.
+	// Pure trigger — no payload. panel.ts handleMessage routes it to
+	// vscode.commands.executeCommand('goatide.canvas.addDecisionNode') (v2.1 placeholder).
+	z.object({ type: z.literal('canvas.requestAddDecisionNode') }),
 ]);
 export type WebviewToHost = z.infer<typeof WebviewToHostSchema>;

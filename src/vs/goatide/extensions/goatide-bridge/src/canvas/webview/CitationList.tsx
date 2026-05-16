@@ -21,8 +21,9 @@ import * as React from 'react';
 import type { RenderedCitationForCanvas } from '../messages.js';
 
 export interface CitationListProps {
-	citations: ReadonlyArray<RenderedCitationForCanvas>;
-	onExplain: (node_id: string) => void;
+	readonly citations: ReadonlyArray<RenderedCitationForCanvas>;
+	readonly onExplain: (node_id: string) => void;
+	readonly onAddDecisionNode?: () => void;  // POLISH-03 CTA wiring
 }
 
 /**
@@ -41,7 +42,7 @@ function formatSupersededDate(supersededAt: string): string {
 	}
 }
 
-export function CitationList({ citations, onExplain }: CitationListProps): React.ReactElement {
+export function CitationList({ citations, onExplain, onAddDecisionNode }: CitationListProps): React.ReactElement {
 	const explicit = citations.filter((c) => c.confidence === 'Explicit');
 	const inferred = citations.filter((c) => c.confidence === 'Inferred');
 
@@ -50,7 +51,27 @@ export function CitationList({ citations, onExplain }: CitationListProps): React
 			<CitationSection title="Explicit citations" citations={explicit} onExplain={onExplain} variant="explicit" />
 			<CitationSection title="Inferred citations" citations={inferred} onExplain={onExplain} variant="inferred" />
 			{citations.length === 0 ? (
-				<div className="goatide-citation-empty">No citations - proposed change has no graph anchor.</div>
+				// Phase 17 Plan 17-03 POLISH-03 — Mandate A static empty-state UX.
+				//
+				// The heading textContent is the BYTE-EXACT literal 'No rationale recorded yet'.
+				// NO template interpolation; NO conditional render of variable strings; NO
+				// generated rationale. The Verification Canvas surfaces what's in the graph —
+				// never inferred text. See scripts/test/refuse-llm-in-canvas.meta.sh for the
+				// structural fence.
+				<div className="goatide-citation-empty" data-testid="citation-empty-state">
+					<svg className="goatide-citation-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h2v-2h-2v2zm0-4h2V7h-2v6z" fill="currentColor" />
+					</svg>
+					<h3 data-testid="empty-state-heading">No rationale recorded yet</h3>
+					<p>Save a change to a file annotated with a ConstraintNode or DecisionNode to see a receipt here.</p>
+					<button
+						className="goatide-citation-empty-cta"
+						data-testid="empty-state-add-decision-node"
+						onClick={() => onAddDecisionNode?.()}
+					>
+						Add DecisionNode
+					</button>
+				</div>
 			) : null}
 		</div>
 	);

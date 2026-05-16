@@ -250,7 +250,11 @@ function CanvasShell({ rpc, payload, DiffComponent, startMs }: CanvasShellProps)
 					/>
 				) : null}
 				<section className="goatide-canvas-citations">
-					<CitationList citations={rerankedCitations} onExplain={onCitationExplain} />
+					<CitationList
+						citations={rerankedCitations}
+						onExplain={onCitationExplain}
+						onAddDecisionNode={() => rpc.postAddDecisionNode()}
+					/>
 				</section>
 			</div>
 			{payload.destructive && payload.confirmation_phrase ? (

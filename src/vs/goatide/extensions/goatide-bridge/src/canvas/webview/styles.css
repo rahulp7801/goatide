@@ -242,25 +242,51 @@ button {
 	color: var(--vscode-textLink-activeForeground, #4daafc);
 }
 
-/* Empty-citations info banner (degraded-kernel state) */
+/* Phase 17 Plan 17-03 POLISH-03 empty-state UX — Mandate A static text.
+ * Uses --vscode-* registered tokens only (no custom --goatide-* or --inspector-* variables
+ * per Phase 15 Plan 15-04 stylelint hygiene gate decision). */
 .goatide-citation-empty {
 	display: flex;
+	flex-direction: column;
 	align-items: center;
-	gap: 8px;
-	padding: 10px 14px;
-	border-radius: 4px;
-	background-color: var(--vscode-editorInfo-background, #063b49);
-	border: 1px solid var(--vscode-editorInfo-foreground, #3794ff);
-	color: var(--vscode-foreground, #cccccc);
-	font-size: 12px;
-	line-height: 1.5;
+	gap: 12px;
+	padding: 24px;
+	text-align: center;
+	color: var(--vscode-descriptionForeground);
 }
 
-.goatide-citation-empty::before {
-	content: '\24D8';
-	color: var(--vscode-editorInfo-foreground, #3794ff);
+.goatide-citation-empty-icon {
+	width: 48px;
+	height: 48px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.goatide-citation-empty h3 {
+	margin: 0;
 	font-size: 14px;
-	flex-shrink: 0;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.goatide-citation-empty p {
+	margin: 0;
+	font-size: 12px;
+	max-width: 320px;
+}
+
+.goatide-citation-empty-cta {
+	margin-top: 8px;
+	padding: 6px 14px;
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border: none;
+	border-radius: 2px;
+	cursor: pointer;
+	font-size: 13px;
+}
+
+.goatide-citation-empty-cta:hover {
+	background: var(--vscode-button-hoverBackground);
 }
 
 /* ========================================================================================
