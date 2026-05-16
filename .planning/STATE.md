@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Closeout
 status: executing
-last_updated: "2026-05-16T04:52:17.719Z"
-last_activity: "2026-05-15 — Phase 17 Plan 17-02 closed (POLISH-02 resource-scoped save-gate config + POLISH-04 dispatchHover + Mandate D byte-identity GREEN)"
+last_updated: "2026-05-16T05:56:05.202Z"
+last_activity: 2026-05-15 — Phase 17 Plan 17-02 closed (POLISH-02 resource-scoped save-gate config + POLISH-04 dispatchHover + Mandate D byte-identity GREEN)
 progress:
   total_phases: 19
   completed_phases: 4
   total_plans: 25
-  completed_plans: 23
+  completed_plans: 24
 ---
 
 # GoatIDE Project State
@@ -22,20 +22,29 @@ progress:
 
 - **Active milestone:** v2.0 — Deep Features + Polish + Windows auto-update (kickoff 2026-05-13)
 - **Active phase:** 17 — Cross-Repo UI + Polish Cluster
-- **Plan:** 2 of 4 (17-02 complete — POLISH-02 resource-scoped config + POLISH-04 hover dispatch + Mandate D)
-- **Status:** Phase 17 in progress — Plan 17-02 closed
+- **Plan:** 3 of 4 (17-03 complete — POLISH-01 walkthrough wiring + POLISH-03 empty-state Mandate A GREEN)
+- **Status:** Phase 17 in progress — Plan 17-03 closed
 - **Last closed phase:** 16 — Ripple Analysis + Cross-Repo Schema Migration (DEEP-03 + DEEP-06-A) (closed 2026-05-15)
-- **Last closed plan:** 17-02 — POLISH-02 resource-scoped save-gate config + POLISH-04 hover dispatch (closed 2026-05-15)
-- **Last activity:** 2026-05-15 — Phase 17 Plan 17-02 closed (POLISH-02 resource-scoped save-gate config + POLISH-04 dispatchHover + Mandate D byte-identity GREEN)
-- **Last session:** 2026-05-15T00:00:00Z
+- **Last closed plan:** 17-03 — POLISH-01 walkthrough wiring + POLISH-03 empty-state Mandate A (closed 2026-05-16)
+- **Last activity:** 2026-05-16 — Phase 17 Plan 17-03 closed (POLISH-01 walkthrough wiring + POLISH-03 empty-state Mandate A GREEN + CTA canvas.requestAddDecisionNode routing)
+- **Last session:** 2026-05-16T05:56:05.196Z
 
 Progress bar (Phase 16 plans): `[██████████]` 5/5 plans complete (100%) — CLOSED
-Progress bar (Phase 17 plans): `[████░░░░░░]` 2/4 plans complete (50%)
+Progress bar (Phase 17 plans): `[██████░░░░]` 3/4 plans complete (75%)
 Progress bar (v2.0 phases):    `███░` 3/4 phases complete (Phase 17 in progress)
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-16 — Phase 17 Plan 17-03 closed (POLISH-01 + POLISH-03)
+
+- **Decision (N3 ordering invariant — maybeAutoOpenWalkthrough must fire last):** `registerWalkthroughCompletion(context)` and `goatide.canvas.addDecisionNode` both registered with `context.subscriptions.push` BEFORE `void maybeAutoOpenWalkthrough(context)` fires. If the walkthrough renders before handlers are registered, command-link buttons in Getting Started fire against unregistered commands — VS Code shows error toasts. Documented with inline comment in extension.ts.
+- **Decision (onClick arrow wrapper for CTA):** `onClick={() => onAddDecisionNode?.()}` instead of `onClick={onAddDecisionNode}`. React onClick passes the synthetic MouseEvent as arg[0]; the Wave-0 test spy asserts args.length === 0. The arrow wrapper discards the event.
+- **Decision (WebviewRpc.postAddDecisionNode uses this.vscode.postMessage directly):** Plan spec mentioned `postRaw` but that method only exists on `HostRpc` (extension-host side). `WebviewRpc` communicates via `this.vscode.postMessage()`. Auto-fixed: same semantics, correct class.
+- **Decision (styles.css full replacement of old .goatide-citation-empty):** Old info-banner styles (editorInfo-background + ::before pseudo-element) replaced entirely by POLISH-03 flex-column layout. No legacy fallback retained.
+- **Auto-fix (Rule 1 - Bug) WebviewRpc.postRaw does not exist:** tsc error caught at compile; fixed to use this.vscode.postMessage directly.
+- **Auto-fix (Rule 1 - Bug) onClick forwarded React event as first argument:** test 2/3 asserted args.length === 0; fixed via arrow wrapper.
 
 ### 2026-05-15 — Phase 17 Plan 17-02 closed (POLISH-02 + POLISH-04)
 

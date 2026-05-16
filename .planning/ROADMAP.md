@@ -318,7 +318,7 @@
 
 **Bridge mirror regen REQUIRED** in this phase (`scripts/prepare_goatide.sh`).
 
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 - [x] 17-01-wave0-stubs-tests-bridge-mirror-PLAN.md — Wave 0: package.json walkthroughs + 3 saveGate.* properties + 3 new commands + walkthrough-completion.ts + workspace-repos.ts + 6 RED tests + 2 new meta-tests (refuse-llm-in-canvas + refuse-stale-bridge-mirror-after-walkthrough) + 5 walkthrough markdown placeholders + bridge mirror regen via prepare_goatide.sh (CLOSED 2026-05-15)
 - [ ] 17-02-polish02-polish04-saveGate-hover-PLAN.md — Wave 1: POLISH-02 resource-scoped getConfiguration read at dispatchTier entry + POLISH-04 dispatchHover private function (status-bar message + 'Open full receipt' fallback) + Mandate D byte-identity 3x3 matrix GREEN
@@ -350,4 +350,4 @@
 | 14. Foundation RPCs | 5/5 | Closed | 2026-05-14 |
 | 15. Graph Inspector Panel | 5/5 | Closed | 2026-05-15 |
 | 16. Ripple Analysis + Cross-Repo Schema | 5/5 | Closed | 2026-05-15 |
-| 17. Cross-Repo UI + Polish Cluster | 2/5 | In Progress|  |
+| 17. Cross-Repo UI + Polish Cluster | 3/5 | In Progress|  |
