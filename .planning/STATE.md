@@ -4,12 +4,12 @@ milestone: v1.2
 milestone_name: Closeout
 status: executing
 last_updated: "2026-05-16T04:52:17.719Z"
-last_activity: "2026-05-15 — Phase 17 Plan 17-01 closed (Wave-0 scaffold: 6 RED tests, walkthrough-completion + workspace-repos real bodies, bridge package.json extended, mirror regen, 2 new meta-tests)"
+last_activity: "2026-05-15 — Phase 17 Plan 17-02 closed (POLISH-02 resource-scoped save-gate config + POLISH-04 dispatchHover + Mandate D byte-identity GREEN)"
 progress:
   total_phases: 19
   completed_phases: 4
   total_plans: 25
-  completed_plans: 22
+  completed_plans: 23
 ---
 
 # GoatIDE Project State
@@ -22,20 +22,28 @@ progress:
 
 - **Active milestone:** v2.0 — Deep Features + Polish + Windows auto-update (kickoff 2026-05-13)
 - **Active phase:** 17 — Cross-Repo UI + Polish Cluster
-- **Plan:** 1 of 4 (17-01 complete — Wave-0 stubs + RED tests + bridge mirror regen + Mandate A/D fences)
-- **Status:** Phase 17 in progress — Plan 17-01 closed
+- **Plan:** 2 of 4 (17-02 complete — POLISH-02 resource-scoped config + POLISH-04 hover dispatch + Mandate D)
+- **Status:** Phase 17 in progress — Plan 17-02 closed
 - **Last closed phase:** 16 — Ripple Analysis + Cross-Repo Schema Migration (DEEP-03 + DEEP-06-A) (closed 2026-05-15)
-- **Last closed plan:** 17-01 — Wave-0 stubs + RED tests + bridge mirror regen (closed 2026-05-15)
-- **Last activity:** 2026-05-15 — Phase 17 Plan 17-01 closed (Wave-0 scaffold: 6 RED tests, walkthrough-completion + workspace-repos real bodies, bridge package.json extended, mirror regen, 2 new meta-tests)
-- **Last session:** 2026-05-16T04:52:17.710Z
+- **Last closed plan:** 17-02 — POLISH-02 resource-scoped save-gate config + POLISH-04 hover dispatch (closed 2026-05-15)
+- **Last activity:** 2026-05-15 — Phase 17 Plan 17-02 closed (POLISH-02 resource-scoped save-gate config + POLISH-04 dispatchHover + Mandate D byte-identity GREEN)
+- **Last session:** 2026-05-15T00:00:00Z
 
 Progress bar (Phase 16 plans): `[██████████]` 5/5 plans complete (100%) — CLOSED
-Progress bar (Phase 17 plans): `[██░░░░░░░░]` 1/4 plans complete (25%)
+Progress bar (Phase 17 plans): `[████░░░░░░]` 2/4 plans complete (50%)
 Progress bar (v2.0 phases):    `███░` 3/4 phases complete (Phase 17 in progress)
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-15 — Phase 17 Plan 17-02 closed (POLISH-02 + POLISH-04)
+
+- **Decision (dispatchHover Promise<void> — B2 correction):** dispatchHover returns `Promise<void>` matching dispatchTier's signature. No TierDecision return type. The file write happens in Step 1; the 'Open full receipt' modal is informational. Post-hoc rejection via Reject button deferred to v2.1.
+- **Decision (showPayload hoisted before silent/inline branches):** The existing showPayload construction was moved UP so dispatchHover receives the identical payload for 'Open full receipt' fallback. compliance_report patched after lockTrigger async code in modal path (always null for silent/hover tier — drift escalation would have promoted to modal if lockTrigger were set).
+- **Decision (ESM namespace immutability + __setCanvasModuleForTests):** canvasMod from dynamic import() is an immutable ESM namespace. Direct property assignment silently fails. Added __setCanvasModuleForTests + __resetCanvasModuleForTests injection helpers to canvas-module.ts (follows __resetDriftLockCacheForTests precedent). Matrix test uses these for controlled classifyTier/detectDestructive.
+- **Decision (caller-count fence at 2 = 1 declaration + 1 caller):** Comments referencing dispatchHover would inflate the count. Inline comments in tier-dispatch.ts use "dispatchHover" only at the function declaration and the silent-tier caller. Wave-0 test's LOCKED_CALLER_COUNT_WAVE1 = 2 is honored.
+- **Auto-fix (Rule 3 - Blocking) Wave-0 test relative import paths wrong by one level:** test/unit/save-gate/*.test.ts used ../../src/ (resolves to test/src/) instead of ../../../src/. Fixed in both test files + path.resolve call.
 
 ### 2026-05-15 — Phase 17 Plan 17-01 closed (Wave-0 scaffold)
 

@@ -26,9 +26,9 @@
 #### Polish
 
 - [ ] **POLISH-01**: User sees a first-run onboarding flow that explains the Verification Canvas + how to read a Reasoning Receipt before encountering one in anger
-- [ ] **POLISH-02**: User can configure save-gate strictness (suppress vs. confirm vs. block) per-workspace via a Settings UI rather than editing config files
+- [x] **POLISH-02**: User can configure save-gate strictness (suppress vs. confirm vs. block) per-workspace via a Settings UI rather than editing config files
 - [ ] **POLISH-03**: User sees improved empty-state UX in the Verification Canvas when the graph has no relevant citations (instead of a blank "Receipt: 0 citations")
-- [ ] **POLISH-04**: User sees compact, hover-driven receipt drilldown (vs. current full-modal-only) for low-tier saves to reduce friction
+- [x] **POLISH-04**: User sees compact, hover-driven receipt drilldown (vs. current full-modal-only) for low-tier saves to reduce friction
 
 #### Distribution
 
@@ -238,7 +238,7 @@
 | DEEP-05 | 14 | Closed 2026-05-14 | `c908b4c87e7`, `742ff1cb00b`, `781e4db7aba`, `2448b1b371c`, `941b5d1fa11`, `94e02ab39ef` |
 | DEEP-06 | 16 (schema-A), 17 (UI-B) | Phase-A Closed 2026-05-15; Phase-B Pending | `8421cc7874c`, `a10800df961`, `0e62b0885be`, `fb9a393cf63` |
 | POLISH-01 | 17 | Pending | — |
-| POLISH-02 | 17 | Pending | — |
+| POLISH-02 | 17 | Complete | — |
 | POLISH-03 | 17 | Pending | — |
-| POLISH-04 | 17 | Pending | — |
+| POLISH-04 | 17 | Complete | — |
 | ~~C3~~ | v2.1 (deferred) | — | Deferred 2026-05-13 — see Out-of-scope note |
