@@ -1,11 +1,12 @@
-The Verification Canvas appears every time you save a file that touches a graph-anchored region. It shows the rationale recorded for the change: which ConstraintNodes were cited, which DecisionNodes anchor the file, and any drift findings against your session priority.
+The **Verification Canvas** is GoatIDE's per-save safety net. Every time you save a file that touches a graph-anchored region, the Canvas appears showing:
 
-Saves come in three tiers:
+- The **rationale** for the change — which ConstraintNodes (explicit rules) and DecisionNodes (recorded architectural choices) anchor the affected code
+- **Drift findings** — when your save conflicts with a contract or session priority
+- The **tier classification**:
+  - **Destructive** — requires a typed confirmation phrase before the write proceeds
+  - **High-impact** — shows the full Canvas modal
+  - **Benign** — shows a compact receipt (configurable via `goatide.saveGate.benign`)
 
-- **Destructive** — requires you to type a confirmation phrase before the write proceeds
-- **High-impact** — shows the full Canvas modal
-- **Benign** — shows a compact receipt (configurable via `goatide.saveGate.benign`)
+The Canvas is read-only by design: it surfaces what is already in the graph, never inferred or generated text. The cited nodes are the authoritative record of why your file has the shape it does.
 
-The Canvas is your safety net against accidental contract violations. When in doubt, read the citations before clicking Accept.
-
-> **Wave 3 note:** This placeholder copy is refined by Plan 17-03. The walkthrough steps function correctly now; copy improvements follow.
+When in doubt, read the citations before clicking **Accept**.

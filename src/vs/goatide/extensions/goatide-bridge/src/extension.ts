@@ -26,6 +26,7 @@ import { registerHarvester } from './harvester/index.js';
 import { registerMcpLivenessBannerExtension } from './mcp/liveness-banner-ext.js';
 import { registerSchemaDriftBanner } from './mcp/schema-drift-banner.js';
 import { registerMcpReconnectCommand } from './mcp/reconnect-command.js';
+import { registerWalkthroughCompletion, maybeAutoOpenWalkthrough } from './onboarding/walkthrough-completion.js';
 
 /**
  * BRIDGE-RT-01: resolves `<fork-root>/kernel/dist/main.js` across both bridge load modes.
@@ -251,6 +252,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			}
 		}),
 	);
+
+	// Phase 17 Plan 17-03 POLISH-01 — wire walkthrough. ORDERING INVARIANT (N3):
+	// ALL command registrations land BEFORE maybeAutoOpenWalkthrough fires so the
+	// walkthrough's command-link buttons + completionEvents have registered handlers
+	// when the Getting Started panel renders.
+
+	// First — register the walkthrough completion command (Pitfall 9 fence — landed Plan 17-01 Task 2):
+	context.subscriptions.push(registerWalkthroughCompletion(context));
+
+	// Phase 17 Plan 17-03 POLISH-03 — placeholder authoring command. The CTA in the
+	// Verification Canvas empty-state posts a canvas.requestAddDecisionNode message
+	// which routes to this command via canvas/panel.ts handleMessage. v2.1 will swap
+	// the placeholder for the real authoring flow without touching the empty-state JSX.
+	// Registered HERE (before maybeAutoOpenWalkthrough) so the empty-state CTA has a
+	// valid command target the moment the user encounters it (e.g. on a same-session
+	// first-save right after the walkthrough completes).
+	context.subscriptions.push(
+		vscode.commands.registerCommand('goatide.canvas.addDecisionNode', async () => {
+			await vscode.window.showInformationMessage(
+				'GoatIDE: Adding DecisionNode is coming in v2.1 - for now, edit your contracts file directly to add a new ## ConstraintNode or ## DecisionNode section.',
+			);
+		}),
+	);
+
+	// Phase 17 Plan 17-03 POLISH-01 — auto-open the walkthrough on fresh activation.
+	// void prefix is intentional: maybeAutoOpenWalkthrough returns Promise<void> and
+	// we deliberately don't await it (it would block extension activation on the UI
+	// thread). Fire-and-forget pattern matches the existing SchemaDriftBanner async
+	// bootstrap precedent at Phase 10 Plan 10-02. ORDERING REQUIREMENT (N3): this
+	// call MUST follow the registerCommand calls above so the walkthrough's
+	// command-links have valid targets when the Getting Started panel renders.
+	void maybeAutoOpenWalkthrough(context);
 }
 
 export async function deactivate(): Promise<void> {
