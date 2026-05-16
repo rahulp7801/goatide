@@ -43,6 +43,52 @@
 						"Optimize for runtime safety + correctness; speed + cost tradeoffs accepted.",
 						"Optimize for runtime cost; quality tradeoffs accepted."
 					]
+				},
+				"goatide.saveGate.destructive": {
+					"type": "string",
+					"enum": [
+						"block",
+						"confirm"
+					],
+					"enumDescriptions": [
+						"Block destructive saves entirely (file write refused).",
+						"Show the full Verification Canvas with ConfirmationPhrase (default; Mandate D)."
+					],
+					"default": "confirm",
+					"scope": "resource",
+					"description": "Per-workspace strictness for destructive saves. The 'suppress' option is intentionally excluded -- destructive saves ALWAYS require explicit confirmation (Mandate D)."
+				},
+				"goatide.saveGate.highImpact": {
+					"type": "string",
+					"enum": [
+						"block",
+						"confirm",
+						"suppress"
+					],
+					"enumDescriptions": [
+						"Block high-impact saves entirely.",
+						"Show the full Verification Canvas (default).",
+						"Allow without UI (no canvas, no toast)."
+					],
+					"default": "confirm",
+					"scope": "resource",
+					"description": "Per-workspace strictness for saves that touch a file under contracts.highImpactAllowlist."
+				},
+				"goatide.saveGate.benign": {
+					"type": "string",
+					"enum": [
+						"modal",
+						"hover",
+						"suppress"
+					],
+					"enumDescriptions": [
+						"Show the full Verification Canvas modal (default -- same as pre-Phase-17).",
+						"Show a compact status-bar message with the top 2 citations + 'Open full receipt' link (POLISH-04).",
+						"Apply silently (no UI; identical to current 'silent' tier behavior)."
+					],
+					"default": "modal",
+					"scope": "resource",
+					"description": "Per-workspace UI strictness for benign-tier saves (silent + inline classifications)."
 				}
 			}
 		},
@@ -81,6 +127,74 @@
 				"command": "goatide.openGraphInspector",
 				"title": "Open Graph Inspector",
 				"category": "GoatIDE"
+			},
+			{
+				"command": "goatide.openCrossRepoGraph",
+				"title": "GoatIDE: Open Cross-Repo Graph",
+				"category": "GoatIDE"
+			},
+			{
+				"command": "goatide.onboarding.complete",
+				"title": "GoatIDE: Mark Onboarding Complete",
+				"category": "GoatIDE"
+			},
+			{
+				"command": "goatide.canvas.addDecisionNode",
+				"title": "GoatIDE: Add DecisionNode",
+				"category": "GoatIDE"
+			}
+		],
+		"walkthroughs": [
+			{
+				"id": "goatide.onboarding",
+				"title": "GoatIDE — Understanding the Verification Canvas",
+				"description": "Learn how GoatIDE's bitemporal graph surfaces rationale for every code change.",
+				"when": "!goatide.onboardingComplete",
+				"steps": [
+					{
+						"id": "step1.canvas",
+						"title": "What Is the Verification Canvas?",
+						"description": "GoatIDE intercepts every save and shows a Verification Canvas with the rationale for your change.",
+						"media": {
+							"markdown": "media/walkthrough/step1-canvas.md"
+						}
+					},
+					{
+						"id": "step2.receipt",
+						"title": "Reading a Reasoning Receipt",
+						"description": "Every save produces a Receipt listing the cited ConstraintNodes (Explicit rules) and DecisionNodes (recorded choices).",
+						"media": {
+							"markdown": "media/walkthrough/step2-receipt.md"
+						}
+					},
+					{
+						"id": "step3.intentdrift",
+						"title": "IntentDrift — When Your Save Conflicts With Recorded Intent",
+						"description": "If your save cites a DecisionNode whose session priority doesn't match yours, GoatIDE shows an IntentDrift badge. The save still proceeds — IntentDrift is informational, not blocking.",
+						"media": {
+							"markdown": "media/walkthrough/step3-intentdrift.md"
+						}
+					},
+					{
+						"id": "step4.settings",
+						"title": "Configure Your Save Gate",
+						"description": "Set per-workspace save-gate strictness. [Open settings](command:workbench.action.openSettings?%22%40ext%3Agoatide.goatide-bridge%22)",
+						"media": {
+							"markdown": "media/walkthrough/step4-settings.md"
+						}
+					},
+					{
+						"id": "step5.inspector",
+						"title": "Explore the Graph Inspector",
+						"description": "Open the Graph Inspector to see your project's rationale graph as a time-travelable visualization. [Open Graph Inspector](command:goatide.openGraphInspector)",
+						"media": {
+							"markdown": "media/walkthrough/step5-inspector.md"
+						},
+						"completionEvents": [
+							"onCommand:goatide.onboarding.complete"
+						]
+					}
+				]
 			}
 		]
 	},

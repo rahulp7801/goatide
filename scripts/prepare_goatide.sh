@@ -156,6 +156,13 @@ BRIDGE_DST="extensions/goatide-bridge"
 if [[ -d "$BRIDGE_SRC" ]]; then
 	mkdir -p "$BRIDGE_DST"
 	cp "$BRIDGE_SRC/package.json" "$BRIDGE_DST/package.json"
+	# Phase 17 Plan 17-01: propagate walkthrough markdown files alongside package.json.
+	# The walkthrough media.markdown references are relative to the extension root, so
+	# the mirror must carry them or the walkthrough renders with broken file references.
+	if [[ -d "$BRIDGE_SRC/media/walkthrough" ]]; then
+		mkdir -p "$BRIDGE_DST/media/walkthrough"
+		cp "$BRIDGE_SRC/media/walkthrough"/*.md "$BRIDGE_DST/media/walkthrough/"
+	fi
 	if [[ -d "$BRIDGE_SRC/dist" ]]; then
 		rm -rf "$BRIDGE_DST/dist"
 		cp -r "$BRIDGE_SRC/dist" "$BRIDGE_DST/dist"

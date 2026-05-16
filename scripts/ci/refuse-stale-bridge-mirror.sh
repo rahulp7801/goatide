@@ -66,16 +66,37 @@ trap 'rm -f "$REAL_CANON" "$STUB_CANON"' EXIT
 canonicalize "$REAL_PKG" > "$REAL_CANON"
 canonicalize "$STUB_PKG" > "$STUB_CANON"
 
-if diff -u "$STUB_CANON" "$REAL_CANON" > /dev/null; then
-	echo "OK: bridge mirror in sync (stub vs real package.json, byte-equal across all fields)"
-	exit 0
+if ! diff -u "$STUB_CANON" "$REAL_CANON" > /dev/null; then
+	echo "refuse-stale-bridge-mirror: drift detected between $STUB_PKG and $REAL_PKG (byte-equal expected across all fields)" >&2
+	echo "" >&2
+	echo "--- $STUB_PKG (canonical)" >&2
+	echo "+++ $REAL_PKG (canonical)" >&2
+	diff -u "$STUB_CANON" "$REAL_CANON" >&2 || true
+	echo "" >&2
+	echo "Fix: re-run \`bash scripts/prepare_goatide.sh\` to regenerate the mirror, or run \`npm run compile\` which chains build-bridge -> prepare_goatide.sh." >&2
+	exit 1
 fi
 
-echo "refuse-stale-bridge-mirror: drift detected between $STUB_PKG and $REAL_PKG (byte-equal expected across all fields)" >&2
-echo "" >&2
-echo "--- $STUB_PKG (canonical)" >&2
-echo "+++ $REAL_PKG (canonical)" >&2
-diff -u "$STUB_CANON" "$REAL_CANON" >&2 || true
-echo "" >&2
-echo "Fix: re-run \`bash scripts/prepare_goatide.sh\` to regenerate the mirror, or run \`npm run compile\` which chains build-bridge → prepare_goatide.sh." >&2
-exit 1
+# Phase 17 Plan 17-01: also assert byte-equality of media/walkthrough/*.md between source and mirror.
+# The walkthrough media files are referenced by package.json contributes.walkthroughs steps; they
+# must be present in the mirror for the walkthrough to render correctly at runtime.
+REAL_MEDIA="src/vs/goatide/extensions/goatide-bridge/media/walkthrough"
+STUB_MEDIA="extensions/goatide-bridge/media/walkthrough"
+
+if [[ -d "$REAL_MEDIA" ]]; then
+	if [[ ! -d "$STUB_MEDIA" ]]; then
+		echo "refuse-stale-bridge-mirror: missing mirror media/walkthrough at $STUB_MEDIA" >&2
+		echo "Fix: re-run \`bash scripts/prepare_goatide.sh\` to sync walkthrough markdown files." >&2
+		exit 1
+	fi
+	MEDIA_DIFF=$(diff -r "$STUB_MEDIA" "$REAL_MEDIA" 2>&1 || true)
+	if [[ -n "$MEDIA_DIFF" ]]; then
+		echo "refuse-stale-bridge-mirror: media/walkthrough drift detected between source and mirror" >&2
+		echo "$MEDIA_DIFF" >&2
+		echo "Fix: re-run \`bash scripts/prepare_goatide.sh\` to sync walkthrough markdown files." >&2
+		exit 1
+	fi
+fi
+
+echo "OK: bridge mirror in sync (stub vs real package.json, byte-equal across all fields; media/walkthrough/* synced)"
+exit 0
