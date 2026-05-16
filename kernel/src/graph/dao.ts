@@ -463,6 +463,7 @@ export class GraphDAO {
 			invalidated_at: r.invalidated_at,
 			recorded_at: r.recorded_at,
 			superseded_by: r.superseded_by,
+			repo_id: 'primary',
 		}));
 	}
 
@@ -517,6 +518,7 @@ export class GraphDAO {
 			invalidated_at: row.invalidated_at,
 			recorded_at: row.recorded_at,
 			superseded_by: row.superseded_by,
+			repo_id: 'primary',
 		};
 	}
 

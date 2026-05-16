@@ -54,6 +54,7 @@ describe('cli/format', () => {
 		invalidated_at: null,
 		recorded_at: '2026-04-30T01:00:00.000Z',
 		superseded_by: null,
+		repo_id: 'primary',
 	};
 
 	it('formatNodeTable returns "No results.\\n" on empty array', () => {
