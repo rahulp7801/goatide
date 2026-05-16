@@ -266,6 +266,138 @@ async function main() {
 			console.warn('[phase17-smoke] SC7 (delegated to manual verification; SC5 static check guarantees the contributions are correct)');
 		}
 
+		// ============================================================
+		// SC9 — Welcome panel DOM: is the GoatIDE walkthrough at least REGISTERED + VISIBLE?
+		// We don't require it to be the foregrounded walkthrough, but it MUST appear in
+		// the Welcome panel's walkthrough list.
+		// ============================================================
+		const welcomeDom = await window.evaluate(() => {
+			const bodyText = document.body ? document.body.innerText : '';
+			return {
+				bodyLen: bodyText.length,
+				hasGoatideTitle: bodyText.includes('GoatIDE') && (bodyText.includes('Understanding') || bodyText.includes('Verification Canvas')),
+				hasSetupVsCode: bodyText.includes('Setup VS Code'),
+				goatideHits: (bodyText.match(/GoatIDE/g) || []).length,
+				snippets: bodyText.split('\n').filter(l => l.toLowerCase().includes('goatide') || l.toLowerCase().includes('walkthrough') || l.toLowerCase().includes('understanding')).slice(0, 8),
+			};
+		});
+		if (welcomeDom.hasGoatideTitle) {
+			console.log('[phase17-smoke] SC9 PASS: Welcome panel DOM contains GoatIDE walkthrough text');
+			console.log('[phase17-smoke] SC9 detail: GoatIDE mentions in body=' + welcomeDom.goatideHits + ', Setup-VS-Code also shown=' + welcomeDom.hasSetupVsCode);
+			scPassed++;
+		} else {
+			console.warn('[phase17-smoke] SC9 SOFT-FAIL: GoatIDE walkthrough text not found in Welcome panel DOM');
+			console.warn('[phase17-smoke] SC9 detail: GoatIDE mentions=' + welcomeDom.goatideHits + ' snippets=' + JSON.stringify(welcomeDom.snippets));
+		}
+
+		// ============================================================
+		// SC10 — Command palette: type "GoatIDE: Open Cross-Repo" and verify it appears
+		// ============================================================
+		await window.keyboard.press('Control+Shift+P');
+		await sleep(800);
+		await window.keyboard.type('GoatIDE: Open Cross-Repo');
+		await sleep(1500);
+		const palette = await window.evaluate(() => {
+			const list = document.querySelector('.quick-input-list');
+			if (!list) {
+				return { found: false, reason: 'no .quick-input-list element' };
+			}
+			const text = list.innerText || '';
+			return {
+				found: true,
+				hasCrossRepo: text.includes('Open Cross-Repo Graph') || text.includes('Open Cross-Repo'),
+				preview: text.slice(0, 300),
+			};
+		});
+		if (palette.found && palette.hasCrossRepo) {
+			console.log('[phase17-smoke] SC10 PASS: command palette resolves "GoatIDE: Open Cross-Repo Graph"');
+			scPassed++;
+		} else {
+			console.warn('[phase17-smoke] SC10 SOFT-FAIL: command palette did not show Cross-Repo command');
+			console.warn('[phase17-smoke] SC10 detail: ' + JSON.stringify(palette));
+		}
+
+		// ============================================================
+		// SC11 — Cross-repo command behavior: invoke it in single-folder workspace
+		// (current cwd is the goatide repo — exactly one workspace folder). Expect the
+		// graceful-degradation info notification, NOT an inspector panel opening.
+		// ============================================================
+		// Submit the command from the palette
+		await window.keyboard.press('Enter');
+		await sleep(3500);
+		const crossRepoResult = await window.evaluate(() => {
+			const notifs = Array.from(document.querySelectorAll('.notifications-list-container .notification-list-item, .notification-toast'));
+			const texts = notifs.map(n => (n.innerText || '').replace(/\s+/g, ' ').trim()).filter(t => t.length > 0);
+			const inspectorOpen = document.body.innerText.includes('Graph Inspector') || document.body.innerText.includes('Cross-Repo Graph');
+			return { notifTexts: texts, inspectorOpen };
+		});
+		const sawDegradation = crossRepoResult.notifTexts.some(t => /no multi-root|multi-?root workspace/i.test(t) || /single.folder|single workspace/i.test(t) || /no.*cross.repo/i.test(t));
+		if (sawDegradation) {
+			console.log('[phase17-smoke] SC11 PASS: cross-repo command degraded to info notification in single-folder workspace');
+			console.log('[phase17-smoke] SC11 detail: notification text="' + crossRepoResult.notifTexts.find(t => /multi-?root|single/i.test(t)) + '"');
+			scPassed++;
+		} else if (crossRepoResult.notifTexts.length > 0) {
+			console.warn('[phase17-smoke] SC11 SOFT-FAIL: notifications present but none matched degradation pattern');
+			console.warn('[phase17-smoke] SC11 detail: notifs=' + JSON.stringify(crossRepoResult.notifTexts));
+		} else {
+			console.warn('[phase17-smoke] SC11 SOFT-FAIL: no notification surfaced after running cross-repo command');
+			console.warn('[phase17-smoke] SC11 detail: inspectorOpen=' + crossRepoResult.inspectorOpen);
+		}
+		// Dismiss any open notifications + close the palette
+		await window.keyboard.press('Escape');
+		await sleep(500);
+
+		// ============================================================
+		// SC12 — Settings UI: search "goatide.saveGate" and verify 3 dropdowns render
+		// ============================================================
+		await window.keyboard.press('Control+,');
+		await sleep(3000);
+		// Settings UI's search input — try a wide range of selectors. The opened Settings
+		// editor takes focus automatically; just typing should route to the search field.
+		const settingsOpenState = await window.evaluate(() => {
+			const editor = document.querySelector('.settings-editor');
+			const inputs = editor ? Array.from(editor.querySelectorAll('input, textarea')) : [];
+			return {
+				editorPresent: !!editor,
+				inputCount: inputs.length,
+				inputs: inputs.slice(0, 5).map(i => ({ tag: i.tagName, type: i.type, ph: i.placeholder, al: i.getAttribute('aria-label') })),
+				focusedTag: document.activeElement ? document.activeElement.tagName : null,
+			};
+		});
+		console.log('[phase17-smoke] SC12 settings open state: ' + JSON.stringify(settingsOpenState));
+		if (!settingsOpenState.editorPresent) {
+			console.warn('[phase17-smoke] SC12 SOFT-SKIP: Settings editor did not open');
+		} else {
+			// Typing should land in the focused search input that the Settings UI auto-focuses.
+			await window.keyboard.type('goatide.saveGate');
+			await sleep(3000);
+			const settingsResult = await window.evaluate(() => {
+				const root = document.querySelector('.settings-editor') || document.body;
+				const text = root.innerText || '';
+				const selects = Array.from(root.querySelectorAll('select, .monaco-select-box, .dropdown-container'));
+				return {
+					hasDestructive: text.includes('saveGate.destructive') || text.includes('Save Gate: Destructive'),
+					hasHighImpact: text.includes('saveGate.highImpact') || text.includes('Save Gate: High Impact'),
+					hasBenign: text.includes('saveGate.benign') || text.includes('Save Gate: Benign'),
+					selectCount: selects.length,
+					preview: text.slice(0, 1200),
+				};
+			});
+			const allThreePresent = settingsResult.hasDestructive && settingsResult.hasHighImpact && settingsResult.hasBenign;
+			if (allThreePresent && settingsResult.selectCount >= 3) {
+				console.log('[phase17-smoke] SC12 PASS: Settings UI shows 3 saveGate keys with ≥3 dropdown elements (selectCount=' + settingsResult.selectCount + ')');
+				scPassed++;
+			} else if (allThreePresent) {
+				console.log('[phase17-smoke] SC12 SOFT-PASS: 3 saveGate keys present in Settings UI but dropdown element count = ' + settingsResult.selectCount + ' (expected ≥3)');
+				scPassed++;
+			} else {
+				console.warn('[phase17-smoke] SC12 SOFT-FAIL: missing saveGate keys (destructive=' + settingsResult.hasDestructive + ', highImpact=' + settingsResult.hasHighImpact + ', benign=' + settingsResult.hasBenign + ')');
+				console.warn('[phase17-smoke] SC12 preview: ' + settingsResult.preview.slice(0, 400));
+			}
+		}
+		await window.keyboard.press('Escape');
+		await sleep(500);
+
 		// SC8 — renderer.log: bridge loaded the real extension (not the empty stub)
 		await sleep(5_000);
 		const logsRoot = path.join(userDataDir, 'logs');
