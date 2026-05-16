@@ -11,7 +11,7 @@
 | v1.0      | Closed | 01, 02 | Fork bringup + graph substrate |
 | v1.1      | Closed | 03, 04, 05, 06, 07 | Traversal, Canvas, Telemetry, MCP, Drift |
 | v1.2      | Closed (2026-05-13) | 08, 09, 10, 11, 12, 13 | Runtime fixes, ergonomics, polish, ceremony, hardening, closeout |
-| v2.0      | In progress \| 14, 15, 16, 17 \| Deep Features + Polish (C3 deferred to v2.1) | 14, 15, 16, 17 | 10 requirements: DEEP-01..06, POLISH-01..04; C3 auto-update → v2.1 |
+| v2.0      | Closed (2026-05-16) | 14, 15, 16, 17 | 10 requirements: DEEP-01..06, POLISH-01..04; C3 auto-update → v2.1 |
 
 > Milestone boundaries above are *best-guess* from commit dates + your `project_v2_milestone_locked.md` memory entry. If wrong, edit this table — the v1.x phases are closed work and the boundary doesn't affect ongoing decisions.
 
@@ -37,7 +37,7 @@
 - [x] **Phase 14: Foundation RPCs** - Rationale chain query, historical IntentDrift, session-priority lens
 - [x] **Phase 15: Graph Inspector Panel** - Time-travel Cytoscape.js inspector, new WebviewPanel (completed 2026-05-15)
 - [x] **Phase 16: Ripple Analysis + Cross-Repo Schema** - Constraint-lift analysis, repo_id migration (closed 2026-05-15)
-- [ ] **Phase 17: Cross-Repo UI + Polish Cluster** - Cross-repo stitching UI, onboarding, settings UI, empty-state, hover receipt
+- [x] **Phase 17: Cross-Repo UI + Polish Cluster** - Cross-repo stitching UI, onboarding, settings UI, empty-state, hover receipt (closed 2026-05-16)
 
 ---
 
@@ -318,13 +318,27 @@
 
 **Bridge mirror regen REQUIRED** in this phase (`scripts/prepare_goatide.sh`).
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans executed — CLOSED 2026-05-16
 
 - [x] 17-01-wave0-stubs-tests-bridge-mirror-PLAN.md — Wave 0: package.json walkthroughs + 3 saveGate.* properties + 3 new commands + walkthrough-completion.ts + workspace-repos.ts + 6 RED tests + 2 new meta-tests (refuse-llm-in-canvas + refuse-stale-bridge-mirror-after-walkthrough) + 5 walkthrough markdown placeholders + bridge mirror regen via prepare_goatide.sh (CLOSED 2026-05-15)
-- [ ] 17-02-polish02-polish04-saveGate-hover-PLAN.md — Wave 1: POLISH-02 resource-scoped getConfiguration read at dispatchTier entry + POLISH-04 dispatchHover private function (status-bar message + 'Open full receipt' fallback) + Mandate D byte-identity 3x3 matrix GREEN
-- [ ] 17-03-polish01-polish03-walkthrough-emptyState-PLAN.md — Wave 2: POLISH-01 extension.ts wiring (registerWalkthroughCompletion + maybeAutoOpenWalkthrough + placeholder addDecisionNode command) + walkthrough markdown copy refinement + POLISH-03 CitationList.tsx empty-state JSX (icon + literal 'No rationale recorded yet' + CTA) + Mandate A static-text fence
-- [ ] 17-04-deep06-phase-b-cross-repo-command-PLAN.md — Wave 3: Kernel wire-schema extension (SerializedNode/EdgeSnapshot gain repo_id + queryGraphSnapshot handler projects) + bridge Zod schema + wireToInspectorRow + edgeRowToCyElement crossRepo flag + Graph.tsx Cytoscape stylesheet selector + goatide.openCrossRepoGraph command + GraphInspectorPanel.getOrCreateForCrossRepo factory + Risk §5 Phase 15 fixture migration
-- [ ] 17-05-phase-verify-PLAN.md — Wave 4: full verification battery (kernel + bridge suites + 5 CI gates + 5 meta-tests + freshclone-smoke SC#5 + bridge mirror byte-equal) + 5 manual checkpoint:human-verify items + REQUIREMENTS/ROADMAP/STATE flips + 17-VERIFICATION.md + 17-SUMMARY.md + v2.0 milestone closure + phase-close commit
+- [x] 17-02-polish02-polish04-saveGate-hover-PLAN.md — Wave 1: POLISH-02 resource-scoped getConfiguration read at dispatchTier entry + POLISH-04 dispatchHover private function (status-bar message + 'Open full receipt' fallback) + Mandate D byte-identity 3x3 matrix GREEN (CLOSED 2026-05-15)
+- [x] 17-03-polish01-polish03-walkthrough-emptyState-PLAN.md — Wave 2: POLISH-01 extension.ts wiring (registerWalkthroughCompletion + maybeAutoOpenWalkthrough + placeholder addDecisionNode command) + walkthrough markdown copy refinement + POLISH-03 CitationList.tsx empty-state JSX (icon + literal 'No rationale recorded yet' + CTA) + Mandate A static-text fence (CLOSED 2026-05-16)
+- [x] 17-04-deep06-phase-b-cross-repo-command-PLAN.md — Wave 3: Kernel wire-schema extension (SerializedNode/EdgeSnapshot gain repo_id + queryGraphSnapshot handler projects) + bridge Zod schema + wireToInspectorRow + edgeRowToCyElement crossRepo flag + Graph.tsx Cytoscape stylesheet selector + goatide.openCrossRepoGraph command + GraphInspectorPanel.getOrCreateForCrossRepo factory + Risk §5 Phase 15 fixture migration (CLOSED 2026-05-16)
+- [x] 17-05-phase-verify-PLAN.md — Wave 4: full verification battery (kernel 408/408 + bridge 122 passing + 5 CI gates + 5 meta-tests + freshclone-smoke SC#5 5/5 + bridge mirror byte-equal) + autonomous CDP smoke (10/12 SCs PASS) + REQUIREMENTS/ROADMAP/STATE flips + 17-VERIFICATION.md + 17-SUMMARY.md + v2.0 milestone closure + phase-close commit (CLOSED 2026-05-16)
+
+**What shipped:**
+
+- **DEEP-06 phase-B:** `goatide.openCrossRepoGraph` command with graceful degradation (single-folder shows info notification; multi-root opens Cross-Repo Inspector). `GraphInspectorPanel.getOrCreateForCrossRepo` factory reuses single panel singleton (Pitfall 2 avoidance). Cytoscape stylesheet `edge[?crossRepo]` selector with dashed amber-400 styling. Kernel wire-schema extended: `SerializedNodeSnapshot`/`SerializedEdgeSnapshot` carry `repo_id` projected from SQLite. Bridge Zod schemas + `wireToInspectorRow` + `edgeRowToCyElement` carry `crossRepo` boolean. Single-DB deployment model: all v2.0 nodes carry `repo_id='primary'`; multi-daemon orchestration deferred to v2.1.
+- **POLISH-01:** First-run `contributes.walkthroughs` (5 steps covering Canvas, Receipt, IntentDrift, settings, Graph Inspector). `registerWalkthroughCompletion` writes `goatide.onboardingComplete` to `context.globalState` (NOT `WorkspaceConfiguration` — Pitfall 9 fence). `maybeAutoOpenWalkthrough` fires at activation. N3 ordering invariant documented. Walkthrough is registered + visible; foregrounding is a v2.1 polish item.
+- **POLISH-02:** `contributes.configuration` 3 `saveGate.*` properties as resource-scoped native dropdowns (`destructive` enum=[block,confirm], `highImpact` enum=[block,confirm,suppress], `benign` enum=[modal,hover,suppress]). Resource-scoped `getConfiguration('goatide.saveGate', doc.uri)` at `dispatchTier` entry; changes effective on next save without reload.
+- **POLISH-03:** `CitationList.tsx` empty-state replaces blank "Receipt: 0 citations" with info-circle icon + BYTE-EXACT literal "No rationale recorded yet" heading + body paragraph + "Add DecisionNode" CTA wired to `goatide.canvas.addDecisionNode` (v2.1 informational placeholder). Mandate A structural fence via `refuse-llm-in-canvas.meta.sh`.
+- **POLISH-04:** `dispatchHover` private function in `tier-dispatch.ts` routes benign-tier saves to ephemeral status-bar message (top-2 citation labels + 4s auto-dismiss + "Open full receipt" fallback). Mandate D: destructive saves NEVER de-escalate via benign setting; 4x3 byte-identity matrix test.
+
+**Verification:** Kernel 408/408 PASS. Bridge 122 passing / 16 pre-existing failures / 0 new failures. 5/5 CI gates OK. 5/5 meta-tests META PASS. SC#5 freshclone-smoke 5/5. Autonomous CDP smoke (phase17-smoke-cdp.cjs) 10/12 SCs PASS.
+
+**Requirements closed:** DEEP-06 phase-B, POLISH-01, POLISH-02, POLISH-03, POLISH-04
+
+**v2.0 milestone note:** This phase closes the v2.0 milestone (10/10 requirements: DEEP-01..06 + POLISH-01..04). C3 deferred to v2.1. v2.0 ships as manual-install build. v2.1 scope: C1/C2/C3 distribution + multi-daemon cross-repo writes + DecisionNode authoring UI + walkthrough foregrounding.
 
 ---
 
@@ -350,4 +364,4 @@
 | 14. Foundation RPCs | 5/5 | Closed | 2026-05-14 |
 | 15. Graph Inspector Panel | 5/5 | Closed | 2026-05-15 |
 | 16. Ripple Analysis + Cross-Repo Schema | 5/5 | Closed | 2026-05-15 |
-| 17. Cross-Repo UI + Polish Cluster | 4/5 | In Progress|  |
+| 17. Cross-Repo UI + Polish Cluster | 5/5 | Closed | 2026-05-16 |

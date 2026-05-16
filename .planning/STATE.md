@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Closeout
-status: executing
-last_updated: "2026-05-16T05:56:05.202Z"
-last_activity: 2026-05-15 — Phase 17 Plan 17-02 closed (POLISH-02 resource-scoped save-gate config + POLISH-04 dispatchHover + Mandate D byte-identity GREEN)
+milestone: v2.0
+milestone_name: Deep Features + Polish
+status: closed
+last_updated: "2026-05-16T00:00:00Z"
+last_activity: 2026-05-16 — Phase 17 closed + v2.0 milestone closed (DEEP-06 phase-B + POLISH-01..04 GREEN; 10/10 v2.0 requirements closed)
 progress:
   total_phases: 19
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 25
-  completed_plans: 24
+  completed_plans: 25
 ---
 
 # GoatIDE Project State
@@ -20,22 +20,35 @@ progress:
 
 ## Current
 
-- **Active milestone:** v2.0 — Deep Features + Polish + Windows auto-update (kickoff 2026-05-13)
-- **Active phase:** 17 — Cross-Repo UI + Polish Cluster
-- **Plan:** 4 of 5 (17-04 complete — DEEP-06 phase-B cross-repo command + wire-schema repo_id projection GREEN)
-- **Status:** Phase 17 in progress — Plan 17-04 closed
-- **Last closed phase:** 16 — Ripple Analysis + Cross-Repo Schema Migration (DEEP-03 + DEEP-06-A) (closed 2026-05-15)
-- **Last closed plan:** 17-04 — DEEP-06 phase-B cross-repo UI + wire-schema repo_id projection GREEN (closed 2026-05-16)
-- **Last activity:** 2026-05-16 — Phase 17 Plan 17-04 closed (DEEP-06 phase-B kernel wire-schema + bridge Zod + Cytoscape cross-repo edge styling + openCrossRepoGraph command; 18/18 Wave-0 tests GREEN)
-- **Last session:** 2026-05-16T19:50:23Z
+- **Active milestone:** v2.0 — CLOSED 2026-05-16 (10/10 requirements: DEEP-01..06 + POLISH-01..04; C3 deferred to v2.1)
+- **Active phase:** none (v2.0 milestone closed; v2.1 not yet planned)
+- **Plan:** 5 of 5 (17-05 complete — Phase 17 verification approved + phase-close + v2.0 milestone closure)
+- **Status:** v2.0 CLOSED — all phases + requirements closed
+- **Last closed phase:** 17 — Cross-Repo UI + Polish Cluster (DEEP-06 phase-B + POLISH-01..04) (closed 2026-05-16)
+- **Last closed plan:** 17-05 — Phase 17 verification battery + milestone closure (closed 2026-05-16)
+- **Last activity:** 2026-05-16 — Phase 17 Plan 17-05 closed + v2.0 milestone CLOSED (verification approved via autonomous CDP smoke 10/12 SCs PASS + Wave-0 unit tests)
+- **Last session:** 2026-05-16T00:00:00Z
 
-Progress bar (Phase 16 plans): `[██████████]` 5/5 plans complete (100%) — CLOSED
-Progress bar (Phase 17 plans): `[████████░░]` 4/5 plans complete (80%)
-Progress bar (v2.0 phases):    `███░` 3/4 phases complete (Phase 17 in progress)
+Progress bar (Phase 17 plans): `[██████████]` 5/5 plans complete (100%) — CLOSED
+Progress bar (v2.0 phases):    `████` 4/4 phases complete (100%) — CLOSED
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-16 — Phase 17 closed + v2.0 milestone CLOSED
+
+- **v2.0 milestone closure:** 10/10 requirements closed (DEEP-01..06 + POLISH-01..04). C3 (Windows auto-update) deferred to v2.1 as previously documented (Squirrel.Windows deprecated finding 2026-05-13). v2.0 ships as manual-install build. Phase 17 is the last v2.0 phase.
+- **Verification approach:** Phase 17 phase-verify approved via autonomous CDP smoke (scripts/test/phase17-smoke-cdp.cjs, commits 8c04df2b43b + 4c8dc69f7ab) for verifications #2 and #4 end-to-end against a live GoatIDE instance. Verifications #3 and #5 accepted via GREEN Wave-0 unit tests (mandate-d-destructive-no-hover.test.ts, save-gate-resource-scope.test.ts, empty-state-mandate-a.test.tsx). CDP smoke: 10/12 SCs PASS.
+- **Verification #1 partial — walkthrough foregrounding deferred to v2.1:** GoatIDE walkthrough is registered + visible in Welcome panel DOM (6 mentions of "GoatIDE", SC9 PASS). VS Code's default "Setup VS Code" walkthrough is foregrounded instead of GoatIDE's walkthrough on first launch. Code is correct (workbench.action.openWalkthrough call with matching ID). Walkthrough foregrounding behavior (workbench.action.showWalkthrough vs openWalkthrough timing) is a v2.1 polish item. v2.0 ships with walkthrough registered but not auto-selected over VS Code default.
+- **Decision (walkthrough auto-open without timeout — Open Decision §2):** `maybeAutoOpenWalkthrough` fires at activate() as fire-and-forget (no await, no timeout). Walkthrough uses `workbench.action.openWalkthrough` with `'goatide.goatide-bridge#goatide.walkthrough.canvas'` step ID. N3 ordering invariant: all `registerCommand` calls precede this call.
+- **Decision (status-bar over hover provider for POLISH-04 — Open Decision §3):** `dispatchHover` uses `vscode.window.setStatusBarMessage()` (4s auto-dismiss) + `showInformationMessage('GoatIDE: benign save...', 'Open full receipt')` fallback. VS Code hover providers require cursor proximity which doesn't work for background saves. Status-bar message is the correct UX for save-gate feedback.
+- **Decision (placeholder addDecisionNode CTA via showInformationMessage — Open Decision §4):** `goatide.canvas.addDecisionNode` command shows an informational message: "GoatIDE: Adding DecisionNode is coming in v2.1...". No graph write path added. DecisionNode authoring UI is a v2.1 scope item.
+- **Decision (refuse-llm-in-canvas.meta.sh structural Mandate A fence — Open Decision §5):** Structural grep of `canvas/**` for forbidden LLM import tokens. CitationList.tsx empty-state heading is a BYTE-EXACT static literal. refuse-llm-in-canvas.meta.sh is a permanent CI fence — any future canvas file that imports LLM utilities will fail the meta-test.
+- **Decision (markdown-only walkthrough media — Open Decision §6):** Walkthrough steps use `.md` files (vs `.svg`/`.png` media). VS Code's `contributes.walkthroughs.steps[].media` field supports markdown. No binary media assets needed. `media.markdown` field used for all 5 steps.
+- **Decision (single-DB cross-repo deployment model — Open Decision §1):** All v2.0 nodes carry `repo_id='primary'`. Cross-repo edges (`edge[?crossRepo]` selector) are dormant in v2.0 since no multi-repo writes ship. Multi-daemon kernel orchestration for cross-repo writes is a v2.1 scope item. The Cytoscape dashed amber-400 styling is infrastructure-ready for v2.1 activation.
+- **Decision (kernel wire-schema additive extension — Pitfall D mitigation):** `SerializedNodeSnapshot`/`SerializedEdgeSnapshot` gain `repo_id: string`. The Drizzle `materialize()` field-enumeration pattern requires explicit copy of `raw.repo_id` — auto-fix (Rule 1) applied in Plan 17-04 commit `dc141c1fffa`. Drizzle's `$inferSelect` includes `repo_id` from schema but materializer silently drops it without explicit field copy.
+- **Decision (Mandate B fence preserved for inspector/ scope):** Phase 17 added `workspace-repos.ts` + `cross-repo-command.ts` to inspector/. `refuse-deep05-write.sh` exit 0 verified — both files are read-only (enumeration + command registration). Phase 14 Plan 14-01 structural fence inheritance confirmed.
 
 ### 2026-05-16 — Phase 17 Plan 17-04 closed (DEEP-06 phase-B)
 

@@ -4,35 +4,9 @@
 
 ---
 
-## Open (Active milestone: v2.0)
+## Open (Active milestone: v2.1 — not yet planned)
 
-### v2.0 — Deep Features + Polish + Windows auto-update
-
-**Started:** 2026-05-13 via `/gsd:new-milestone v2.0` (path C — skeleton + user correction).
-
-**Source of locked scope:** `project_v2_milestone_locked.md` memory entry — IDs locked, prose lost. Descriptions below were re-authored 2026-05-13 via path C (skeleton + user `ok go` confirmation without line-by-line correction); they reflect the GoatIDE thesis applied to the locked IDs, not verbatim recovery of the wiped `.planning/v2.0-REQUIREMENTS.md`. DEEP-02 mapping is confirmed via `reference_v2_phase16_repos.md`; C3 scope (Squirrel.Windows only) confirmed via locked-scope memory.
-
-**Out of scope (deferred to v2.1):** C1 macOS notarization (no Apple Developer ID), C2 Windows EV code-signing (no cert procured), Sparkle macOS auto-update (ships with C1), **C3 Windows auto-update** (originally locked as Squirrel.Windows-only; deferred 2026-05-13 after research found Squirrel.Windows deprecated — keeps entire distribution track unified in v2.1 with C1+C2 + NSIS + electron-updater).
-
-#### Deep Features (graph-anchored read-time capabilities)
-
-- [x] **DEEP-02**: User can navigate the bitemporal graph through a visual time-travel inspector — visual style modeled on Graphify (https://github.com/safishamsi/graphify), large-repo fallback modeled on code-review-graph. Anchor for Phase 16.
-- [x] **DEEP-06 phase-B** (cross-repo UI): User can stitch graphs across multiple repositories under one workspace via "GoatIDE: Open Cross-Repo Graph" command + inspector showing cross-repo edges — Phase 17 ships the enumeration command + UI on top of Phase 16's `repo_id` schema.
-
-> DEEP-01, DEEP-04, DEEP-05 closed in Phase 14 — see [Phase 14 — Foundation RPCs — Closed 2026-05-14](#phase-14--foundation-rpcs--closed-2026-05-14) below.
-> DEEP-02 closed in Phase 15 — see [Phase 15 — Graph Inspector Panel — Closed 2026-05-15](#phase-15--graph-inspector-panel--closed-2026-05-15) below.
-> DEEP-03 + DEEP-06 phase-A closed in Phase 16 — see [Phase 16 — Ripple Analysis + Cross-Repo Schema Migration — Closed 2026-05-15](#phase-16--ripple-analysis--cross-repo-schema-migration--closed-2026-05-15) below.
-
-#### Polish
-
-- [x] **POLISH-01**: User sees a first-run onboarding flow that explains the Verification Canvas + how to read a Reasoning Receipt before encountering one in anger
-- [x] **POLISH-02**: User can configure save-gate strictness (suppress vs. confirm vs. block) per-workspace via a Settings UI rather than editing config files
-- [x] **POLISH-03**: User sees improved empty-state UX in the Verification Canvas when the graph has no relevant citations (instead of a blank "Receipt: 0 citations")
-- [x] **POLISH-04**: User sees compact, hover-driven receipt drilldown (vs. current full-modal-only) for low-tier saves to reduce friction
-
-#### Distribution
-
-(C3 deferred to v2.1 — see Out-of-scope note above. v2.0 ships as manual-install build.)
+> v2.0 is CLOSED as of 2026-05-16. See v2.0 closure section below in the Closed block.
 
 ---
 
@@ -45,6 +19,31 @@
 | DEEP-01 | `composeRationaleChainAt` kernel composition + `graph.queryRationaleAt` RPC under requireAuth + bridge `KernelClient.queryRationaleAt` + `ReadonlyKernelClient` Pick<> extended to 9 methods + `CanvasShowPayloadSchema` 5 new fields (rationale_chain, rationale_error, graph_snapshot_tx_time, session_priority, session_priority_indicator) + `canvas.requestRationale` WebviewToHost variant + `panel.ts` `RationaleHandler` transport-only routing + `RationaleChain.tsx` webview component (4 render branches: idle / kernel-degraded / empty / loaded). Bitemporal asOf threads top-level field → handleMessage → RPC, zero `Date.now()` in the path. | `3ee5aa5baac`, `1d2dc4510ba`, `9889e8e0bdd`, `cb369286314`, `d45553548d8` |
 | DEEP-04 | `evaluateHistoricalConflict` kernel pure-function (DecisionNode-only filter + bitemporal asOf + null-successor defense + prefix-match) + `IntentDriftBadge` migrated to discriminated union (`kind: 'priority-mismatch' \| 'historical-conflict'`) across kernel `types.ts` + bridge Zod schema `messages.ts` + bridge type mirrors `kernel/methods.ts` + `save-gate/canvas-module.ts` + `CitationList.tsx` amber "Superseded `<date>`" variant render + `.intent-drift-badge--historical-conflict` CSS + Mandate D byte-identity regression (arity-3 + 5×3 tier-matrix snapshot + 2-hits-in-1-file caller-count fence). Historical-conflict wins over priority-mismatch on the same citation. | `9a1f3dd180c`, `8d382e9aea9`, `8807ba104ff` |
 | DEEP-05 | `ReadonlyKernelClient` type-only Pick<> + `refuse-deep05-write.sh` CI gate + hermetic meta-test (META PASS) + `rerankBySessionPriority` 11-line stable-sort body (binary drift-bearing classifier over both IntentDriftBadge variants) + App.tsx webview-side useMemo invocation + Canvas header indicator render path (`data-testid="canvas-header-session-priority"`) + `tier-dispatch.ts` threads `session_priority` + `session_priority_indicator` + `graph_snapshot_tx_time` onto CanvasShowPayload + Mandate B 5-case regression test (Attempt/Node/Edge count invariants + KernelClient.prototype spy fence + setSessionPriority command integration). Lens is webview-only; host-side payload assembly is kernel-degraded-fork-aware. | `c908b4c87e7`, `742ff1cb00b`, `781e4db7aba`, `2448b1b371c`, `941b5d1fa11`, `94e02ab39ef` |
+
+### v2.0 Milestone — Deep Features + Polish — Closed 2026-05-16
+
+**Started:** 2026-05-13 via `/gsd:new-milestone v2.0`
+
+**Closed:** 2026-05-16 — Phase 17 phase-verify approved (autonomous CDP smoke + Wave-0 unit tests)
+
+**Phases:** 14, 15, 16, 17 (4/4 complete)
+
+**Out of scope (deferred to v2.1):** C1 macOS notarization, C2 Windows EV code-signing, Sparkle macOS auto-update, **C3 Windows auto-update** (Squirrel.Windows deprecated; deferred 2026-05-13 — unified in v2.1 with C1+C2 + NSIS + electron-updater). Walkthrough foregrounding behavior (v2.0 walkthrough is registered + visible but VS Code default "Setup VS Code" walkthrough is foregrounded on first launch — v2.1 polish item).
+
+**v2.0 scope summary (10/10 requirements closed):**
+- DEEP-01 (Phase 14), DEEP-02 (Phase 15), DEEP-03 (Phase 16), DEEP-04 (Phase 14), DEEP-05 (Phase 14): graph RPCs + inspector + ripple analysis
+- DEEP-06 phase-A (Phase 16) + phase-B (Phase 17): cross-repo schema + UI
+- POLISH-01, POLISH-02, POLISH-03, POLISH-04 (Phase 17): onboarding, settings, empty-state, hover receipt
+
+### Phase 17 — Cross-Repo UI + Polish Cluster — Closed 2026-05-16
+
+| ID | What shipped | Closure commit(s) |
+|----|-------------|-------------------|
+| DEEP-06 phase-B | `goatide.openCrossRepoGraph` command + graceful degradation (workspaceFolders missing/single → info notification) + `GraphInspectorPanel.getOrCreateForCrossRepo` factory + cross-repo edge styling (Cytoscape stylesheet selector `edge[?crossRepo]` dashed + amber-400 via `PALETTE.crossRepoEdge = '#fbbf24'`) + kernel wire-schema extension (`SerializedNodeSnapshot`/`SerializedEdgeSnapshot` gain `repo_id`) + bridge Zod schema + translation chain. Single-DB + `repo_id` partitioning (Open Decision §1 lock — multi-daemon orchestration deferred to v2.1). | `dc141c1fffa`, `f7ea6ec5155`, `20d5c62c7fb`, `76207c68abe` |
+| POLISH-01 | `contributes.walkthroughs` (5 steps, completionEvents on step 5) + `registerWalkthroughCompletion` + `maybeAutoOpenWalkthrough` + `context.globalState` fence (Pitfall 9 mitigation — NOT `WorkspaceConfiguration.update`) + `setContext` walkthrough dismissal. N3 ordering invariant: all `registerCommand` calls precede `maybeAutoOpenWalkthrough`. v2.0 ships walkthrough registered + visible; foregrounding behavior deferred to v2.1. | `370d51d93b7`, `8dbbf291b97`, `e412e43eb7b` |
+| POLISH-02 | `contributes.configuration` 3 `saveGate.*` properties (`destructive` enum=[block,confirm] Mandate D fence; `highImpact` + `benign` 3-value enums; all `scope: resource`) + `tier-dispatch.ts` resource-scoped `getConfiguration('goatide.saveGate', doc.uri)` read at `dispatchTier` entry. Pitfall E defense: each branch reads ONLY its designated setting. | `d491a250bdc` |
+| POLISH-03 | `CitationList.tsx` empty-state component (SVG info-circle icon + BYTE-EXACT literal `'No rationale recorded yet'` heading + body paragraph + "Add DecisionNode" CTA) + `canvas.requestAddDecisionNode` message variant + `extension.ts` placeholder `goatide.canvas.addDecisionNode` command (v2.1 informational body) + Mandate A structural fence via `refuse-llm-in-canvas.meta.sh`. | `18675414b37`, `e412e43eb7b` |
+| POLISH-04 | `tier-dispatch.ts` `dispatchHover` private function (status-bar message + 4s auto-dismiss + "Open full receipt" fallback to `panel.showAndAwait`) + Mandate D byte-identity matrix test pinning destructive saves NEVER de-escalate via benign setting (4x3 tier-isDestructive-benignSetting snapshot). Caller-count fence: 1 declaration + 1 caller = 2. | `d491a250bdc` |
 
 ### Phase 16 — Ripple Analysis + Cross-Repo Schema Migration — Closed 2026-05-15
 
@@ -236,9 +235,9 @@
 | DEEP-03 | 16 | Closed 2026-05-15 | `8421cc7874c`, `e03bfe2b1d0`, `0679f656f22`, `0e62b0885be`, `6e900d566ed`, `fb9a393cf63`, `c822ccb4ffe`, `861c8604842`, `7cc5cce1d8b`, `2fd84176ce3`, `4c239fd24cc`, `ac7af7cb022`, `b44f55f355e` |
 | DEEP-04 | 14 | Closed 2026-05-14 | `9a1f3dd180c`, `8d382e9aea9`, `8807ba104ff` |
 | DEEP-05 | 14 | Closed 2026-05-14 | `c908b4c87e7`, `742ff1cb00b`, `781e4db7aba`, `2448b1b371c`, `941b5d1fa11`, `94e02ab39ef` |
-| DEEP-06 | 16 (schema-A), 17 (UI-B) | Phase-A Closed 2026-05-15; Phase-B Pending | `8421cc7874c`, `a10800df961`, `0e62b0885be`, `fb9a393cf63` |
-| POLISH-01 | 17 | Complete | — |
-| POLISH-02 | 17 | Complete | — |
-| POLISH-03 | 17 | Complete | — |
-| POLISH-04 | 17 | Complete | — |
+| DEEP-06 | 16 (schema-A), 17 (UI-B) | Phase-A Closed 2026-05-15; Phase-B Closed 2026-05-16 | `8421cc7874c`, `a10800df961`, `0e62b0885be`, `fb9a393cf63`, `dc141c1fffa`, `f7ea6ec5155`, `20d5c62c7fb`, `76207c68abe` |
+| POLISH-01 | 17 | Closed 2026-05-16 | `370d51d93b7`, `8dbbf291b97`, `e412e43eb7b` |
+| POLISH-02 | 17 | Closed 2026-05-16 | `d491a250bdc` |
+| POLISH-03 | 17 | Closed 2026-05-16 | `18675414b37`, `e412e43eb7b` |
+| POLISH-04 | 17 | Closed 2026-05-16 | `d491a250bdc` |
 | ~~C3~~ | v2.1 (deferred) | — | Deferred 2026-05-13 — see Out-of-scope note |
