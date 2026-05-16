@@ -257,3 +257,18 @@ export async function getCanvasModule(): Promise<CanvasModule> {
 export function getCanvasModuleSync(): CanvasModule | undefined {
 	return cachedCanvasModule;
 }
+
+/**
+ * Phase 17 Plan 17-02 — Test-only: inject a mock canvas module so tests can drive
+ * classifyTier + detectDestructive return values without relying on the real kernel/dist.
+ * Call __resetCanvasModuleForTests() in afterEach/finally to restore the cache.
+ * Not re-exported via index (matches __resetDriftLockCacheForTests pattern).
+ */
+export function __setCanvasModuleForTests(mock: Partial<CanvasModule>): void {
+	cachedCanvasModule = mock as CanvasModule;
+}
+
+/** Test-only: clear the cached canvas module so the next getCanvasModule() resolves fresh. */
+export function __resetCanvasModuleForTests(): void {
+	cachedCanvasModule = undefined;
+}

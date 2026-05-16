@@ -44,7 +44,7 @@ describe('save-gate getConfiguration resource-scope (POLISH-02)', () => {
 
 			// Import dispatchTier dynamically so the import does not hard-fail if the
 			// module has compilation errors before Wave 1 lands.
-			const { dispatchTier } = await import('../../src/save-gate/tier-dispatch.js');
+			const { dispatchTier } = await import('../../../src/save-gate/tier-dispatch.js');
 
 			const doc = {
 				uri: vscode.Uri.file('/tmp/test-resource-scope.ts'),
@@ -138,7 +138,7 @@ describe('save-gate getConfiguration resource-scope (POLISH-02)', () => {
 		};
 
 		try {
-			const { dispatchTier } = await import('../../src/save-gate/tier-dispatch.js');
+			const { dispatchTier } = await import('../../../src/save-gate/tier-dispatch.js');
 
 			const docUri = vscode.Uri.file('/tmp/resource-scope-verbatim.ts');
 			const doc = {

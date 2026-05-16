@@ -198,8 +198,69 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 	// silent → inline. Modal stays modal regardless (no demotion).
 	const tier: CanvasTier = applyDriftEscalation(baseTier, inputs.driftFindings, inputs.lockTrigger);
 
+	// Phase 17 Plan 17-02 POLISH-02 — read per-workspace save-gate settings via the
+	// resource-scoped overload so the user's per-folder override is honored. The 2nd
+	// argument MUST be inputs.doc.uri (a vscode.Uri) — NOT a string, NOT undefined.
+	// See PITFALLS.md Pitfall B + 17-RESEARCH.md section 3.
+	const saveGateCfg = vscode.workspace.getConfiguration('goatide.saveGate', inputs.doc.uri);
+	const destructiveSetting = saveGateCfg.get<'block' | 'confirm'>('destructive', 'confirm');
+	const highImpactSetting = saveGateCfg.get<'block' | 'confirm' | 'suppress'>('highImpact', 'confirm');
+	const benignSetting = saveGateCfg.get<'modal' | 'hover' | 'suppress'>('benign', 'modal');
+
 	const isDestructive = canvasMod.detectDestructive(inputs.diff, inputs.doc.uri.fsPath);
 	const confirmationPhrase = isDestructive ? canvasMod.destructiveVerbForConfirmation(inputs.diff) : null;
+
+	// Phase 17 Plan 17-02 POLISH-04 — move showPayload construction UP so it is available for
+	// both the hover dispatch path (silent-tier benignSetting==='hover') and the modal path.
+	// For the silent tier, inputs.lockTrigger is always null/undefined (drift escalation
+	// would have escalated to 'modal' if it were non-null), so initialComplianceReport will
+	// be null when showPayload is used from the hover path.
+
+	// Phase 16 Plan 16-03 (DEEP-03) — host-side button eligibility (Open Decision 7).
+	const constraint_lift_eligible = citationDetails.some((d) => d.kind === 'ConstraintNode');
+
+	// Phase 14 Plan 14-04 (DEEP-05) — read goatide.session.priority from VS Code config and
+	// thread BOTH the raw value (session_priority) AND the user-visible indicator label
+	// (session_priority_indicator) onto the payload.
+	const sessionPriority = vscode.workspace
+		.getConfiguration('goatide')
+		.get<string>('session.priority', 'Quality-First');
+	const sessionPriorityIndicator = `Filtered by session priority: ${sessionPriority}`;
+
+	// initialComplianceReport is always null here; modal-tier sets it below after the silent
+	// + inline early-return branches when lockTrigger fires.
+	const showPayload: CanvasShowPayload = {
+		change_id: inputs.receipt.change_id,
+		tier,
+		destructive: isDestructive,
+		confirmation_phrase: confirmationPhrase,
+		file_uri: inputs.doc.uri.fsPath,
+		language: inputs.doc.languageId,
+		original_content: inputs.original,
+		modified_content: inputs.modified,
+		citations: inputs.receipt.citations.map((c) => ({
+			node_id: c.node_id,
+			version: c.version,
+			confidence: c.confidence,
+			edge_path: c.edge_path,
+			snippet: c.snippet,
+			body_preview: deriveBodyPreview(citationDetails, c),
+			successor_id: deriveSuccessorId(citationDetails, c),
+			intent_drift_badge: (c as { intent_drift_badge?: IntentDriftBadge | null }).intent_drift_badge ?? null,
+		})),
+		drill_chain: inputs.receipt.drill_chain,
+		// Phase 7 Plan 07-07 — drift fields. drift_findings always populated (may be empty);
+		// compliance_report starts null here; modal-tier lockTrigger path patches it below.
+		drift_findings: (inputs.driftFindings ?? []).map(toCanvasDriftFinding),
+		compliance_report: null,
+		lock_trigger: inputs.lockTrigger ? toCanvasLockTrigger(inputs.lockTrigger) : null,
+		// Phase 14 Plan 14-04 (DEEP-05) — explicit session-priority surface for the webview.
+		session_priority: sessionPriority,
+		session_priority_indicator: sessionPriorityIndicator,
+		graph_snapshot_tx_time: inputs.receipt.graph_snapshot_tx_time ?? null,
+		// Phase 16 Plan 16-03 (DEEP-03) — host-side computed eligibility flag.
+		constraint_lift_eligible,
+	};
 
 	// Phase 7 Plan 07-07 — Register the override handler with the panel BEFORE we show.
 	// This callback is the SOLE path to kernel.recordContractOverride from the bridge
@@ -236,18 +297,33 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 	});
 
 	if (tier === 'silent') {
-		// CANV-05: even silent emits a receipt. atomicAccept persists the Attempt.
-		await applyEditAtomically(inputs.kernel, {
-			target_path: inputs.doc.uri.fsPath,
-			new_content: inputs.modified,
-			change_id: inputs.receipt.change_id,
-			receipt_id: inputs.receipt.id,
-			tier: 'silent',
-			accept_latency_ms: 0,
-			body: `silent save of ${inputs.doc.uri.fsPath}`,
-			anchor: { file: inputs.doc.uri.fsPath },
-		});
-		return;
+		// Phase 17 Plan 17-02 POLISH-02/04 — honor goatide.saveGate.benign setting.
+		// Pitfall E defense: benignSetting is ONLY read here in the silent branch.
+		// Modal-tier destructive branch reads ONLY destructiveSetting; modal-tier
+		// high-impact branch reads ONLY highImpactSetting. No cross-reading.
+		if (benignSetting === 'suppress') {
+			// CANV-05: even silent emits a receipt. atomicAccept persists the Attempt.
+			// Pre-Phase-17 behavior preserved verbatim when benignSetting === 'suppress'.
+			await applyEditAtomically(inputs.kernel, {
+				target_path: inputs.doc.uri.fsPath,
+				new_content: inputs.modified,
+				change_id: inputs.receipt.change_id,
+				receipt_id: inputs.receipt.id,
+				tier: 'silent',
+				accept_latency_ms: 0,
+				body: `silent save of ${inputs.doc.uri.fsPath}`,
+				anchor: { file: inputs.doc.uri.fsPath },
+			});
+			return;
+		}
+		if (benignSetting === 'hover') {
+			// POLISH-04 — compact hover dispatch. Mandate D fence: only reachable when
+			// tier === 'silent'. Destructive/modal saves NEVER reach this branch.
+			await dispatchHover(inputs, showPayload, citationDetails);
+			return;
+		}
+		// benignSetting === 'modal' (default) — escalate silent tier to modal UI.
+		// Fall through to modal path below (do NOT return here).
 	}
 
 	if (tier === 'inline') {
@@ -303,6 +379,44 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 	// Citations without the field (pre-Plan-07-05 receipts, or matching DecisionNodes)
 	// pass through as undefined/null.
 
+	// Phase 17 Plan 17-02 POLISH-02 — modal-tier composite branch on isDestructive.
+	// CRITICAL ordering discipline (Pitfall E defense): destructive branch reads ONLY
+	// destructiveSetting; high-impact branch reads ONLY highImpactSetting. NO cross-reading.
+	if (isDestructive) {
+		// ConfirmationPhrase modal path — gated by goatide.saveGate.destructive.
+		// Enum is ['block', 'confirm'] ONLY — no 'suppress' (Mandate D).
+		if (destructiveSetting === 'block') {
+			void vscode.window.showErrorMessage(
+				'GoatIDE: destructive save blocked per goatide.saveGate.destructive setting',
+			);
+			return;
+		}
+		// destructiveSetting === 'confirm' (default) — fall through to panel.showAndAwait below.
+	} else {
+		// Standard high-impact modal path — gated by goatide.saveGate.highImpact.
+		if (highImpactSetting === 'block') {
+			void vscode.window.showErrorMessage(
+				'GoatIDE: high-impact save blocked per goatide.saveGate.highImpact setting',
+			);
+			return;
+		}
+		if (highImpactSetting === 'suppress') {
+			// Silent accept — apply atomically without UI.
+			await applyEditAtomically(inputs.kernel, {
+				target_path: inputs.doc.uri.fsPath,
+				new_content: inputs.modified,
+				change_id: inputs.receipt.change_id,
+				receipt_id: inputs.receipt.id,
+				tier: 'modal',
+				accept_latency_ms: 0,
+				body: `highImpact-suppressed save of ${inputs.doc.uri.fsPath}`,
+				anchor: { file: inputs.doc.uri.fsPath },
+			});
+			return;
+		}
+		// highImpactSetting === 'confirm' (default) — fall through to panel.showAndAwait below.
+	}
+
 	// Phase 7 Plan 07-07 — When lock fires, kick off runRippleProgressive in the background
 	// + subscribe to graph.driftProgress notifications BEFORE showing the modal. The
 	// Promise.race(notification, 50ms) pattern lets us either include the first-degree
@@ -332,62 +446,12 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		})();
 	}
 
-	// Phase 16 Plan 16-03 (DEEP-03) — host-side button eligibility (Open Decision 7).
-	// True when at least one citation's cited node is a ConstraintNode. Host-side
-	// determination avoids coupling the webview (App.tsx) to citation-payload shape.
-	// citationDetails is already hydrated above (via hydrateCitationDetails + queryNodes).
-	const constraint_lift_eligible = citationDetails.some((d) => d.kind === 'ConstraintNode');
-
-	// Phase 14 Plan 14-04 (DEEP-05) — read goatide.session.priority from VS Code config and
-	// thread BOTH the raw value (session_priority) AND the user-visible indicator label
-	// (session_priority_indicator) onto the payload. The webview consumes session_priority
-	// to drive the session-priority lens; the header renders session_priority_indicator
-	// verbatim. The lens itself is webview-only — tier-dispatch.ts does NOT invoke any
-	// inspector/ symbol from here (the rerank decision is a render-time concern; host-side
-	// payload assembly must remain kernel-degraded-fork-aware + save-gate-budget bound).
-	// Default 'Quality-First' mirrors on-will-save.ts:239-241 (Pitfall 5).
-	const sessionPriority = vscode.workspace
-		.getConfiguration('goatide')
-		.get<string>('session.priority', 'Quality-First');
-	const sessionPriorityIndicator = `Filtered by session priority: ${sessionPriority}`;
-
-	const showPayload: CanvasShowPayload = {
-		change_id: inputs.receipt.change_id,
-		tier,
-		destructive: isDestructive,
-		confirmation_phrase: confirmationPhrase,
-		file_uri: inputs.doc.uri.fsPath,
-		language: inputs.doc.languageId,
-		original_content: inputs.original,
-		modified_content: inputs.modified,
-		citations: inputs.receipt.citations.map((c) => ({
-			node_id: c.node_id,
-			version: c.version,
-			confidence: c.confidence,
-			edge_path: c.edge_path,
-			snippet: c.snippet,
-			body_preview: deriveBodyPreview(citationDetails, c),
-			successor_id: deriveSuccessorId(citationDetails, c),
-			intent_drift_badge: (c as { intent_drift_badge?: IntentDriftBadge | null }).intent_drift_badge ?? null,
-		})),
-		drill_chain: inputs.receipt.drill_chain,
-		// Phase 7 Plan 07-07 — drift fields. drift_findings always populated (may be empty);
-		// compliance_report only populated when lock fires AND first-degree partial arrived
-		// in the 50ms window; lock_trigger forwarded as-is.
-		drift_findings: (inputs.driftFindings ?? []).map(toCanvasDriftFinding),
-		compliance_report: initialComplianceReport !== null ? toCanvasComplianceReport(initialComplianceReport) : null,
-		lock_trigger: inputs.lockTrigger ? toCanvasLockTrigger(inputs.lockTrigger) : null,
-		// Phase 14 Plan 14-04 (DEEP-05) — explicit session-priority surface for the webview.
-		// Always shown when sessionPriority is set (open question #4 default — even for the
-		// default 'Quality-First'). graph_snapshot_tx_time is threaded so the rationale-chain
-		// lazy fetch in panel.ts handleMessage can pass it to kernel.queryRationaleAt as asOf.
-		session_priority: sessionPriority,
-		session_priority_indicator: sessionPriorityIndicator,
-		graph_snapshot_tx_time: inputs.receipt.graph_snapshot_tx_time ?? null,
-		// Phase 16 Plan 16-03 (DEEP-03) — host-side computed eligibility flag for the
-		// constraint-lift button. Wave 3 (Plan 16-04) DriftFindings.tsx reads this prop.
-		constraint_lift_eligible,
-	};
+	// Update showPayload's compliance_report field now that lockTrigger async result is known.
+	// showPayload was constructed early (before silent/inline branches) for the hover path;
+	// now we patch in the real initialComplianceReport for the modal path.
+	showPayload.compliance_report = initialComplianceReport !== null
+		? toCanvasComplianceReport(initialComplianceReport)
+		: null;
 
 	let decision: CanvasDecision;
 	try {
@@ -430,6 +494,63 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		});
 		await inputs.panel.dispose();
 	}
+}
+
+// Phase 17 Plan 17-02 POLISH-04 — compact hover dispatch for benign-tier saves.
+//
+// Mandate D fence: this function is ONLY invoked from dispatchTier's silent-tier
+// branch when (tier === 'silent' AND isDestructive === false AND benignSetting === 'hover').
+// Modal-tier saves (both ConfirmationPhrase and standard high-impact) NEVER route
+// through this function regardless of benignSetting value. The inline-tier branch
+// also never routes here (it preserves its Phase 7 Plan 07-07 behavior). The
+// structural fence is in test/unit/save-gate/mandate-d-destructive-no-hover.test.ts
+// (4x3 (tier, isDestructive) x benignSetting matrix byte-identity assertion + caller-count
+// grep gate locked at 2 [1 declaration + 1 caller]).
+async function dispatchHover(
+	inputs: DispatchInputs,
+	showPayload: CanvasShowPayload,
+	citationDetails: readonly CitationDetail[],
+): Promise<void> {
+	// Step 1: apply atomically — same path as current silent branch.
+	// Attempt recorded with tier: 'silent'.
+	await applyEditAtomically(inputs.kernel, {
+		target_path: inputs.doc.uri.fsPath,
+		new_content: inputs.modified,
+		change_id: inputs.receipt.change_id,
+		receipt_id: inputs.receipt.id,
+		tier: 'silent',
+		accept_latency_ms: 0,
+		body: `hover-silent save of ${inputs.doc.uri.fsPath}`,
+		anchor: { file: inputs.doc.uri.fsPath },
+	});
+
+	// Step 2: top-2 citation labels (short — node_id last 6 chars fallback when no label).
+	const top2 = citationDetails.slice(0, 2).map(c => (c as unknown as { label?: string }).label ?? c.node_id.slice(-6)).join(', ');
+
+	// Step 3: ephemeral status-bar message (auto-dismiss after 4s). ASCII hyphen (not
+	// em-dash) per N5 — Windows terminal/hook encoding safety.
+	vscode.window.setStatusBarMessage(`GoatIDE: benign save - top 2 citations: ${top2}`, 4000);
+
+	// Step 4: non-blocking info notification with Open-full-receipt action.
+	const choice = await vscode.window.showInformationMessage(
+		'GoatIDE: benign save accepted',
+		'Open full receipt',
+	);
+	if (choice === 'Open full receipt') {
+		// Fallback: same modal path the user would have seen at benignSetting === 'modal'.
+		// NOTE: the write has ALREADY happened in Step 1; this modal is informational.
+		// If the user clicks 'Reject' in the modal, that would record a post-hoc rejection
+		// analogous to the inline-tier Dismiss path (tier-dispatch.ts lines ~358-369). For v2.0
+		// simplicity, we drop the modal's decision: the file is already on disk and the
+		// hover-tier semantics treat the save as accepted regardless. Future v2.1 may
+		// surface 'Reject' here as a recordRejection equivalent; out of scope for Phase 17.
+		try {
+			await inputs.panel.showAndAwait(showPayload);
+		} catch (e) {
+			console.error('[goatide-bridge] hover Open-full-receipt modal failed', e);
+		}
+	}
+	// Function returns void — consistent with dispatchTier signature.
 }
 
 async function hydrateCitationDetails(

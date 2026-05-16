@@ -55,6 +55,61 @@ class ThemeColorStub {
 	constructor(public readonly id: string) { }
 }
 
+// Phase 17 Plan 17-02 — minimal Uri class for resource-scoped getConfiguration tests.
+// Supports instanceof checks (POLISH-02 test case 1 + 2 assert secondArg instanceof vscode.Uri).
+class UriStub {
+	readonly scheme: string;
+	readonly authority: string;
+	readonly path: string;
+	readonly query: string;
+	readonly fragment: string;
+	readonly fsPath: string;
+
+	constructor(scheme: string, authority: string, uriPath: string, query: string, fragment: string) {
+		this.scheme = scheme;
+		this.authority = authority;
+		this.path = uriPath;
+		this.query = query;
+		this.fragment = fragment;
+		// Approximate fsPath: strip leading slash on Windows-style paths
+		this.fsPath = uriPath.replace(/\//g, '\\').replace(/^\\([a-zA-Z])\\/, '$1:\\');
+	}
+
+	toString(): string {
+		return `${this.scheme}://${this.authority}${this.path}`;
+	}
+
+	with(_change: { scheme?: string; authority?: string; path?: string; query?: string; fragment?: string }): UriStub {
+		return new UriStub(
+			_change.scheme ?? this.scheme,
+			_change.authority ?? this.authority,
+			_change.path ?? this.path,
+			_change.query ?? this.query,
+			_change.fragment ?? this.fragment,
+		);
+	}
+
+	static file(p: string): UriStub {
+		// Normalize to forward slashes for the URI path
+		const normalized = p.replace(/\\/g, '/');
+		const uriPath = normalized.startsWith('/') ? normalized : `/${normalized}`;
+		return new UriStub('file', '', uriPath, '', '');
+	}
+
+	static parse(value: string): UriStub {
+		const match = /^([a-zA-Z][a-zA-Z0-9+\-.]*):\/\/([^/?#]*)(\/[^?#]*)?(\?[^#]*)?(#.*)?$/.exec(value);
+		if (!match) {
+			return new UriStub('file', '', value, '', '');
+		}
+		return new UriStub(match[1], match[2] ?? '', match[3] ?? '/', (match[4] ?? '').slice(1), (match[5] ?? '').slice(1));
+	}
+
+	static joinPath(base: UriStub, ...pathSegments: string[]): UriStub {
+		const joined = [base.path, ...pathSegments].join('/').replace(/\/+/g, '/');
+		return new UriStub(base.scheme, base.authority, joined, base.query, base.fragment);
+	}
+}
+
 // Recordable showErrorMessage spy — Plan 04-06 tests assert it was called with the
 // 'destructive save blocked' phrase. The stub returns undefined (no Reconnect button
 // click) by default. Tests can override via swapRespondingShowErrorMessage helper if
@@ -242,6 +297,8 @@ const vscodeStub = {
 	ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
 	window: {
 		showInformationMessage: async (..._args: unknown[]): Promise<string | undefined> => undefined,
+		// Phase 17 Plan 17-02 — setStatusBarMessage stub for POLISH-04 hover dispatch tests.
+		setStatusBarMessage: (_text: string, _timeout?: number): DisposableLike => ({ dispose: () => { } }),
 		showErrorMessage: async (...args: unknown[]): Promise<string | undefined> => {
 			showErrorMessageSpy.calls.push(args);
 			return showErrorMessageSpy.respondWith;
@@ -304,14 +361,33 @@ const vscodeStub = {
 			registeredCommands.set(id, callback);
 			return { dispose: () => registeredCommands.delete(id) };
 		},
-		executeCommand: async (..._args: unknown[]): Promise<unknown> => undefined,
+		executeCommand: async (...args: unknown[]): Promise<unknown> => {
+			// Dispatch to registered commands when available (so test-registered commands run).
+			const id = args[0] as string;
+			const handler = registeredCommands.get(id);
+			if (handler) {
+				return handler(...args.slice(1));
+			}
+			return undefined;
+		},
 	},
 	// Phase-5 TELE-04 — built-in vscode.git extension surface.
 	extensions: {
 		getExtension: (id: string): typeof mockGitExtension | undefined => id === 'vscode.git' ? mockGitExtension : undefined,
 	},
-	Uri: {
-		joinPath: (..._args: unknown[]): unknown => ({ fsPath: '' }),
+	Uri: UriStub,
+	// Phase 17 Plan 17-02 — minimal stubs for resource-scoped getConfiguration tests.
+	EndOfLine: { LF: 1, CRLF: 2 },
+	Range: class {
+		constructor(
+			public readonly start: unknown,
+			public readonly startChar: unknown,
+			public readonly end: unknown,
+			public readonly endChar: unknown,
+		) { }
+	},
+	Position: class {
+		constructor(public readonly line: number, public readonly character: number) { }
 	},
 	Disposable: class {
 		constructor(private readonly fn?: () => void) { }
