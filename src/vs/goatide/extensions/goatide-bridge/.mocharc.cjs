@@ -15,7 +15,7 @@ module.exports = {
 	'node-option': ['import=tsx'],
 	extension: ['ts', 'tsx', 'cjs'],
 	spec: ['test/**/*.test.ts', 'test/**/*.test.tsx', 'test/**/*.test.cjs'],
-	file: ['test/setup/vscode-stub.ts', 'test/setup/jsdom-setup.ts'],
+	file: ['test/setup/vscode-stub.ts', 'test/setup/register-commands.ts', 'test/setup/jsdom-setup.ts'],
 	recursive: true,
 	timeout: 15_000,
 	ui: 'bdd',

@@ -34,6 +34,7 @@ import * as crypto from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import type { ReadonlyKernelClient } from './ReadonlyKernelClient.js';
 import { InspectorWebviewToHostSchema, type InspectorHostToWebview } from './messages.js';
+import type { WorkspaceRepo } from './workspace-repos.js';
 
 /**
  * Singleton WebviewPanel hosting the bitemporal Graph Inspector (DEEP-02). Read-only —
@@ -60,6 +61,8 @@ export class GraphInspectorPanel {
 	private static instance: GraphInspectorPanel | undefined;
 
 	private readonly disposables: vscode.Disposable[] = [];
+	/** Phase 17 Plan 17-04 DEEP-06 phase-B — cross-repo mode state for next show(). */
+	private pendingCrossRepoRepos: ReadonlyArray<WorkspaceRepo> | null = null;
 
 	private constructor(
 		private readonly panel: vscode.WebviewPanel,
@@ -103,6 +106,35 @@ export class GraphInspectorPanel {
 		);
 		GraphInspectorPanel.instance = new GraphInspectorPanel(panel, context.extensionUri, readonlyKernelClient);
 		return GraphInspectorPanel.instance;
+	}
+
+	/**
+	 * Phase 17 Plan 17-04 DEEP-06 phase-B — cross-repo factory. Returns the SAME singleton
+	 * as {@link getOrCreate} (single VIEW_TYPE 'goatide.graphInspector') but threads cross-repo
+	 * metadata into the initial inspector.show payload so the webview can apply cross-repo
+	 * edge styling (dashed + accent color) and node-tooltip repo_id display.
+	 *
+	 * Pitfall 2 avoidance: do NOT create a sibling panel with a new VIEW_TYPE. The cross-repo
+	 * distinction is a boolean flag on the show payload, NOT a separate panel class or VIEW_TYPE.
+	 *
+	 * Mandate B fence: this method imports ZERO write-RPC symbols. See
+	 * scripts/ci/refuse-deep05-write.sh BANNED array for the canonical token list.
+	 *
+	 * @param context        VS Code extension context for panel lifecycle management.
+	 * @param readonlyKernelClient The structurally-narrowed read-only KernelClient surface.
+	 * @param repos          Workspace repos enumerated by enumerateWorkspaceRepos() — requires
+	 *                       repos.length >= 2 for meaningful cross-repo mode (callers enforce).
+	 */
+	public static getOrCreateForCrossRepo(
+		context: vscode.ExtensionContext,
+		readonlyKernelClient: ReadonlyKernelClient,
+		repos: ReadonlyArray<WorkspaceRepo>,
+	): GraphInspectorPanel {
+		const panel = GraphInspectorPanel.getOrCreate(context, readonlyKernelClient);
+		// Stash the cross-repo metadata so the next handleMessage('inspector.ready') dispatch
+		// picks it up and threads cross_repo_mode:true + workspace_repos into the show payload.
+		panel.pendingCrossRepoRepos = repos;
+		return panel;
 	}
 
 	public reveal(): void {
@@ -152,6 +184,11 @@ export class GraphInspectorPanel {
 						? transitionsResult.transitions[transitionsResult.transitions.length - 1]
 						: new Date().toISOString();
 					const snapshot = await this.readonlyKernelClient.queryGraphSnapshot({ asOf });
+					// Phase 17 Plan 17-04 DEEP-06 phase-B — thread cross-repo metadata when the
+					// panel was created via getOrCreateForCrossRepo. Consume + clear so that a
+					// subsequent inspector.ready (e.g. after hide+reshow) defaults to single-repo mode.
+					const crossRepoRepos = this.pendingCrossRepoRepos;
+					this.pendingCrossRepoRepos = null;
 					const out: InspectorHostToWebview = {
 						type: 'inspector.show',
 						asOf,
@@ -159,6 +196,14 @@ export class GraphInspectorPanel {
 						edges: snapshot.edges,
 						truncated: snapshot.truncated,
 						transitions: transitionsResult.transitions,
+						...(crossRepoRepos !== null ? {
+							cross_repo_mode: true,
+							workspace_repos: crossRepoRepos.map(r => ({
+								folder_uri: r.folder.uri.toString(),
+								repo_id: r.repoId,
+								remote_url: r.remoteUrl,
+							})),
+						} : {}),
 					};
 					await this.panel.webview.postMessage(out);
 				} catch (err) {

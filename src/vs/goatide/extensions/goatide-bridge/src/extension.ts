@@ -27,6 +27,7 @@ import { registerMcpLivenessBannerExtension } from './mcp/liveness-banner-ext.js
 import { registerSchemaDriftBanner } from './mcp/schema-drift-banner.js';
 import { registerMcpReconnectCommand } from './mcp/reconnect-command.js';
 import { registerWalkthroughCompletion, maybeAutoOpenWalkthrough } from './onboarding/walkthrough-completion.js';
+import { registerCrossRepoGraphCommand } from './inspector/cross-repo-command.js';
 
 /**
  * BRIDGE-RT-01: resolves `<fork-root>/kernel/dist/main.js` across both bridge load modes.
@@ -275,6 +276,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			);
 		}),
 	);
+
+	// Phase 17 Plan 17-04 DEEP-06 phase-B — cross-repo graph command. Opens the
+	// GraphInspectorPanel in cross-repo mode when the workspace has >= 2 folders.
+	// Graceful degradation: shows an info notification when workspaceFolders is undefined
+	// or contains only one folder (no multi-root workspace). Uses getOrCreateForCrossRepo
+	// (Pitfall 2 avoidance: same singleton + VIEW_TYPE as goatide.openGraphInspector;
+	// cross-repo mode is a flag on the show payload, NOT a separate panel class).
+	//
+	// ORDERING INVARIANT (N3): registered BEFORE maybeAutoOpenWalkthrough so the
+	// command-link in the Getting Started panel has a valid target on first activation.
+	//
+	// Handler extracted to src/inspector/cross-repo-command.ts so the mocha test setup
+	// can register the same command without calling activate().
+	context.subscriptions.push(registerCrossRepoGraphCommand(context, kernel));
 
 	// Phase 17 Plan 17-03 POLISH-01 — auto-open the walkthrough on fresh activation.
 	// void prefix is intentional: maybeAutoOpenWalkthrough returns Promise<void> and
