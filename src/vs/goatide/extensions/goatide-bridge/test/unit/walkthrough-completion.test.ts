@@ -152,4 +152,55 @@ describe('walkthrough completion (POLISH-01 / Pitfall 9 fence)', () => {
 		}
 	});
 
+	it('fires workbench.action.openWalkthrough twice on first activation -- once immediately, once after 2000ms delay', async () => {
+		// Phase 19 Plan 19-03 -- double-invoke fallback assertion.
+		// Strategy: intercept global setTimeout to capture the scheduled callback without
+		// waiting 2000ms, avoiding cross-test timer bleed in the shared Electron process.
+		const context = makeContext(undefined); // flag not set -- fresh install
+
+		const executeCommandCalls: unknown[][] = [];
+		const origExecCmd = vscode.commands.executeCommand.bind(vscode.commands);
+		(vscode.commands as unknown as Record<string, unknown>)['executeCommand'] = async (...args: unknown[]) => {
+			executeCommandCalls.push(args);
+		};
+
+		// Intercept setTimeout to capture the 2000ms callback synchronously.
+		let capturedCallback: (() => void) | null = null;
+		let capturedDelay: number | null = null;
+		const origSetTimeout = global.setTimeout;
+		(global as unknown as Record<string, unknown>)['setTimeout'] = (fn: () => void, delay: number) => {
+			capturedCallback = fn;
+			capturedDelay = delay;
+			return 0; // fake timer ID (never actually scheduled)
+		};
+
+		try {
+			await maybeAutoOpenWalkthrough(context);
+
+			// Immediately after await: exactly one openWalkthrough call (the synchronous first invoke).
+			const openCallsImmediate = executeCommandCalls.filter(
+				args => args[0] === 'workbench.action.openWalkthrough' &&
+					args[1] === 'goatide.goatide-bridge#goatide.onboarding'
+			);
+			assert.strictEqual(openCallsImmediate.length, 1, 'first invoke must fire immediately (synchronous)');
+
+			// The setTimeout callback must have been scheduled with a 2000ms delay.
+			assert.ok(capturedCallback !== null, 'setTimeout must be called (scheduling the double-invoke)');
+			assert.strictEqual(capturedDelay, 2000, 'double-invoke delay must be 2000ms');
+
+			// Invoke the captured callback synchronously to simulate the timer firing.
+			capturedCallback!();
+
+			// After the callback fires: both invocations should have occurred.
+			const openCallsAfter = executeCommandCalls.filter(
+				args => args[0] === 'workbench.action.openWalkthrough' &&
+					args[1] === 'goatide.goatide-bridge#goatide.onboarding'
+			);
+			assert.strictEqual(openCallsAfter.length, 2, 'second invoke must fire after 2000ms setTimeout');
+		} finally {
+			(global as unknown as Record<string, unknown>)['setTimeout'] = origSetTimeout;
+			(vscode.commands as unknown as Record<string, unknown>)['executeCommand'] = origExecCmd;
+		}
+	});
+
 });

@@ -42,5 +42,18 @@ export async function maybeAutoOpenWalkthrough(context: vscode.ExtensionContext)
 		await vscode.commands.executeCommand('setContext', ONBOARDING_KEY, true);
 		return;
 	}
+	// First invocation: fires immediately. May lose foreground race vs VS Code's
+	// StartupPageRunnerContribution.run if our configurationDefaults registration
+	// is processed AFTER LifecyclePhase.Restored (Pitfall 5 / VS Code issue #152265).
 	await vscode.commands.executeCommand('workbench.action.openWalkthrough', WALKTHROUGH_ID);
+	// Phase 19 Plan 19-03 WALK-01 -- belt+suspenders hedge against the race. Per
+	// gettingStarted.contribution.ts:87-91, openWalkthrough is idempotent when the
+	// walkthrough is already the active category (early-returns as no-op). The 2000ms
+	// delay covers paint-cycle completion + VS Code DefaultConfiguration model settle.
+	// The globalState fence at the top of this function still gates re-runs on later
+	// launches -- the double-invoke ONLY fires on the first-activation path (after the
+	// early-return guard has been bypassed).
+	setTimeout(() => {
+		void vscode.commands.executeCommand('workbench.action.openWalkthrough', WALKTHROUGH_ID);
+	}, 2000);
 }
