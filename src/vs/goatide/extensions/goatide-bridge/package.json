@@ -12,6 +12,9 @@
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
+		"configurationDefaults": {
+			"workbench.startupEditor": "none"
+		},
 		"configuration": {
 			"title": "GoatIDE",
 			"properties": {
