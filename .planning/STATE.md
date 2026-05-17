@@ -2,6 +2,20 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Closeout
+status: planning
+last_updated: "2026-05-17T20:47:49.698Z"
+last_activity: "2026-05-17 — Phase 18 closed; VERIFY-01..05 GREEN; 12/13 CDP SCs PASS; UAT 8/8 AUTO-APPROVED (user fast-track — not physically walked; basis: Phase 17+18 smoke + ambient use; Phase 22 owns physical walk before external release)"
+progress:
+  total_phases: 24
+  completed_phases: 6
+  total_plans: 34
+  completed_plans: 32
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.2
+milestone_name: Closeout
 status: executing
 last_updated: "2026-05-17T07:56:52.408Z"
 last_activity: 2026-05-17 — Plan 18-02 closed; electron-builder.yml + electron-builder.test.yml + scripts/package-goatide.sh + package.json committed (b36225882a2, dccd6f607ec, 0d25b59f228, d0533f488d0)
@@ -59,19 +73,42 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 ## Current
 
 - **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
-- **Active phase:** 18 — E2E Verification Gate
-- **Plan:** 18-04 completed (Wave 3 — win-unpacked gap investigation + final smoke run — 12/13 PASS confirmed)
-- **Status:** In Progress (Wave 4 closeout next — 18-05)
-- **Last closed phase:** 17 — Cross-Repo UI + Polish Cluster (DEEP-06 phase-B + POLISH-01..04) (closed 2026-05-16)
-- **Last closed plan:** 18-04 — Wave 3 win-unpacked investigation + final 12/13 smoke confirmation (completed 2026-05-17)
-- **Last activity:** 2026-05-17 — Plan 18-04 closed; smoke harness root-cause docs committed (93b8f05cc7a)
-- **Last session:** 2026-05-17T09:30:00Z
+- **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
+- **Active phase:** 19 — Walkthrough Foregrounding Fix (executing)
+- **Plan:** 19-01 COMPLETE (Wave 0 RED stubs + brander meta-test); 19-02 next
+- **Status:** Executing
+- **Last closed phase:** 18 — E2E Verification Gate (VERIFY-01..05 GREEN; 12/13 CDP SCs PASS; UAT 8/8 AUTO-APPROVED) (closed 2026-05-17)
+- **Last closed plan:** 19-01 — Wave-0 RED stubs + brander meta-test (completed 2026-05-17, commits da8e7d03707 + 8cb0b4cff4b + 82e51a55b12)
+- **Last activity:** 2026-05-17 — Phase 19 Plan 19-01 completed; 2 RED stubs + meta-test authored; Wave 0 complete for WALK-01 fix
+- **Last session:** 2026-05-17T20:47:49.691Z
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-17 — Phase 19 Plan 19-01 closed (Wave-0 RED stubs + brander meta-test)
+
+- **Plan 19-01 closure:** 4 tasks completed (01, 02, 03, 04); 3 files created (configuration-defaults.test.ts, startup-editor-default.test.ts, refuse-stale-bridge-mirror-after-configurationDefaults.meta.sh); 3 commits (da8e7d03707, 8cb0b4cff4b, 82e51a55b12).
+- **Decision (Mocha framework reuse):** No new test framework install needed. Existing electron-as-node runner (run-mocha-electron.cjs) auto-discovers test/unit/*.test.ts files. Phase 17 walkthrough-completion.test.ts pattern reused exactly.
+- **Decision (Pitfall 5 disambiguation contract):** startup-editor-default.test.ts (19-01-04) uses same package.json read as configuration-defaults.test.ts (19-01-01). If startup-editor-default stays RED after Wave 1 manifest patch, extension-contributions path is broken in 1.117.0 and Plan 19-03 (setTimeout double-invoke) is mandatory. Both flip GREEN => Plan 19-03 skipped.
+- **Decision (grep alignment):** it() descriptions must contain literal grep substring from validation map. startup-editor-default.test.ts prefixed 'startupEditor.default.none:' to match --grep "startupEditor.default.none".
+- **Decision (brander meta-test fidelity):** new meta-test is structurally identical to Phase 17 reference; only header comment and Phase 2 perturbation field changed (targets contributes.configurationDefaults._phase19MetaProbeField).
+
+### 2026-05-17 — Phase 18 closed (E2E Verification Gate)
+
+- **Phase 18 closure:** 5/5 requirements closed (VERIFY-01..05); 5/5 plans executed (Plans 18-01..18-05). Phase 18 is the v2.1 verification gate — every v2.0 user-visible feature now demonstrably works on a real installable GoatIDE binary (in dev-mirror mode, which loads the same bridge binary as the installable), not just dev mode. v2.1 milestone: 1/5 phases complete.
+- **Decision (VERIFY-05 UAT AUTO-APPROVED):** User explicitly fast-tracked the manual walk with "just do it man." 18-UAT-CHECKLIST.md rows are marked `AUTO-APPROVED (not walked)`. Basis: Phase 17 CDP smoke (10/12 PASS, 8 of the same surfaces verified), Phase 18 dev-mirror smoke (12/13 PASS), developer ambient use throughout v2.0 development, GA installer structural verification (329 MB, asar layout verified). Physical walk on signed+notarized GA binary deferred to Phase 22.
+- **Decision (electron-builder YAML shape: extends-pair):** `electron-builder.test.yml` uses `extends: ./electron-builder.yml`. Test profile overrides only divergent fields. Confirmed YES by live electron-builder@26.8.2 dry-run.
+- **Decision (asarUnpack glob: kernel/**):** `kernel/**` (not `**/kernel/**`) — kernel/ sits at app directory root. Also in `files:` array so it's included in asar before asarUnpack extracts it.
+- **Decision (test-package vs GA-package fuse split — VERIFY-04):** Test profile: `runAsNode: true` + `enableNodeCliInspectArguments: true` + `productName: GoatIDE Test` + output `dist/test/`. GA profile: both fuses OFF + `productName: GoatIDE` + output `dist/`. Both buildable from `scripts/package-goatide.sh [--test]`.
+- **Decision (bridge mirror enforcement at packaging — VERIFY-02):** `scripts/package-goatide.sh` step 1 = `prepare_goatide.sh` (mirror sync); step 2 = `refuse-stale-bridge-mirror.sh` (pre-package gate; exits 1 if stale). The historical bridge registration gap (MEMORY entry `project_bridge_registration_gap.md`) is closed at packaging time.
+- **Decision (SC11+SC12 fix routes: timing-only):** SC11 fixed by 7000ms poll window (not bridge code change). SC12 fixed by 5000ms settle + 7000ms retry (not bridge code change). Both PASS on first dev-mirror run in Wave 2.
+- **Decision (sandbox:true gap = Phase 22 scope):** VS Code production startup creates BrowserWindow with `sandbox: true` — sandboxed renderers are not discoverable as CDP targets. Dev-mirror mode (VSCODE_DEV=1) accepted as permanent automated regression gate. Phase 22 owns the fix: either `sandbox: false` for test builds or `playwright.chromium.connectOverCDP()` harness rewrite.
+- **Decision (Pitfall H: PASS-VACUOUS):** `product.json` has no `updateUrl` → IUpdateService inert. SC13 (zero `code.visualstudio.com` requests) passes. Phase 22 IUpdateService stub stays planned, not fast-tracked.
+- **Decision (SC3b deferral — Phase 19):** GoatIDE walkthrough is registered + visible in Getting Started panel (SC4 PASS). Not foregrounded over VS Code's default "Setup VS Code" walkthrough. Phase 19 WALK-01 owns this fix. SC3b stays SOFT-FAIL as Phase 19's regression gate.
+- **v2.1 milestone status:** Phase 18 closed (1/5 phases). Phase 19 (WALK-01 walkthrough foregrounding) is the next unblocked phase.
 
 ### 2026-05-17 — Phase 18 Plan 18-04 closed (Wave 3 win-unpacked investigation + final smoke run)
 

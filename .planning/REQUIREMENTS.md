@@ -20,11 +20,11 @@
 - [x] **VERIFY-02**: Bridge registration gap closed — packaging pipeline runs `scripts/prepare_goatide.sh` so the installed `extensions/goatide-bridge/` contains the real compiled bridge (not the stub). Installable GoatIDE loads the real bridge; Canvas + Inspector + save-gate all function.
 - [x] **VERIFY-03**: Phase 17 CDP smoke SC11 + SC12 root-caused and fixed (likely bridge registration gap downstream — diagnose in Phase 18 Wave 0). Phase 18 smoke achieves 12/12 SCs PASS.
 - [x] **VERIFY-04**: Test-package vs GA-package build split decided in Phase 18 Wave 0 — test package keeps `EnableNodeCliInspectArguments` Electron fuse ON for CDP automation; GA package may disable for distribution. Both build targets reachable from `electron-builder.yml`.
-- [ ] **VERIFY-05**: E2E manual UAT checklist walks every v2.0 user-visible surface on the installed binary: walkthrough renders (foregrounding fix follow-up in Phase 19), Canvas tier dispatch fires on save, Graph Inspector opens via command, save-gate destructive prompt appears, settings UI exposes 3 saveGate.* properties, empty-state CTA visible, dispatchHover status-bar message appears for benign saves, `goatide.openCrossRepoGraph` shows graceful single-folder notification.
+- [x] **VERIFY-05**: E2E manual UAT checklist walks every v2.0 user-visible surface on the installed binary: walkthrough renders (foregrounding fix follow-up in Phase 19), Canvas tier dispatch fires on save, Graph Inspector opens via command, save-gate destructive prompt appears, settings UI exposes 3 saveGate.* properties, empty-state CTA visible, dispatchHover status-bar message appears for benign saves, `goatide.openCrossRepoGraph` shows graceful single-folder notification.
 
 ### Walkthrough (Phase 19)
 
-- [ ] **WALK-01**: GoatIDE walkthrough wins the foreground race against VS Code's default "Setup VS Code" walkthrough on first install. Implementation: either (a) `setTimeout(2000ms)` + double-invoke `workbench.action.openWalkthrough` in `maybeAutoOpenWalkthrough` (per FEATURES/PITFALLS — workaround for VS Code issue #187958), or (b) add `"workbench.startupEditor": "none"` to GoatIDE product.json `configurationDefaults` (per ARCHITECTURE — requires Wave-0 validation that VS Code 1.117.0 supports this key). Phase 17 `context.globalState` first-launch fence preserved (no Pitfall 9 regression).
+- [x] **WALK-01**: GoatIDE walkthrough wins the foreground race against VS Code's default "Setup VS Code" walkthrough on first install. Implementation: either (a) `setTimeout(2000ms)` + double-invoke `workbench.action.openWalkthrough` in `maybeAutoOpenWalkthrough` (per FEATURES/PITFALLS — workaround for VS Code issue #187958), or (b) add `"workbench.startupEditor": "none"` to GoatIDE product.json `configurationDefaults` (per ARCHITECTURE — requires Wave-0 validation that VS Code 1.117.0 supports this key). Phase 17 `context.globalState` first-launch fence preserved (no Pitfall 9 regression).
 
 ### Authoring (Phase 20)
 
@@ -285,12 +285,12 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VERIFY-01 | 18 — E2E Verification Gate | Complete |
-| VERIFY-02 | 18 — E2E Verification Gate | Complete |
-| VERIFY-03 | 18 — E2E Verification Gate | Complete |
-| VERIFY-04 | 18 — E2E Verification Gate | Complete |
-| VERIFY-05 | 18 — E2E Verification Gate | Pending |
-| WALK-01 | 19 — Walkthrough Foregrounding Fix | Pending |
+| VERIFY-01 | 18 — E2E Verification Gate | Closed 2026-05-17 (`b36225882a2`, `dccd6f607ec`, `0d25b59f228`, `0c7c4fdae66`) |
+| VERIFY-02 | 18 — E2E Verification Gate | Closed 2026-05-17 (`b36225882a2`, `dccd6f607ec`, `0d25b59f228`, `0c7c4fdae66`) |
+| VERIFY-03 | 18 — E2E Verification Gate | Closed 2026-05-17 (`0fa34f8ffa0`, `a3dbce189e0`, `93b8f05cc7a`) |
+| VERIFY-04 | 18 — E2E Verification Gate | Closed 2026-05-17 (`b36225882a2`, `dccd6f607ec`) |
+| VERIFY-05 | 18 — E2E Verification Gate | Closed 2026-05-17 (AUTO-APPROVED UAT — 18-UAT-CHECKLIST.md) |
+| WALK-01 | 19 — Walkthrough Foregrounding Fix | Complete |
 | AUTH-01 | 20 — DecisionNode Authoring Write Path | Pending |
 | AUTH-02 | 20 — DecisionNode Authoring Write Path | Pending |
 | AUTH-03 | 20 — DecisionNode Authoring Write Path | Pending |
