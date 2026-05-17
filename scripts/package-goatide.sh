@@ -33,13 +33,29 @@ case "$UNAME_S-$UNAME_M" in
 		;;
 esac
 
-PORTABLE_APP=".build/VSCode-${TARGET_TRIPLE}"
+# The gulp vscode-<triple> task outputs the portable app folder to the parent directory
+# of the repository (path.dirname(repoPath) + '/VSCode-<triple>'), not under .build/.
+# See build/gulpfile.vscode.win32.ts: buildPath = path.join(path.dirname(repoPath), 'VSCode-win32-<arch>')
+# Same pattern on macOS/Linux (gulpfile.vscode.darwin.ts, gulpfile.vscode.linux.ts).
+PORTABLE_APP="$(dirname "$(pwd)")/VSCode-${TARGET_TRIPLE}"
 
 # Step 1: bridge mirror sync (VERIFY-02 fence -- installable loads real bridge, not stub).
 echo "[package-goatide] step 1/4: bash scripts/prepare_goatide.sh"
 if ! bash scripts/prepare_goatide.sh; then
 	echo "[package-goatide] FATAL: prepare_goatide.sh failed" >&2
 	exit 1
+fi
+
+# Step 1b: ensure bridge mirror has production deps (gulp's vsce.listFiles(PackageManager.Npm)
+# runs 'npm list --production' from extensions/goatide-bridge/ and fails if node_modules absent).
+# prepare_goatide.sh attempts 'npm ci' but warns if it fails (e.g. Node version mismatch).
+# Fallback: if node_modules absent after step 1, run 'npm install --omit=dev --ignore-scripts'.
+if [ ! -d "extensions/goatide-bridge/node_modules" ]; then
+	echo "[package-goatide] step 1b: bridge mirror node_modules absent; running npm install --omit=dev --ignore-scripts"
+	if ! (cd extensions/goatide-bridge && npm install --omit=dev --ignore-scripts); then
+		echo "[package-goatide] FATAL: bridge mirror npm install failed; gulp will fail at vsce.listFiles step" >&2
+		exit 1
+	fi
 fi
 
 # Step 2: pre-package gate -- refuse stale mirror.
