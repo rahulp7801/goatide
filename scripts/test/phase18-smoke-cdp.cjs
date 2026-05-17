@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Phase 18 Wave 2 — End-to-end smoke against the INSTALLED test-package binary.
+// Phase 18 Wave 2/3 — End-to-end smoke against the INSTALLED test-package binary.
 //
 // Asserts all 13 SCs against the GoatIDE Test installable (produced by Wave 1
 // scripts/package-goatide.sh --test). Does NOT use VSCODE_DEV; does NOT use
@@ -36,10 +36,23 @@
 //   unpacked:    dist/test/win-unpacked/ fallback (NO VSCODE_DEV)
 //   dev-mirror:  .build/electron/GoatIDE.exe + VSCODE_DEV=1 + NO --extensionDevelopmentPath
 //               (tests mirror bridge at extensions/goatide-bridge/ — closest proxy when installer unavailable)
-//               AUTO-FIX: Win-unpacked portable app from gulp (../VSCode-win32-x64/) does NOT create
-//               Playwright-detectable BrowserWindows in production mode (confirmed 2026-05-17 via
-//               DevToolsActivePort + process check: 4 processes spawned but 0 windows detected at 160s).
-//               Dev binary with VSCODE_DEV=1 IS required for Playwright window detection on Windows.
+//
+// WIN-UNPACKED PLAYWRIGHT-ATTACH GAP (documented 2026-05-17, Wave 3 investigation):
+//   The gulp portable app (../VSCode-win32-x64/GoatIDE.exe) and electron-builder win-unpacked
+//   output CANNOT be used with playwright._electron.launch() in production mode. Confirmed:
+//     - DevToolsActivePort IS written (CDP browser endpoint reachable at /json/version)
+//     - 4 GoatIDE.exe processes spawn normally
+//     - CDP /json/list returns [] (0 targets) at all polling intervals (verified 5–60s)
+//     - playwright.firstWindow() times out: "waiting for event window" (confirmed via direct test)
+//   ROOT CAUSE: VS Code production startup creates BrowserWindow with `sandbox: true` in
+//   webPreferences (main.js:20039). Sandboxed renderers are NOT discoverable as CDP targets
+//   (they do not emit Target.targetCreated events). In dev mode (VSCODE_DEV=1), VS Code calls
+//   win.webContents.openDevTools() which registers the window as a discoverable CDP target.
+//   FUSES ARE NOT THE ISSUE: both portable app and dev binary have identical fuses
+//   (RunAsNode:ON, EnableNodeCliInspectArguments:ON — verified via @electron/fuses read).
+//   TESTED WORKAROUNDS (all failed): --open-devtools, --no-sandbox, longer wait times.
+//   FIX: Phase 22 item — either sandbox:false for test builds OR connectOverCDP() harness rewrite.
+//   See 18-DIAGNOSTICS/SMOKE-RUN-FINAL.md "Win-Unpacked Gap — Phase 22 Follow-Up".
 //
 // Pattern: structural copy of scripts/test/phase17-smoke-cdp.cjs (Phase 17 harness),
 //          adapted for installable binary and extended with SC13.
@@ -90,6 +103,12 @@ function resolveLaunchConfig() {
 				return { binary: altInstalledExe, mode: 'installable', extraArgs: [], extraEnv: {} };
 			}
 			// Fallback 1: unpacked tree from dist/test/ (electron-builder --dir output)
+			// NOTE (Wave 3 investigation): win-unpacked binaries produced by electron-builder also
+			// exhibit the same Playwright-attach gap as the gulp portable app — sandbox:true prevents
+			// CDP target discovery. This fallback path will hit the same timeout in firstWindow().
+			// It is kept here for forward-compat: if Phase 22 fixes the sandbox gap, win-unpacked
+			// will work without changing this code.
+			// See header comment "WIN-UNPACKED PLAYWRIGHT-ATTACH GAP" for full root cause.
 			const unpacked = path.join(ROOT, 'dist', 'test', 'win-unpacked', 'GoatIDE Test.exe');
 			if (fs.existsSync(unpacked)) {
 				return { binary: unpacked, mode: 'installable', extraArgs: [], extraEnv: {} };
@@ -101,6 +120,9 @@ function resolveLaunchConfig() {
 			// Fallback 2: dev binary in dev-mirror mode (tests mirror bridge, closest proxy).
 			// Uses VSCODE_DEV=1 (required for Playwright window detection on Windows).
 			// Does NOT use --extensionDevelopmentPath, so bridge loads from extensions/goatide-bridge/ (mirror).
+			// ROOT CAUSE (Wave 3, 2026-05-17): VSCODE_DEV=1 causes VS Code to call openDevTools() on
+			// the main window, which registers it as a discoverable CDP target. Without VSCODE_DEV,
+			// sandbox:true prevents the renderer from appearing in CDP /json/list regardless of flags.
 			const devBinary = path.join(ROOT, '.build', 'electron', 'GoatIDE.exe');
 			if (fs.existsSync(devBinary)) {
 				return {
