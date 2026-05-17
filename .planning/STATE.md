@@ -88,20 +88,28 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 ## Current
 
 - **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
-- **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
-- **Active phase:** 19 — Walkthrough Foregrounding Fix (executing)
-- **Plan:** 19-01 COMPLETE (Wave 0 RED stubs + brander meta-test); 19-02 next
-- **Status:** Executing
-- **Last closed phase:** 18 — E2E Verification Gate (VERIFY-01..05 GREEN; 12/13 CDP SCs PASS; UAT 8/8 AUTO-APPROVED) (closed 2026-05-17)
-- **Last closed plan:** 19-01 — Wave-0 RED stubs + brander meta-test (completed 2026-05-17, commits da8e7d03707 + 8cb0b4cff4b + 82e51a55b12)
-- **Last activity:** 2026-05-17 — Phase 19 Plan 19-01 completed; 2 RED stubs + meta-test authored; Wave 0 complete for WALK-01 fix
-- **Last session:** 2026-05-17T20:56:35.170Z
+- **Active phase:** none (Phase 20 next -- DecisionNode Authoring Write Path)
+- **Status:** Idle (Phase 19 closed 2026-05-17)
+- **Last closed phase:** 19 -- Walkthrough Foregrounding Fix (WALK-01 GREEN; SC3b 13/13 PASS) (closed 2026-05-17)
+- **Last closed plan:** 19-04 -- Wave 3 phase verify + SC3b DOM-based detection + closure ceremony
+- **Last activity:** 2026-05-17 — Phase 19 closed; WALK-01 GREEN; flakiness fence 3/3 EXIT 0; 19-VERIFICATION.md + 19-SUMMARY.md authored
+- **Last session:** 2026-05-17
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-17 — Phase 19 closed (Walkthrough Foregrounding Fix)
+
+- **Phase 19 closure:** 1/1 requirement closed (WALK-01); 3/4 plans executed (Plan 19-03 SKIPPED -- runtime_probe GREEN in Wave 1; double-invoke implemented as Rule 1 auto-fix during 19-04 execution). Phase 18 CDP smoke gate raised from 12/13 to 13/13 -- SC3b is now a regression gate for any future regression of the walkthrough foreground race.
+- **Decision (root cause: VS Code walkthroughPageTitle bug):** VS Code's `gettingStarted.ts` `applyInput` does NOT update `editorInput.walkthroughPageTitle` when switching walkthrough via `openWalkthrough` command (category-found path). Window title stays "Walkthrough: Setup VS Code" even when GoatIDE walkthrough details slide is active. Cannot fix without editing VS Code core (FORK-04 gate). Fix: SC3b uses DOM-based `x-category-title-for` attribute fingerprint written by `buildCategorySlide()` to detect GoatIDE walkthrough activity.
+- **Decision (primary fix path):** bridge `contributes.configurationDefaults["workbench.startupEditor"] = "none"` extension contribution disables VS Code startup page. `setTimeout(2000ms)` double-invoke in `maybeAutoOpenWalkthrough` as belt+suspenders for Pitfall 5 race.
+- **Decision (SC3b detection method):** DOM-based `document.querySelector('[x-category-title-for="goatide.goatide-bridge#goatide.onboarding"]')` — present iff GoatIDE walkthrough details slide is rendered by `buildCategorySlide()`. More reliable than window.title() which depends on `walkthroughPageTitle` not being updated by `applyInput`.
+- **Decision (flakiness fence):** 3-run consecutive smoke (`for i in 1 2 3; do node scripts/test/phase18-smoke-cdp.cjs || exit 1; done`) produced 3/3 EXIT 0 -- foreground race fix is deterministic on dev-mirror binary.
+- **Pitfall 9 fence preserved:** `walkthrough-completion.ts registerWalkthroughCompletion` body still uses `context.globalState`, NOT `WorkspaceConfiguration.update`; SC#2 'second launch does not re-show' test stays GREEN.
+- **v2.1 milestone status:** Phase 19 closed (2/5 phases). Phase 20 (DecisionNode Authoring Write Path) is the next unblocked phase.
 
 ### 2026-05-17 — Phase 19 Plan 19-01 closed (Wave-0 RED stubs + brander meta-test)
 

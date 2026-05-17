@@ -22,10 +22,6 @@
 - [x] **VERIFY-04**: Test-package vs GA-package build split decided in Phase 18 Wave 0 — test package keeps `EnableNodeCliInspectArguments` Electron fuse ON for CDP automation; GA package may disable for distribution. Both build targets reachable from `electron-builder.yml`.
 - [x] **VERIFY-05**: E2E manual UAT checklist walks every v2.0 user-visible surface on the installed binary: walkthrough renders (foregrounding fix follow-up in Phase 19), Canvas tier dispatch fires on save, Graph Inspector opens via command, save-gate destructive prompt appears, settings UI exposes 3 saveGate.* properties, empty-state CTA visible, dispatchHover status-bar message appears for benign saves, `goatide.openCrossRepoGraph` shows graceful single-folder notification.
 
-### Walkthrough (Phase 19)
-
-- [x] **WALK-01**: GoatIDE walkthrough wins the foreground race against VS Code's default "Setup VS Code" walkthrough on first install. Implementation: either (a) `setTimeout(2000ms)` + double-invoke `workbench.action.openWalkthrough` in `maybeAutoOpenWalkthrough` (per FEATURES/PITFALLS — workaround for VS Code issue #187958), or (b) add `"workbench.startupEditor": "none"` to GoatIDE product.json `configurationDefaults` (per ARCHITECTURE — requires Wave-0 validation that VS Code 1.117.0 supports this key). Phase 17 `context.globalState` first-launch fence preserved (no Pitfall 9 regression).
-
 ### Authoring (Phase 20)
 
 - [ ] **AUTH-01**: `goatide.canvas.addDecisionNode` placeholder replaced with real write path. User can author a DecisionNode via command palette (table stakes: anchor selection from current file's known anchors → required rationale text via InputBox → optional constraint links picker → atomic write via existing `proposeEdit` + `atomicAccept` RPCs). Anchor auto-population from `CanvasShowPayload.anchor_path` when triggered from the POLISH-03 empty-state CTA.
@@ -83,6 +79,18 @@
 | POLISH-02 | `contributes.configuration` 3 `saveGate.*` properties (`destructive` enum=[block,confirm] Mandate D fence; `highImpact` + `benign` 3-value enums; all `scope: resource`) + `tier-dispatch.ts` resource-scoped `getConfiguration('goatide.saveGate', doc.uri)` read at `dispatchTier` entry. Pitfall E defense: each branch reads ONLY its designated setting. | `d491a250bdc` |
 | POLISH-03 | `CitationList.tsx` empty-state component (SVG info-circle icon + BYTE-EXACT literal `'No rationale recorded yet'` heading + body paragraph + "Add DecisionNode" CTA) + `canvas.requestAddDecisionNode` message variant + `extension.ts` placeholder `goatide.canvas.addDecisionNode` command (v2.1 informational body) + Mandate A structural fence via `refuse-llm-in-canvas.meta.sh`. | `18675414b37`, `e412e43eb7b` |
 | POLISH-04 | `tier-dispatch.ts` `dispatchHover` private function (status-bar message + 4s auto-dismiss + "Open full receipt" fallback to `panel.showAndAwait`) + Mandate D byte-identity matrix test pinning destructive saves NEVER de-escalate via benign setting (4x3 tier-isDestructive-benignSetting snapshot). Caller-count fence: 1 declaration + 1 caller = 2. | `d491a250bdc` |
+
+### Phase 19 — Walkthrough Foregrounding Fix — Closed 2026-05-17
+
+| ID | What shipped | Closure commit(s) |
+|----|-------------|-------------------|
+| WALK-01 | Bridge `package.json` `contributes.configurationDefaults["workbench.startupEditor"] = "none"` so VS Code's `StartupPageRunnerContribution.run()` falls through when the value is not `'welcomePage'`; `setTimeout(2000ms)` double-invoke in `maybeAutoOpenWalkthrough` as belt+suspenders fallback for Pitfall 5 / VS Code issue #152265; Phase 18 CDP smoke SC3b detection switched from window.title() (VS Code does not update `walkthroughPageTitle` when switching walkthrough via `openWalkthrough` command) to DOM-based `x-category-title-for` attribute fingerprint written by `buildCategorySlide()`; gate threshold raised from 12/13 to 13/13; Pitfall 9 fence preserved (`registerWalkthroughCompletion` still uses `context.globalState`, NOT `WorkspaceConfiguration.update`). Flakiness fence: 3/3 consecutive smoke runs EXIT 0. | `da8e7d03707`, `8cb0b4cff4b`, `ae957b68130`, `57f83c71f7e`, `53624da51ba`, `3e511fb506b` |
+
+### Phase 18 — E2E Verification Gate — Closed 2026-05-17
+
+| ID | What shipped | Closure commit(s) |
+|----|-------------|-------------------|
+| VERIFY-01..05 | Electron-builder NSIS + DMG pipeline + bridge packaging + CDP 13-SC smoke harness (dev-mirror mode) + UAT checklist. | `b36225882a2`, `dccd6f607ec`, `0d25b59f228`, `0c7c4fdae66`, `0fa34f8ffa0`, `a3dbce189e0`, `93b8f05cc7a` |
 
 ### Phase 16 — Ripple Analysis + Cross-Repo Schema Migration — Closed 2026-05-15
 
@@ -290,7 +298,7 @@
 | VERIFY-03 | 18 — E2E Verification Gate | Closed 2026-05-17 (`0fa34f8ffa0`, `a3dbce189e0`, `93b8f05cc7a`) |
 | VERIFY-04 | 18 — E2E Verification Gate | Closed 2026-05-17 (`b36225882a2`, `dccd6f607ec`) |
 | VERIFY-05 | 18 — E2E Verification Gate | Closed 2026-05-17 (AUTO-APPROVED UAT — 18-UAT-CHECKLIST.md) |
-| WALK-01 | 19 — Walkthrough Foregrounding Fix | Complete |
+| WALK-01 | 19 — Walkthrough Foregrounding Fix | Closed 2026-05-17 (`3e511fb506b`, `53624da51ba`, `ae957b68130`, `57f83c71f7e`) |
 | AUTH-01 | 20 — DecisionNode Authoring Write Path | Pending |
 | AUTH-02 | 20 — DecisionNode Authoring Write Path | Pending |
 | AUTH-03 | 20 — DecisionNode Authoring Write Path | Pending |
