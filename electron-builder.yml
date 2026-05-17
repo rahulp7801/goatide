@@ -1,0 +1,42 @@
+# GoatIDE GA build profile.
+# Wraps the gulp-produced .build/VSCode-<platform> portable app folder into an installer.
+# Invoked via: scripts/package-goatide.sh (no --test flag).
+# Output: dist/GoatIDE-Setup-<arch>.exe (Windows) or dist/GoatIDE-<arch>.dmg (macOS).
+#
+# NEVER use a `build` key in package.json -- VS Code's build system reads package.json
+# programmatically and the `build` key conflicts (PITFALLS.md Anti-Patterns #2).
+appId: ai.goatide.GoatIDE
+productName: GoatIDE
+copyright: Copyright (c) 2026 GoatIDE
+directories:
+  output: dist
+asar: true
+asarUnpack:
+  - "kernel/**"   # exact glob per 18-DIAGNOSTICS/SPIKE-ASARUNPACK.md verdict; kernel/ is at app root
+files:
+  - "extensions/**"
+  - "kernel/**"   # included here so electron-builder packs it into the asar before asarUnpack extracts it
+  - "out/**"
+  - "resources/**"
+  - "package.json"
+  - "product.json"
+npmRebuild: false  # kernel/node_modules/better-sqlite3 already ABI-140; do NOT re-rebuild for renderer ABI
+electronFuses:
+  runAsNode: false
+  enableNodeCliInspectArguments: false
+  enableNodeOptionsEnvironmentVariable: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
+win:
+  target: nsis
+  artifactName: "${productName}-Setup-${arch}.${ext}"
+mac:
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true   # Phase 22 needs hardened runtime for notarization; harmless without notarization
+  category: public.app-category.developer-tools
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false

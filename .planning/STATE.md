@@ -4,12 +4,12 @@ milestone: v2.1
 milestone_name: Verify + Ship
 status: roadmap-ready
 last_updated: "2026-05-16T00:00:00Z"
-last_activity: 2026-05-16 — v2.1 roadmap created; 5 phases (18-22), 14 requirements mapped, ready for planning
+last_activity: 2026-05-16 — Phase 18 Plan 18-01 (Wave 0 diagnostics + spikes) completed; 5 diagnostic notes + CDN pre-fence script produced
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 1
+  completed_plans: 1
 ---
 
 # GoatIDE Project State
@@ -30,12 +30,12 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 ## Current
 
 - **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
-- **Active phase:** none (defining requirements)
-- **Plan:** —
-- **Status:** Defining requirements
+- **Active phase:** 18 — E2E Verification Gate
+- **Plan:** 18-01 completed (Wave 0 diagnostics + spikes)
+- **Status:** In Progress (Wave 1 next)
 - **Last closed phase:** 17 — Cross-Repo UI + Polish Cluster (DEEP-06 phase-B + POLISH-01..04) (closed 2026-05-16)
-- **Last closed plan:** 17-05 — Phase 17 verification battery + milestone closure (closed 2026-05-16)
-- **Last activity:** 2026-05-16 — v2.1 milestone started via `/gsd:new-milestone v2.1`; sequencing locked: verify-then-ship (Phase 18 verification gates all v2.1 net-new work)
+- **Last closed plan:** 18-01 — Wave 0 diagnostics + spikes (completed 2026-05-16)
+- **Last activity:** 2026-05-16 — Plan 18-01 closed; 5 diagnostic notes (SC11/SC12/PITFALL-H/SPIKE-EXTENDS/SPIKE-ASARUNPACK) + phase18-cdn-pre-fence.cjs committed (904fcb18dcd)
 - **Last session:** 2026-05-16T00:00:00Z
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
@@ -43,6 +43,14 @@ v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-16 — Phase 18 Plan 18-01 closed (Wave 0 diagnostics + spikes)
+
+- **Decision (SC11 fix route):** Primary = bridge mirror enforcement (`scripts/package-goatide.sh` sync of `dist/extension.js` + all runtime files) so `goatide.openCrossRepoGraph` is registered in the installable. Secondary = increase Wave 2 SC11 poll window from 3500ms to 7000ms (covers timing edge case). Both fixes needed for Wave 3.
+- **Decision (SC12 fix route):** Primary = increase Settings UI settle in Wave 2 from 3000ms to 5000ms with a poll loop (covers timing). Secondary = bridge mirror enforcement (same as SC11, ensures `contributes.configuration` present in installable). Both fixes likely needed for Wave 3.
+- **Decision (Pitfall H: PASS-VACUOUS):** GoatIDE binary launched without VSCODE_DEV for 90s; zero code.visualstudio.com requests captured. product.json has no `updateUrl` key — IUpdateService is inert. Phase 22 IUpdateService stub stays planned (not fast-tracked to Phase 18). SC13 = regression gate only.
+- **Decision (electron-builder extends: YES):** electron-builder@26.8.2 supports `extends:` YAML directive (confirmed via live dry-run; output: "loaded parent configuration"). Wave 1 uses extends-pair: `electron-builder.yml` (base/production) + `electron-builder.test.yml` (extends base, overrides appId/productName).
+- **Decision (asarUnpack glob = kernel/**):** `kernel/` sits at app root (bridge 2-level path resolution: `extensions/goatide-bridge/ → ../../kernel/`). Glob `kernel/**` (not `**/kernel/**`) covers `kernel/dist/main.js` AND `kernel/node_modules/better-sqlite3/build/Release/better_sqlite3.node`. Also add `kernel/**` to `files:` (or it won't be packed into the asar at all).
 
 ### 2026-05-16 — v2.1 milestone started (Verify + Ship)
 

@@ -1,0 +1,30 @@
+# GoatIDE test build profile — CDP-attachable for phase18-smoke-cdp.cjs.
+# Diverges from GA on: enableNodeCliInspectArguments fuse (ON), runAsNode fuse (ON),
+# productName (GoatIDE Test — separate install path), output dir (dist/test).
+#
+# Uses `extends:` directive (confirmed YES per 18-DIAGNOSTICS/SPIKE-EXTENDS.md).
+# electron-builder@26.8.2 loads the parent config and merges fields; overrides below win.
+extends: ./electron-builder.yml
+productName: GoatIDE Test
+directories:
+  output: dist/test
+asarUnpack:
+  - "kernel/**"   # re-stated for explicit override clarity; matches GA
+electronFuses:
+  runAsNode: true                       # OVERRIDE: Playwright _electron.launch needs RunAsNode
+  enableNodeCliInspectArguments: true   # OVERRIDE: enables --remote-debugging-port for CDP
+  enableNodeOptionsEnvironmentVariable: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
+win:
+  target: nsis
+  artifactName: "GoatIDE-Test-Setup-${arch}.${ext}"
+mac:
+  target:
+    - dmg
+  hardenedRuntime: false   # test build need not survive notarization
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  shortcutName: GoatIDE Test   # Pitfall 6 mitigation — separate shortcut so test install does not overwrite GA install

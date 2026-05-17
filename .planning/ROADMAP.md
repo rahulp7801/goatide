@@ -376,7 +376,7 @@
 4. The test-package vs GA-package build split is documented in `electron-builder.test.yml` and `electron-builder.yml`; the test package has the `EnableNodeCliInspectArguments` Electron fuse ON; the GA package has it OFF; both are buildable from the same `scripts/package-goatide.sh` with a `--test` flag.
 5. A manual UAT checklist walk of the installed GA binary confirms all v2.0 user-visible surfaces function on the installable: walkthrough visible in Getting Started panel (foregrounding fix is Phase 19), Canvas tier dispatch fires on save, Graph Inspector opens, destructive save-gate confirmation prompt appears, settings UI exposes 3 saveGate properties, empty-state CTA is visible, dispatchHover status-bar message appears for benign saves, `goatide.openCrossRepoGraph` shows graceful single-folder notification.
 
-**Plans:** TBD
+**Plans:** 1/5 plans executed
 
 ---
 
@@ -495,7 +495,7 @@
 | 15. Graph Inspector Panel | 5/5 | Closed | 2026-05-15 |
 | 16. Ripple Analysis + Cross-Repo Schema | 5/5 | Closed | 2026-05-15 |
 | 17. Cross-Repo UI + Polish Cluster | 5/5 | Closed | 2026-05-16 |
-| 18. E2E Verification Gate | 0/TBD | Not started | — |
+| 18. E2E Verification Gate | 1/5 | In Progress|  |
 | 19. Walkthrough Foregrounding Fix | 0/TBD | Not started | — |
 | 20. DecisionNode Authoring Write Path | 0/TBD | Not started | — |
 | 21. Cross-Repo Activation (Single-DB) | 0/TBD | Not started | — |
