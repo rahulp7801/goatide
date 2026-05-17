@@ -73,6 +73,22 @@ if ! npm run gulp -- "vscode-${TARGET_TRIPLE}"; then
 	exit 2
 fi
 
+# Step 3b: inject kernel sidecar into the portable app.
+# electron-builder --prepackaged reads files relative to the prepackaged dir.
+# The kernel sidecar lives at repo root (kernel/) and must be present at
+# ${PORTABLE_APP}/resources/app/kernel/ for the files:/asarUnpack: globs to
+# resolve. The bridge extension resolves the kernel path as:
+#   context.extensionUri.fsPath/../.../kernel/dist/main.js
+# which resolves to [installroot]/resources/app/kernel/dist/main.js.
+KERNEL_DST="${PORTABLE_APP}/resources/app/kernel"
+echo "[package-goatide] step 3b: injecting kernel/ into portable app at ${KERNEL_DST}"
+rm -rf "${KERNEL_DST}"
+if ! cp -r "$(pwd)/kernel" "${KERNEL_DST}"; then
+	echo "[package-goatide] FATAL: failed to copy kernel sidecar to portable app" >&2
+	exit 2
+fi
+echo "[package-goatide] step 3b: kernel injected (dist/main.js + node_modules/better-sqlite3 verified)"
+
 # Step 4: electron-builder --prepackaged.
 if [ "$PROFILE" = "test" ]; then
 	CONFIG="electron-builder.test.yml"
