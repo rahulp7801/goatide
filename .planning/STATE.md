@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Deep Features + Polish
-status: closed
+milestone: v2.1
+milestone_name: Verify + Ship
+status: defining-requirements
 last_updated: "2026-05-16T00:00:00Z"
-last_activity: 2026-05-16 — Phase 17 closed + v2.0 milestone closed (DEEP-06 phase-B + POLISH-01..04 GREEN; 10/10 v2.0 requirements closed)
+last_activity: 2026-05-16 — v2.1 milestone started; defining requirements (verification gate + distribution + authoring + cross-repo activation + walkthrough fix)
 progress:
-  total_phases: 19
-  completed_phases: 5
-  total_plans: 25
-  completed_plans: 25
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # GoatIDE Project State
@@ -18,23 +18,37 @@ progress:
 
 ---
 
+## Project Reference
+
+See: `.planning/PROJECT.md` (updated 2026-05-16)
+
+**Core value:** Every save produces a tier-classified receipt anchored to explicit graph rationale — no LLM-generated explanations in the receipt path (Mandate A).
+**Current focus:** v2.1 milestone — verification gate (Phase 18) before distribution + authoring + cross-repo + walkthrough work.
+
+---
+
 ## Current
 
-- **Active milestone:** v2.0 — CLOSED 2026-05-16 (10/10 requirements: DEEP-01..06 + POLISH-01..04; C3 deferred to v2.1)
-- **Active phase:** none (v2.0 milestone closed; v2.1 not yet planned)
-- **Plan:** 5 of 5 (17-05 complete — Phase 17 verification approved + phase-close + v2.0 milestone closure)
-- **Status:** v2.0 CLOSED — all phases + requirements closed
+- **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
+- **Active phase:** none (defining requirements)
+- **Plan:** —
+- **Status:** Defining requirements
 - **Last closed phase:** 17 — Cross-Repo UI + Polish Cluster (DEEP-06 phase-B + POLISH-01..04) (closed 2026-05-16)
 - **Last closed plan:** 17-05 — Phase 17 verification battery + milestone closure (closed 2026-05-16)
-- **Last activity:** 2026-05-16 — Phase 17 Plan 17-05 closed + v2.0 milestone CLOSED (verification approved via autonomous CDP smoke 10/12 SCs PASS + Wave-0 unit tests)
+- **Last activity:** 2026-05-16 — v2.1 milestone started via `/gsd:new-milestone v2.1`; sequencing locked: verify-then-ship (Phase 18 verification gates all v2.1 net-new work)
 - **Last session:** 2026-05-16T00:00:00Z
 
-Progress bar (Phase 17 plans): `[██████████]` 5/5 plans complete (100%) — CLOSED
-Progress bar (v2.0 phases):    `████` 4/4 phases complete (100%) — CLOSED
+v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-16 — v2.1 milestone started (Verify + Ship)
+
+- **Decision (verify-then-ship sequencing):** Phase 18 = E2E verification of v2.0 on a real installable GoatIDE (not dev-mode) + close v2.0 deferred gaps. Phases 19+ = distribution (C1/C2/C3), DecisionNode authoring UI, cross-repo activation (multi-daemon), walkthrough foregrounding. The verification phase gates everything else. Rationale: v2.0 was approved via dev-mode CDP smoke (10/12 SCs PASS), but no v2.0 feature has been walked on a real built+installed binary. Trust gap closes before net-new work begins.
+- **Decision (PROJECT.md authored from scratch):** No PROJECT.md existed at v2.1 start (init JSON reported `project_exists: false`). Reconstructed from ROADMAP.md + REQUIREMENTS.md + STATE.md + `MEMORY.md` context. Validated section covers v1.0/v1.1/v1.2/v2.0. Active section captures v2.1 scope.
+- **Open scope question (v2.1 phase count):** Roadmapper will partition the active items across phases. Estimate: 4–6 phases (Phase 18 verify; 1–2 distribution phases; 1 authoring; 1 cross-repo activation; 1 walkthrough foregrounding — some may merge based on dependency analysis).
 
 ### 2026-05-16 — Phase 17 closed + v2.0 milestone CLOSED
 
