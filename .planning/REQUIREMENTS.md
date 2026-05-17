@@ -4,11 +4,50 @@
 
 ---
 
-## Open (Active milestone: v2.1 — not yet planned)
+## Open (Active milestone: v2.1 — Verify + Ship — started 2026-05-16)
 
-> v2.0 is CLOSED as of 2026-05-16. See v2.0 closure section below in the Closed block.
+**Milestone goal:** Verify v2.0 works end-to-end on a real installable build (not dev-mode), close v2.0 deferred gaps, then ship distribution + DecisionNode authoring + cross-repo activation + walkthrough foregrounding fix.
+
+**Sequencing locked at kickoff:** Verify-then-ship. Phase 18 (verification gate) blocks all v2.1 net-new work. Phase 22 (distribution) is gated on external cert procurement.
+
+**Research:** `.planning/research/SUMMARY.md` (4-dim research synthesized 2026-05-16; commit `6e8c10ac0a5`). Multi-daemon kernel orchestration deferred to v2.2 per ARCHITECTURE recommendation — v2.1 uses single-DB + optional `repo_id` threading on existing write RPCs.
 
 ---
+
+### Verification (Phase 18 — gates everything)
+
+- [ ] **VERIFY-01**: Build pipeline produces a real installable GoatIDE artifact (`.dmg` for macOS, NSIS `.exe` for Windows) via `electron-builder --prepackaged .build/VSCode-<platform>` slotting in after the existing gulp pipeline. `electron-builder.yml` separate from `package.json` `build` key. `asarUnpack: ["kernel/**"]` excludes kernel sidecar from ASAR.
+- [ ] **VERIFY-02**: Bridge registration gap closed — packaging pipeline runs `scripts/prepare_goatide.sh` so the installed `extensions/goatide-bridge/` contains the real compiled bridge (not the stub). Installable GoatIDE loads the real bridge; Canvas + Inspector + save-gate all function.
+- [ ] **VERIFY-03**: Phase 17 CDP smoke SC11 + SC12 root-caused and fixed (likely bridge registration gap downstream — diagnose in Phase 18 Wave 0). Phase 18 smoke achieves 12/12 SCs PASS.
+- [ ] **VERIFY-04**: Test-package vs GA-package build split decided in Phase 18 Wave 0 — test package keeps `EnableNodeCliInspectArguments` Electron fuse ON for CDP automation; GA package may disable for distribution. Both build targets reachable from `electron-builder.yml`.
+- [ ] **VERIFY-05**: E2E manual UAT checklist walks every v2.0 user-visible surface on the installed binary: walkthrough renders (foregrounding fix follow-up in Phase 19), Canvas tier dispatch fires on save, Graph Inspector opens via command, save-gate destructive prompt appears, settings UI exposes 3 saveGate.* properties, empty-state CTA visible, dispatchHover status-bar message appears for benign saves, `goatide.openCrossRepoGraph` shows graceful single-folder notification.
+
+### Walkthrough (Phase 19)
+
+- [ ] **WALK-01**: GoatIDE walkthrough wins the foreground race against VS Code's default "Setup VS Code" walkthrough on first install. Implementation: either (a) `setTimeout(2000ms)` + double-invoke `workbench.action.openWalkthrough` in `maybeAutoOpenWalkthrough` (per FEATURES/PITFALLS — workaround for VS Code issue #187958), or (b) add `"workbench.startupEditor": "none"` to GoatIDE product.json `configurationDefaults` (per ARCHITECTURE — requires Wave-0 validation that VS Code 1.117.0 supports this key). Phase 17 `context.globalState` first-launch fence preserved (no Pitfall 9 regression).
+
+### Authoring (Phase 20)
+
+- [ ] **AUTH-01**: `goatide.canvas.addDecisionNode` placeholder replaced with real write path. User can author a DecisionNode via command palette (table stakes: anchor selection from current file's known anchors → required rationale text via InputBox → optional constraint links picker → atomic write via existing `proposeEdit` + `atomicAccept` RPCs). Anchor auto-population from `CanvasShowPayload.anchor_path` when triggered from the POLISH-03 empty-state CTA.
+- [ ] **AUTH-02**: Post-hoc rejection — `dispatchHover` benign-tier status-bar message gains a "Reject" action button. Click → confirmation modal → `kernel.recordRejection(attemptId)`. Reject button NEVER appears on destructive-tier saves (Mandate D fence; byte-identity matrix test extended).
+- [ ] **AUTH-03**: `refuse-llm-in-canvas.meta.sh` Mandate A fence extended to cover host-side authoring files (`canvas/authoring-*.ts`) — closes the v2.0 blind spot where the fence scanned only `canvas/webview/*`. New meta-test asserts positive + negative round-trip.
+- [ ] **AUTH-04**: `refuse-deep05-write.sh` Mandate B fence BANNED array forward-declared to include the v2.1 write RPC token(s) BEFORE any authoring inspector-adjacent code is written. CI gate fails if inspector/ imports the new write surface.
+
+### Cross-Repo Activation (Phase 21)
+
+- [ ] **XREPO-01**: Existing write RPCs (`proposeEdit`, `atomicAccept`, `recordRejection`) accept optional `repo_id: string` parameter, defaulting to `'primary'`. Single-DB model preserved — multi-daemon per-repo deferred to v2.2. Backward-compatible: all 2-arg call sites continue to work.
+- [ ] **XREPO-02**: New `WorkspaceRepoState` bridge module enumerates `vscode.workspace.workspaceFolders`, fingerprints each repo via existing `repo-fingerprint.ts` SHA-256 helper, caches the active document's repo_id. `tier-dispatch.ts` threads the active repo_id onto every write through the existing save-gate path.
+- [ ] **XREPO-03**: Real cross-repo edges render in the Graph Inspector when a save in repo-A cites a node in repo-B's graph. The dormant `edge[?crossRepo]` Cytoscape selector (Phase 17) fires for the first time. Inspector node tooltip shows repo_id fingerprint + readable repo name. No new write RPC needed (reuse existing edge insertion path with `edge_kind = 'cross_repo_citation'`).
+
+### Distribution (Phase 22 — external-cert gated)
+
+- [ ] **C1**: macOS notarization via `@electron/notarize ^3.1.1` (notarytool only; altool removed by Apple). `beforeSign` hook re-signs `better_sqlite3.node` + all `.node` files with hardened runtime before main `.app` signing. `xcrun stapler staple` post-notarize embeds ticket in DMG. Requires Apple Developer account ($99/yr — operational prereq).
+- [ ] **C2**: Windows code-signing via **Azure Trusted Signing** (CI-friendly path — EV USB tokens cannot be used in GitHub Actions). `win.azureSignOptions` in `electron-builder.yml`. SmartScreen reputation accumulates over time (no instant EV bypass post-March 2024). Requires Azure Trusted Signing account (operational prereq).
+- [ ] **C3**: Auto-update unified via `electron-updater ^6.8.3` on GitHub Releases (Squirrel.Windows deprecated). Single `goatideUpdater.ts` module at `src/vs/goatide/update/`; call site in `src/vs/code/electron-main/main.ts` guarded by `!process.env.VSCODE_DEV` (HARDEN-06 pattern). VS Code's upstream `IUpdateService` stubbed to prevent duplicate update notifications. `update-downloaded` event prompts "Restart Now / Later" — never auto-restart (Mandate D spirit). NSIS for Windows; `mac.target: [dmg, zip]` for macOS (zip required for `latest-mac.yml` update metadata).
+
+---
+
+
 
 ## Closed (Historical — reconstructed from git history)
 
