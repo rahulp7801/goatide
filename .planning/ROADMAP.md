@@ -376,7 +376,14 @@
 4. The test-package vs GA-package build split is documented in `electron-builder.test.yml` and `electron-builder.yml`; the test package has the `EnableNodeCliInspectArguments` Electron fuse ON; the GA package has it OFF; both are buildable from the same `scripts/package-goatide.sh` with a `--test` flag.
 5. A manual UAT checklist walk of the installed GA binary confirms all v2.0 user-visible surfaces function on the installable: walkthrough visible in Getting Started panel (foregrounding fix is Phase 19), Canvas tier dispatch fires on save, Graph Inspector opens, destructive save-gate confirmation prompt appears, settings UI exposes 3 saveGate properties, empty-state CTA is visible, dispatchHover status-bar message appears for benign saves, `goatide.openCrossRepoGraph` shows graceful single-folder notification.
 
-**Plans:** 1/5 plans executed
+**Plans:** 4/5 plans executed
+
+**Plan progress:**
+- [x] 18-01 (Wave 0 diagnostics + spikes) — CLOSED 2026-05-16
+- [x] 18-02 (electron-builder packaging pipeline) — CLOSED 2026-05-17
+- [x] 18-03 (phase18-smoke-cdp.cjs harness, 12/13 PASS) — CLOSED 2026-05-17
+- [x] 18-04 (win-unpacked gap investigation + final smoke confirmation) — CLOSED 2026-05-17 (12/13 PASS confirmed, gap root cause documented: sandbox:true prevents CDP target discovery, Phase 22 follow-up)
+- [ ] 18-05 (Wave 4 UAT closeout) — pending
 
 ---
 
@@ -495,7 +502,7 @@
 | 15. Graph Inspector Panel | 5/5 | Closed | 2026-05-15 |
 | 16. Ripple Analysis + Cross-Repo Schema | 5/5 | Closed | 2026-05-15 |
 | 17. Cross-Repo UI + Polish Cluster | 5/5 | Closed | 2026-05-16 |
-| 18. E2E Verification Gate | 1/5 | In Progress|  |
+| 18. E2E Verification Gate | 3/5 | In Progress|  |
 | 19. Walkthrough Foregrounding Fix | 0/TBD | Not started | — |
 | 20. DecisionNode Authoring Write Path | 0/TBD | Not started | — |
 | 21. Cross-Repo Activation (Single-DB) | 0/TBD | Not started | — |

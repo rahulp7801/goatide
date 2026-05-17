@@ -1,12 +1,41 @@
 ---
 gsd_state_version: 1.0
+milestone: v1.2
+milestone_name: Closeout
+status: executing
+last_updated: "2026-05-17T07:56:52.408Z"
+last_activity: 2026-05-17 — Plan 18-02 closed; electron-builder.yml + electron-builder.test.yml + scripts/package-goatide.sh + package.json committed (b36225882a2, dccd6f607ec, 0d25b59f228, d0533f488d0)
+progress:
+  total_phases: 24
+  completed_phases: 5
+  total_plans: 30
+  completed_plans: 29
+---
+
+---
+gsd_state_version: 1.0
+milestone: v1.2
+milestone_name: Closeout
+status: executing
+last_updated: "2026-05-17T04:35:45.766Z"
+last_activity: 2026-05-16 — Plan 18-01 closed; 5 diagnostic notes (SC11/SC12/PITFALL-H/SPIKE-EXTENDS/SPIKE-ASARUNPACK) + phase18-cdn-pre-fence.cjs committed (904fcb18dcd)
+progress:
+  total_phases: 24
+  completed_phases: 5
+  total_plans: 30
+  completed_plans: 28
+  percent: 93
+---
+
+---
+gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Verify + Ship
 status: roadmap-ready
 last_updated: "2026-05-16T00:00:00Z"
 last_activity: 2026-05-16 — Phase 18 Plan 18-01 (Wave 0 diagnostics + spikes) completed; 5 diagnostic notes + CDN pre-fence script produced
 progress:
-  total_phases: 5
+  [█████████░] 93%
   completed_phases: 0
   total_plans: 1
   completed_plans: 1
@@ -31,18 +60,40 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 
 - **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
 - **Active phase:** 18 — E2E Verification Gate
-- **Plan:** 18-01 completed (Wave 0 diagnostics + spikes)
-- **Status:** In Progress (Wave 1 next)
+- **Plan:** 18-04 completed (Wave 3 — win-unpacked gap investigation + final smoke run — 12/13 PASS confirmed)
+- **Status:** In Progress (Wave 4 closeout next — 18-05)
 - **Last closed phase:** 17 — Cross-Repo UI + Polish Cluster (DEEP-06 phase-B + POLISH-01..04) (closed 2026-05-16)
-- **Last closed plan:** 18-01 — Wave 0 diagnostics + spikes (completed 2026-05-16)
-- **Last activity:** 2026-05-16 — Plan 18-01 closed; 5 diagnostic notes (SC11/SC12/PITFALL-H/SPIKE-EXTENDS/SPIKE-ASARUNPACK) + phase18-cdn-pre-fence.cjs committed (904fcb18dcd)
-- **Last session:** 2026-05-16T00:00:00Z
+- **Last closed plan:** 18-04 — Wave 3 win-unpacked investigation + final 12/13 smoke confirmation (completed 2026-05-17)
+- **Last activity:** 2026-05-17 — Plan 18-04 closed; smoke harness root-cause docs committed (93b8f05cc7a)
+- **Last session:** 2026-05-17T09:30:00Z
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-17 — Phase 18 Plan 18-04 closed (Wave 3 win-unpacked investigation + final smoke run)
+
+- **Decision (win-unpacked gap = sandbox:true, NOT fuses):** Both portable app and dev binary have identical electron fuses (RunAsNode:ON, EnableNodeCliInspectArguments:ON). Root cause is VS Code production startup creating BrowserWindow with `sandbox: true` in webPreferences (main.js:20039). Sandboxed renderers are not discoverable as CDP targets — they don't emit Target.targetCreated events. Dev mode works because VSCODE_DEV=1 triggers `openDevTools()` which registers the window as a CDP target. Tested workarounds: `--open-devtools`, `--no-sandbox` — neither fixes it.
+- **Decision (gap is Phase 22 scope, not one-liner):** Playwright.firstWindow() confirmed timing out via direct test (`_electron.launch()` returns app with 0 windows regardless of wait time). Fixing requires either sandbox:false for test builds (security trade-off) or connectOverCDP() harness rewrite. Deferred to Phase 22. Dev-mirror accepted as permanent automated regression gate.
+- **Decision (12/13 PASS final confirmed):** Final smoke run (dev-mirror): EXIT 0, SC11 PASS, SC12 PASS, SC13 PASS (0 CDN hits, 4320 total). Phase 17 regression: 10/12 PASS, EXIT 0 (no regression). SMOKE-RUN-FINAL.md written.
+
+### 2026-05-17 — Phase 18 Plan 18-03 closed (Wave 2 smoke harness)
+
+- **Decision (dev-mirror fallback mode):** Portable app (`../VSCode-win32-x64/GoatIDE.exe`) does NOT create Playwright-detectable BrowserWindows in production mode on Windows (DevToolsActivePort written, 4 processes, 0 windows at 160s). Fix: `resolveLaunchConfig()` returns mode='dev-mirror' using `.build/electron` + VSCODE_DEV=1 + NO extensionDevelopmentPath — tests mirror bridge at `extensions/goatide-bridge/`. NSIS installer requires interactive UI (oneClick:false) — cannot be silently installed in CLI env.
+- **Decision (SC11+SC12 both PASS in dev-mirror):** Timing fixes from Wave 0 diagnostics were sufficient (7000ms SC11 poll, 5000ms SC12 settle). No registration-gap fix needed. Wave 3 scope narrows to: SC7 runtime probe (no-loader in mirror mode) + installable-mode run confirmation.
+- **Decision (SC7 soft-skip acceptable):** globalThis.require not available in packaged-bridge renderer (mirror mode). Static SC5 + dynamic SC10 cover command registration. SC7 no-loader is acceptable gap.
+- **Decision (SC13 confirmed 0 CDN hits):** 4319 total requests, 0 to code.visualstudio.com across full smoke run. PITFALL-H PASS-VACUOUS baseline confirmed for installable context. Phase 22 inherits SC13 as regression gate.
+
+### 2026-05-17 — Phase 18 Plan 18-02 closed (Wave 1 electron-builder packaging pipeline)
+
+- **Decision (YAML shape: extends-pair):** electron-builder.test.yml uses `extends: ./electron-builder.yml` (SPIKE-EXTENDS YES confirmed). Overrides only: CDP fuses, productName, directories.output, shortcutName. Base GA config inherited without duplication.
+- **Decision (asarUnpack glob: kernel/**):** `kernel/**` (not `**/kernel/**`) — kernel/ sits at app directory root per bridge 2-level path resolution. Also added to `files:` so it's packed into asar before asarUnpack extracts it (SPIKE-ASARUNPACK recommendation).
+- **Decision (npmRebuild: false):** Critical for kernel's ABI-140 better-sqlite3.node survival through packaging. Without it, electron-builder re-rebuilds better-sqlite3 for the renderer ABI and kernel sidecar crashes.
+- **Decision (PORTABLE_APP path correction):** gulp buildPath = `path.join(path.dirname(repoPath), 'VSCode-win32-<arch>')` = `../VSCode-win32-x64`. Script updated to `$(dirname "$(pwd)")/VSCode-${TARGET_TRIPLE}`.
+- **Decision (bridge node_modules fallback):** Added step 1b to package-goatide.sh. prepare_goatide.sh wipes and npm ci's the bridge mirror, which fails on Node <22.22.1. If node_modules absent, run `npm install --omit=dev --ignore-scripts` as fallback.
+- **Decision (full installer verification deferred):** End-to-end packaging blocked by Node.js v22.20.0 (needs 22.22.1) — node-pty native addon not compiled. Verification completed up to gulp extension bundling + esbuild bundle. Full installer requires Node >=22.22.1.
 
 ### 2026-05-16 — Phase 18 Plan 18-01 closed (Wave 0 diagnostics + spikes)
 

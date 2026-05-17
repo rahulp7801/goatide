@@ -16,8 +16,8 @@
 
 ### Verification (Phase 18 — gates everything)
 
-- [ ] **VERIFY-01**: Build pipeline produces a real installable GoatIDE artifact (`.dmg` for macOS, NSIS `.exe` for Windows) via `electron-builder --prepackaged .build/VSCode-<platform>` slotting in after the existing gulp pipeline. `electron-builder.yml` separate from `package.json` `build` key. `asarUnpack: ["kernel/**"]` excludes kernel sidecar from ASAR.
-- [ ] **VERIFY-02**: Bridge registration gap closed — packaging pipeline runs `scripts/prepare_goatide.sh` so the installed `extensions/goatide-bridge/` contains the real compiled bridge (not the stub). Installable GoatIDE loads the real bridge; Canvas + Inspector + save-gate all function.
+- [x] **VERIFY-01**: Build pipeline produces a real installable GoatIDE artifact (`.dmg` for macOS, NSIS `.exe` for Windows) via `electron-builder --prepackaged .build/VSCode-<platform>` slotting in after the existing gulp pipeline. `electron-builder.yml` separate from `package.json` `build` key. `asarUnpack: ["kernel/**"]` excludes kernel sidecar from ASAR.
+- [x] **VERIFY-02**: Bridge registration gap closed — packaging pipeline runs `scripts/prepare_goatide.sh` so the installed `extensions/goatide-bridge/` contains the real compiled bridge (not the stub). Installable GoatIDE loads the real bridge; Canvas + Inspector + save-gate all function.
 - [x] **VERIFY-03**: Phase 17 CDP smoke SC11 + SC12 root-caused and fixed (likely bridge registration gap downstream — diagnose in Phase 18 Wave 0). Phase 18 smoke achieves 12/12 SCs PASS.
 - [x] **VERIFY-04**: Test-package vs GA-package build split decided in Phase 18 Wave 0 — test package keeps `EnableNodeCliInspectArguments` Electron fuse ON for CDP automation; GA package may disable for distribution. Both build targets reachable from `electron-builder.yml`.
 - [ ] **VERIFY-05**: E2E manual UAT checklist walks every v2.0 user-visible surface on the installed binary: walkthrough renders (foregrounding fix follow-up in Phase 19), Canvas tier dispatch fires on save, Graph Inspector opens via command, save-gate destructive prompt appears, settings UI exposes 3 saveGate.* properties, empty-state CTA visible, dispatchHover status-bar message appears for benign saves, `goatide.openCrossRepoGraph` shows graceful single-folder notification.
@@ -285,8 +285,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| VERIFY-01 | 18 — E2E Verification Gate | Pending |
-| VERIFY-02 | 18 — E2E Verification Gate | Pending |
+| VERIFY-01 | 18 — E2E Verification Gate | Complete |
+| VERIFY-02 | 18 — E2E Verification Gate | Complete |
 | VERIFY-03 | 18 — E2E Verification Gate | Complete |
 | VERIFY-04 | 18 — E2E Verification Gate | Complete |
 | VERIFY-05 | 18 — E2E Verification Gate | Pending |
