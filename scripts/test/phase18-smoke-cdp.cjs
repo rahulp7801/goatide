@@ -381,21 +381,38 @@ async function main() {
 		// Allow bridge activation + walkthrough registration to settle.
 		await sleep(15_000);
 
-		// SC3b — walkthrough foregrounded: SOFT-FAIL expected (Phase 19 fix).
+		// SC3b — walkthrough foregrounded: Phase 19 WALK-01 closure.
 		// POLISH-01 auto-open calls workbench.action.openWalkthrough on activation.
-		const phase18Title = await waitForCondition(
-			() => window.title(),
-			t => typeof t === 'string' && (t.includes('Verification Canvas') || t.includes('Understanding') || t.includes('GoatIDE Verification')),
+		// Detection uses DOM-based check (not window.title) because VS Code's gettingStarted.ts
+		// does NOT update editorInput.walkthroughPageTitle when switching walkthrough via
+		// openWalkthrough command -- so window.title stays 'Walkthrough: Setup VS Code' even
+		// when GoatIDE walkthrough details slide is the active view (Phase 19 root-cause analysis,
+		// 2026-05-17). The x-category-title-for attribute is written by buildCategorySlide()
+		// in gettingStarted.ts and uniquely identifies which walkthrough's steps are displayed.
+		const GOATIDE_CATEGORY_ID = 'goatide.goatide-bridge#goatide.onboarding';
+		const sc3bDomResult = await waitForCondition(
+			async () => {
+				try {
+					return await window.evaluate((categoryId) => {
+						const el = document.querySelector('[x-category-title-for="' + categoryId + '"]');
+						return el ? (el.textContent || 'found') : null;
+					}, GOATIDE_CATEGORY_ID);
+				} catch (_) {
+					return null;
+				}
+			},
+			t => typeof t === 'string' && t.length > 0,
 			30_000,
 			500,
 		);
-		if (phase18Title && (phase18Title.includes('Verification Canvas') || phase18Title.includes('Understanding'))) {
-			console.log('[phase18-smoke] SC3b PASS: GoatIDE walkthrough/canvas foregrounded (' + phase18Title + ')');
+		const lastTitle = await window.title();
+		if (sc3bDomResult) {
+			console.log('[phase18-smoke] SC3b PASS: GoatIDE walkthrough details slide active (x-category-title-for found; window title=' + JSON.stringify(lastTitle) + ')');
 			sc3bPassed = true;
+			scPassed++;  // Phase 19 WALK-01 closure -- SC3b now counts toward the gate (was: SOFT-FAIL excluded)
 		} else {
-			const lastTitle = await window.title();
-			console.warn('[phase18-smoke] SC3b SOFT-FAIL: GoatIDE walkthrough/canvas did not foreground within 30s (last title=' + JSON.stringify(lastTitle) + ')');
-			console.warn('[phase18-smoke] SC3b — Phase 19 planned fix. Not counted in 12-SC gate.');
+			console.error('[phase18-smoke] SC3b FAIL: GoatIDE walkthrough details slide NOT active within 30s (window title=' + JSON.stringify(lastTitle) + ')');
+			console.error('[phase18-smoke] SC3b -- Phase 19 regression. WALK-01 was closed -- this should not fail. See 19-VERIFICATION.md.');
 		}
 
 		// SC7 — runtime probe: 3 Phase 17 commands in CommandsRegistry at runtime
@@ -685,23 +702,23 @@ async function main() {
 		}
 	}
 
-	// Final summary: SC3b is SOFT-FAIL (Phase 19 fix) and not counted in the 12-SC gate.
-	// Gate: scPassed >= 12 AND vsCodeCdnHits.length === 0 (SC13 included in scPassed count).
+	// Final summary: SC3b is now HARD-PASS (Phase 19 WALK-01 closure -- counted in the 13-SC gate).
+	// Gate: scPassed >= 13 AND vsCodeCdnHits.length === 0 (SC13 included in scPassed count).
 	const vsCodeCdnHitsFinal = capturedUrls.filter(u =>
 		u.url && (u.url.includes('code.visualstudio.com') || u.url.includes('update.code.visualstudio.com'))
 	);
-	console.log('[phase18-smoke] SCORE: ' + scPassed + '/13 SCs PASS (target: 12/13 minimum; SC3b walkthrough foregrounding is Phase 19)');
+	console.log('[phase18-smoke] SCORE: ' + scPassed + '/13 SCs PASS (target: 13/13; SC3b walkthrough foregrounding closed Phase 19 WALK-01)');
 	if (sc3bPassed) {
-		console.log('[phase18-smoke] SC3b: PASS (bonus — Phase 19 not needed for this SC)');
+		console.log('[phase18-smoke] SC3b: PASS (Phase 19 WALK-01 closure -- counted in gate)');
 	} else {
-		console.log('[phase18-smoke] SC3b: SOFT-FAIL (Phase 19 planned fix — not counted in gate)');
+		console.error('[phase18-smoke] SC3b: FAIL (Phase 19 WALK-01 regression -- counted in gate)');
 	}
 
-	if (scPassed >= 12 && vsCodeCdnHitsFinal.length === 0) {
+	if (scPassed >= 13 && vsCodeCdnHitsFinal.length === 0) {
 		console.log('[phase18-smoke] EXIT 0 (passed=' + scPassed + ', CDN hits=' + vsCodeCdnHitsFinal.length + ')');
 		process.exit(0);
 	} else {
-		console.error('[phase18-smoke] EXIT 1 (passed=' + scPassed + '/13, CDN hits=' + vsCodeCdnHitsFinal.length + ', minimum gate=12/13 + 0 CDN hits)');
+		console.error('[phase18-smoke] EXIT 1 (passed=' + scPassed + '/13, CDN hits=' + vsCodeCdnHitsFinal.length + ', minimum gate=13/13 + 0 CDN hits)');
 		process.exit(1);
 	}
 }

@@ -413,7 +413,7 @@
 2. On a second launch of the same install (after the first-run walkthrough was shown), the walkthrough does NOT auto-open again — the `context.globalState` fence (`goatide.onboardingComplete`) prevents re-showing; no regression of Phase 17 POLISH-01's Pitfall 9 mitigation.
 3. The Phase 17 CDP smoke SC3b ("walkthrough registered in the Getting Started panel DOM and foregrounded") flips from SOFT-FAIL to PASS in the Phase 18 test-package harness after the Phase 19 fix lands.
 
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 ---
 
@@ -511,7 +511,7 @@
 | 16. Ripple Analysis + Cross-Repo Schema | 5/5 | Closed | 2026-05-15 |
 | 17. Cross-Repo UI + Polish Cluster | 5/5 | Closed | 2026-05-16 |
 | 18. E2E Verification Gate | 5/5 | Complete    | 2026-05-17 |
-| 19. Walkthrough Foregrounding Fix | 1/4 | In Progress|  |
+| 19. Walkthrough Foregrounding Fix | 2/4 | In Progress|  |
 | 20. DecisionNode Authoring Write Path | 0/TBD | Not started | — |
 | 21. Cross-Repo Activation (Single-DB) | 0/TBD | Not started | — |
 | 22. Distribution (C1/C2/C3) | 0/TBD | Not started | — |
