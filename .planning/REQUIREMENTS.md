@@ -280,3 +280,24 @@
 | POLISH-03 | 17 | Closed 2026-05-16 | `18675414b37`, `e412e43eb7b` |
 | POLISH-04 | 17 | Closed 2026-05-16 | `d491a250bdc` |
 | ~~C3~~ | v2.1 (deferred) | — | Deferred 2026-05-13 — see Out-of-scope note |
+
+### v2.1 Traceability (Verify + Ship — active)
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| VERIFY-01 | 18 — E2E Verification Gate | Pending |
+| VERIFY-02 | 18 — E2E Verification Gate | Pending |
+| VERIFY-03 | 18 — E2E Verification Gate | Pending |
+| VERIFY-04 | 18 — E2E Verification Gate | Pending |
+| VERIFY-05 | 18 — E2E Verification Gate | Pending |
+| WALK-01 | 19 — Walkthrough Foregrounding Fix | Pending |
+| AUTH-01 | 20 — DecisionNode Authoring Write Path | Pending |
+| AUTH-02 | 20 — DecisionNode Authoring Write Path | Pending |
+| AUTH-03 | 20 — DecisionNode Authoring Write Path | Pending |
+| AUTH-04 | 20 — DecisionNode Authoring Write Path | Pending |
+| XREPO-01 | 21 — Cross-Repo Activation (Single-DB) | Pending |
+| XREPO-02 | 21 — Cross-Repo Activation (Single-DB) | Pending |
+| XREPO-03 | 21 — Cross-Repo Activation (Single-DB) | Pending |
+| C1 | 22 — Distribution | Pending |
+| C2 | 22 — Distribution | Pending |
+| C3 | 22 — Distribution | Pending |

@@ -12,6 +12,7 @@
 | v1.1      | Closed | 03, 04, 05, 06, 07 | Traversal, Canvas, Telemetry, MCP, Drift |
 | v1.2      | Closed (2026-05-13) | 08, 09, 10, 11, 12, 13 | Runtime fixes, ergonomics, polish, ceremony, hardening, closeout |
 | v2.0      | Closed (2026-05-16) | 14, 15, 16, 17 | 10 requirements: DEEP-01..06, POLISH-01..04; C3 auto-update → v2.1 |
+| v2.1      | Active (started 2026-05-16) | 18, 19, 20, 21, 22 | E2E verification gate, walkthrough fix, DecisionNode authoring, cross-repo activation, distribution |
 
 > Milestone boundaries above are *best-guess* from commit dates + your `project_v2_milestone_locked.md` memory entry. If wrong, edit this table — the v1.x phases are closed work and the boundary doesn't affect ongoing decisions.
 
@@ -38,6 +39,11 @@
 - [x] **Phase 15: Graph Inspector Panel** - Time-travel Cytoscape.js inspector, new WebviewPanel (completed 2026-05-15)
 - [x] **Phase 16: Ripple Analysis + Cross-Repo Schema** - Constraint-lift analysis, repo_id migration (closed 2026-05-15)
 - [x] **Phase 17: Cross-Repo UI + Polish Cluster** - Cross-repo stitching UI, onboarding, settings UI, empty-state, hover receipt (closed 2026-05-16)
+- [ ] **Phase 18: E2E Verification Gate** - Real installable build, bridge registration gap closed, 12/12 CDP smoke SCs pass
+- [ ] **Phase 19: Walkthrough Foregrounding Fix** - GoatIDE walkthrough wins first-launch race against VS Code default
+- [ ] **Phase 20: DecisionNode Authoring Write Path** - addDecisionNode write path + post-hoc Reject button + Mandate A/B fence extensions
+- [ ] **Phase 21: Cross-Repo Activation (Single-DB)** - repo_id on write RPCs, WorkspaceRepoState, real cross-repo edges in Inspector
+- [ ] **Phase 22: Distribution (C1/C2/C3)** - macOS notarization, Windows Azure Trusted Signing, electron-updater auto-update
 
 ---
 
@@ -342,6 +348,130 @@
 
 ---
 
+## v2.1 Milestone — Verify + Ship (started 2026-05-16)
+
+**Requirements:** 14 (VERIFY-01..05, WALK-01, AUTH-01..04, XREPO-01..03, C1, C2, C3)
+**Sequencing:** Phase 18 verification gates all subsequent work. Phase 22 distribution is gated on external cert procurement.
+**Granularity:** Standard (5 phases from 5 natural delivery boundaries).
+
+---
+
+### Phase 18: E2E Verification Gate
+
+**Goal:** Users can install and run GoatIDE as a real binary — not dev-mode — and every v2.0 feature visible in the CDP smoke is reachable from the installed application.
+
+**Depends on:** Phase 17 closed (v2.0 baseline established)
+
+**Requirements:** VERIFY-01, VERIFY-02, VERIFY-03, VERIFY-04, VERIFY-05
+
+**Wave-0 imperatives (before any feature code):**
+- Decide test-package vs GA-package Electron fuse strategy: test-package keeps `EnableNodeCliInspectArguments` fuse ON for CDP automation; GA package may disable for security. Both build targets reachable from `electron-builder.test.yml` + `electron-builder.yml`.
+- Diagnose SC11/SC12 root cause from Phase 17 CDP smoke (suspected: bridge registration gap + settings UI render path — confirm by inspecting the installed binary's `extensions/goatide-bridge/` contents and checking if the real bridge loads).
+- Assert zero requests to `code.visualstudio.com` in the test-package smoke (Pitfall H pre-fence: VS Code IUpdateService polling must not fire even before Phase 22 wires electron-updater).
+
+**Success Criteria** (what must be TRUE when Phase 18 completes):
+1. Running `scripts/package-goatide.sh` produces a `.dmg` (macOS) or NSIS `.exe` (Windows) installable artifact via `electron-builder --prepackaged .build/VSCode-<platform>`; the kernel sidecar is excluded from ASAR (`asarUnpack: ["kernel/**"]`) so `better_sqlite3.node` loads correctly at the Electron ABI; `electron-builder.yml` lives at repo root and does not conflict with the existing gulp pipeline.
+2. Installing the GoatIDE artifact and launching it on a clean machine loads the real bridge (not the stub `extensions/goatide-bridge/` empty stub): the Verification Canvas opens on a file save, the Graph Inspector command is reachable from the palette, and the save-gate destructive prompt appears — confirming `scripts/prepare_goatide.sh` ran during packaging and the bridge mirror is not stale.
+3. The extended `scripts/test/phase18-smoke-cdp.cjs` harness achieves 12/12 SCs PASS against the test-package binary (the same 10 that passed in Phase 17 plus the previously-SOFT-FAIL SC11 and SC12 — SC11: settings UI exposes 3 `saveGate.*` properties; SC12: walkthrough registered in Welcome panel DOM); root cause of SC11/SC12 was diagnosed and fixed before the harness extension.
+4. The test-package vs GA-package build split is documented in `electron-builder.test.yml` and `electron-builder.yml`; the test package has the `EnableNodeCliInspectArguments` Electron fuse ON; the GA package has it OFF; both are buildable from the same `scripts/package-goatide.sh` with a `--test` flag.
+5. A manual UAT checklist walk of the installed GA binary confirms all v2.0 user-visible surfaces function on the installable: walkthrough visible in Getting Started panel (foregrounding fix is Phase 19), Canvas tier dispatch fires on save, Graph Inspector opens, destructive save-gate confirmation prompt appears, settings UI exposes 3 saveGate properties, empty-state CTA is visible, dispatchHover status-bar message appears for benign saves, `goatide.openCrossRepoGraph` shows graceful single-folder notification.
+
+**Plans:** TBD
+
+---
+
+### Phase 19: Walkthrough Foregrounding Fix
+
+**Goal:** A user who installs GoatIDE for the first time sees the GoatIDE walkthrough in the VS Code Getting Started panel — not VS Code's default "Setup VS Code" walkthrough — without having to manually navigate to it.
+
+**Depends on:** Phase 18 (installable binary verified; SC3b currently SOFT-FAIL on the installed build; fix is validated against the installed binary)
+
+**Requirements:** WALK-01
+
+**Wave-0 imperatives (before any feature code):**
+- Inspect `product.json` in VS Code 1.117.0 source to confirm whether `configurationDefaults` key is honoured for `workbench.startupEditor`. If supported, use `"workbench.startupEditor": "none"` in `product.json configurationDefaults` (cleanest fix; no code change). If not supported, fall back to `setTimeout(2000ms)` + double-invoke `workbench.action.openWalkthrough` in `maybeAutoOpenWalkthrough` (VS Code issue #187958 workaround).
+- Verify the GoatIDE walkthrough identifier matches exactly what was registered in Phase 17 POLISH-01 (confirm the actual registered ID string in `extension.ts`).
+- Confirm that `product.json` changes survive the brander script — add Wave-0 assertion that the brander preserves the `configurationDefaults` key across upstream-sync.
+
+**Success Criteria** (what must be TRUE when Phase 19 completes):
+1. On a clean GoatIDE install (fresh user data directory, no prior GoatIDE state), launching the installed binary opens the GoatIDE walkthrough foregrounded in the Getting Started panel — the VS Code "Setup VS Code" walkthrough is not selected; the GoatIDE walkthrough is the active tab.
+2. On a second launch of the same install (after the first-run walkthrough was shown), the walkthrough does NOT auto-open again — the `context.globalState` fence (`goatide.onboardingComplete`) prevents re-showing; no regression of Phase 17 POLISH-01's Pitfall 9 mitigation.
+3. The Phase 17 CDP smoke SC3b ("walkthrough registered in the Getting Started panel DOM and foregrounded") flips from SOFT-FAIL to PASS in the Phase 18 test-package harness after the Phase 19 fix lands.
+
+**Plans:** TBD
+
+---
+
+### Phase 20: DecisionNode Authoring Write Path
+
+**Goal:** Users can explicitly author a DecisionNode from within the IDE — via command palette or the empty-state CTA — and the new node appears as a citation on their next save; users can also post-hoc reject a benign-tier save attempt.
+
+**Depends on:** Phase 19 (both phases touch `extension.ts` and `tier-dispatch.ts`; sequential landing avoids conflicts in high-traffic shared files)
+
+**Requirements:** AUTH-01, AUTH-02, AUTH-03, AUTH-04
+
+**Wave-0 imperatives (before any feature code):**
+- Extend `refuse-deep05-write.sh` BANNED array to include the new write RPC token (`createDecisionNode` or whichever name is chosen) BEFORE any authoring or inspector-adjacent code is written — Mandate B fence must be in place before the write surface exists (Pitfall C).
+- Extend `refuse-llm-in-canvas.meta.sh` Mandate A fence to cover host-side authoring files (`canvas/authoring-*.ts` and `canvas/panel.ts`) — the current fence scans only `canvas/webview/*`; the host side is the v2.0 blind spot (Pitfall B).
+- Decide the write RPC name and add it to the BANNED array; document the choice. NEVER add this RPC to `ReadonlyKernelClient`.
+- Author a RED unit test asserting `textarea.value === ''` (empty string) when the DecisionNode form opens — Mandate A: form body must never be pre-populated from kernel data or any LLM source.
+- Write a RED unit test confirming the Reject button NEVER renders on destructive-tier saves — byte-identity matrix test extension (Mandate D).
+
+**Success Criteria** (what must be TRUE when Phase 20 completes):
+1. User invokes "GoatIDE: Add DecisionNode" from the command palette (or clicks the "Add DecisionNode" CTA in the empty-state canvas); a multi-step flow prompts for anchor selection (from the current file's known anchors) and a human-authored rationale text; on confirmation, the DecisionNode is written to the graph via `proposeEdit` + `atomicAccept` RPCs; a success notification shows the new node ID and "It will appear as a citation on your next save."
+2. User makes a benign-tier save and sees the `dispatchHover` status-bar message; the message includes a "Reject" action button; clicking Reject shows a confirmation modal; confirming calls `kernel.recordRejection(attemptId)` and the attempt is marked rejected in the graph. The Reject button NEVER appears on destructive-tier saves (Mandate D — byte-identity matrix test extended to cover this).
+3. `refuse-llm-in-canvas.meta.sh` CI gate passes against all host-side authoring files (`canvas/panel.ts`, `canvas/authoring-*.ts`) in addition to the existing `canvas/webview/*` scope — positive test: a clean authoring file passes; negative test: a file importing a forbidden LLM token fails.
+4. `refuse-deep05-write.sh` BANNED array includes the v2.1 write RPC token and the CI gate fails if any file under `inspector/` imports it — Mandate B fence covers the new write surface before any inspector UI is written.
+
+**Plans:** TBD
+
+---
+
+### Phase 21: Cross-Repo Activation (Single-DB Multi-Repo)
+
+**Goal:** Users working in a VS Code multi-root workspace see real cross-repo edges in the Graph Inspector when a save in one repo cites a node from another repo's graph — the dormant `edge[?crossRepo]` Cytoscape styling fires for the first time.
+
+**Depends on:** Phase 20 (both phases modify `tier-dispatch.ts` and kernel write RPC signatures; sequential landing avoids conflicts)
+
+**Requirements:** XREPO-01, XREPO-02, XREPO-03
+
+**Wave-0 imperatives (before any feature code):**
+- Document the single-DB WAL-isolation ADR: single kernel daemon, `repo_id` partitions queries not DB files, multi-daemon per-repo deferred to v2.2. Add a kernel startup assertion that fails fast if a second daemon attempts to open the same `graph.db` in readwrite mode.
+- Author a RED test: `WorkspaceRepoState.getActiveRepoId()` returns `fingerprint(remoteUrl)` (12-char SHA-256 hex) for a folder with a git remote, and `'primary'` for a folder with no git remote — graceful fallback invariant.
+- Confirm that all existing 2-arg call sites for `proposeEdit`, `atomicAccept`, `recordRejection` continue to work after the optional `repo_id` parameter is added — backward-compat regression invariant (full kernel test suite byte-equal).
+
+**Success Criteria** (what must be TRUE when Phase 21 completes):
+1. In a VS Code multi-root workspace with 2+ git repositories, saving a file in repo-A that cites a node from repo-B's graph causes a cross-repo edge to appear in the Graph Inspector (`edge[?crossRepo]` Cytoscape selector fires, rendering as dashed amber-400 per `PALETTE.crossRepoEdge`); the Inspector node tooltip shows the `repo_id` fingerprint (12-char hex) and a readable repo name derived from the workspace folder name.
+2. `tier-dispatch.ts` reads `WorkspaceRepoState.getActiveRepoId()` on every save and passes the `repo_id` through `proposeEdit` and `atomicAccept` RPCs; all existing 2-arg call sites (tests + extension.ts wiring) continue to work without modification (backward-compat: `repo_id` defaults to `'primary'`).
+3. The single-DB model is preserved — one kernel daemon, one `graph.db`, `repo_id` column partitions rows; the kernel startup guard rejects a second readwrite opener on the same DB path with a clear error message; no new DB file is created for secondary workspace repos.
+
+**Plans:** TBD
+
+---
+
+### Phase 22: Distribution (C1/C2/C3)
+
+**Goal:** Users can download a signed, notarized GoatIDE installer from GitHub Releases, install it without security warnings, and receive in-app notifications when a newer release is available.
+
+**Depends on:** Phase 21 (all graph features verified on the installable binary before adding updater complexity to Electron main process; `main.ts` has widest blast radius — land last); external preconditions: Apple Developer account + Azure Trusted Signing account must be provisioned before Phase 22 begins.
+
+**Requirements:** C1, C2, C3
+
+**Wave-0 imperatives (before any feature code):**
+- External cert procurement gate: Apple Developer ID Application certificate and Azure Trusted Signing account must be verified as available. If certs are not yet provisioned, ship an unsigned installable for self-testing and document Phase 22 as blocked on cert procurement.
+- Stub VS Code's `IUpdateService` as a no-op in the DI container BEFORE wiring `electron-updater` — prevents the dual-updater crash where VS Code's built-in updater polls `code.visualstudio.com` and races with electron-updater (Pitfall H).
+- Add `dev-app-update.yml` to `.gitignore` before the file is created — electron-updater generates this file locally; committing it leaks the update URL configuration.
+- Author `goatideUpdater.ts` stub with `VSCODE_DEV` guard (`if (process.env.VSCODE_DEV) return;`) as the first line — RED test asserts the guard fires in test environment before any updater initialization.
+
+**Success Criteria** (what must be TRUE when Phase 22 completes):
+1. On macOS, downloading the GoatIDE `.dmg` from GitHub Releases and opening it does not produce an "app is damaged" Gatekeeper error — the DMG is notarized via `@electron/notarize` notarytool, `better_sqlite3.node` and all `.node` files are re-signed with the hardened runtime in the `beforeSign` hook, and `xcrun stapler staple` embeds the notarization ticket in the DMG so offline installs validate without Apple CDN access.
+2. On Windows, the GoatIDE NSIS installer is signed via Azure Trusted Signing; running the installer shows the publisher name in the SmartScreen dialog (if shown) rather than "Unknown Publisher"; `signtool verify /pa GoatIDE-Setup.exe` exits 0.
+3. On a GoatIDE install that is one or more versions behind the latest GitHub Release, the app surfaces an in-app notification "GoatIDE update available (vX.Y.Z) — Restart Now / Later" within the first launch after the new release is published; clicking "Restart Now" applies the NSIS/DMG update; the updater NEVER fires when `VSCODE_DEV` is set (dev-mode guard, enforced by unit test); VS Code's built-in `IUpdateService` is stubbed to no-op so no duplicate update logic runs.
+
+**Plans:** TBD
+
+---
+
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |
@@ -365,3 +495,9 @@
 | 15. Graph Inspector Panel | 5/5 | Closed | 2026-05-15 |
 | 16. Ripple Analysis + Cross-Repo Schema | 5/5 | Closed | 2026-05-15 |
 | 17. Cross-Repo UI + Polish Cluster | 5/5 | Closed | 2026-05-16 |
+| 18. E2E Verification Gate | 0/TBD | Not started | — |
+| 19. Walkthrough Foregrounding Fix | 0/TBD | Not started | — |
+| 20. DecisionNode Authoring Write Path | 0/TBD | Not started | — |
+| 21. Cross-Repo Activation (Single-DB) | 0/TBD | Not started | — |
+| 22. Distribution (C1/C2/C3) | 0/TBD | Not started | — |
+

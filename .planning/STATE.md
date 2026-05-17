@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Verify + Ship
-status: defining-requirements
+status: roadmap-ready
 last_updated: "2026-05-16T00:00:00Z"
-last_activity: 2026-05-16 — v2.1 milestone started; defining requirements (verification gate + distribution + authoring + cross-repo activation + walkthrough fix)
+last_activity: 2026-05-16 — v2.1 roadmap created; 5 phases (18-22), 14 requirements mapped, ready for planning
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
