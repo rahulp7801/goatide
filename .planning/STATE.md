@@ -1,12 +1,43 @@
 ---
 gsd_state_version: 1.0
+milestone: v1.2
+milestone_name: Closeout
+status: executing
+last_updated: "2026-05-18T02:34:11.261Z"
+last_activity: 2026-05-18 — Plan 20-01 closed across two sessions; 6 task commits total (454080f2eb8, cdea35d6667, 6768e7985d5, 25037a87eff, 13e68bc1eff, 767eeb81f6f); 7 RED stubs + Mandate D matrix recordRejectionCalls column; AUTH-03/AUTH-04 marked complete
+progress:
+  total_phases: 24
+  completed_phases: 6
+  total_plans: 39
+  completed_plans: 38
+  percent: 97
+---
+
+---
+gsd_state_version: 1.0
+milestone: v2.1
+milestone_name: Verify + Ship
+status: executing
+last_updated: "2026-05-18T02:31:22Z"
+last_activity: 2026-05-18 — Plan 20-03 closed; AUTH-01 user-facing surface live (canvas/authoring-flow.ts multi-step QuickPick chain + extension.ts command body swap); 3 Wave-0 RED stubs flipped GREEN (authoring-flow-mandate-a/happy-path/cta-anchor); commits ebddd84497f + 476348448a9; Mandate A fence GREEN after header-comment rephrase; Phase 19 SC3b 13/13 PASS EXIT 0; N3 ordering preserved; Pitfall E/F byte-identical
+progress:
+  [██████████] 97%
+  total_phases: 24
+  completed_phases: 6
+  total_plans: 39
+  completed_plans: 38
+  percent: 97
+---
+
+---
+gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Verify + Ship
 status: executing
 last_updated: "2026-05-18T02:15:30Z"
 last_activity: 2026-05-18 — Plan 20-01 closed; all 6 Wave-0 tasks landed across two sessions (Tasks 1-3 in commits 454080f2eb8/cdea35d6667/6768e7985d5; Tasks 4-6 in commits 25037a87eff/13e68bc1eff/767eeb81f6f); 7 RED stubs + Mandate D recordRejectionCalls column; AUTH-03/AUTH-04 marked complete in REQUIREMENTS
 progress:
-  [██████████] 95%
+  [██████████] 97%
   total_phases: 24
   completed_phases: 6
   total_plans: 39
@@ -153,7 +184,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 - **Last closed phase:** 19 -- Walkthrough Foregrounding Fix (WALK-01 GREEN; SC3b 13/13 PASS) (closed 2026-05-17)
 - **Last closed plan:** 20-01 -- Wave-0 fences + RED stubs (retroactively closed after parallel-execution merge; Tasks 4-6 authored as immediately GREEN regression gates per the Wave-1/Wave-2 implementations that landed first)
 - **Last activity:** 2026-05-18 — Plan 20-01 closed across two sessions; 6 task commits total (454080f2eb8, cdea35d6667, 6768e7985d5, 25037a87eff, 13e68bc1eff, 767eeb81f6f); 7 RED stubs + Mandate D matrix recordRejectionCalls column; AUTH-03/AUTH-04 marked complete
-- **Last session:** 2026-05-18
+- **Last session:** 2026-05-18T02:34:11.255Z
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
 
