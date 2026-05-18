@@ -39,6 +39,7 @@ import {
 	ProposeEditRequest,
 	RecordRejectionRequest,
 	RecordContractOverrideRequest,
+	CreateDecisionNodeRequest,
 	AtomicAcceptRequest,
 	QueryAttemptByStagingPathRequest,
 	QueryNodesRequest,
@@ -62,6 +63,7 @@ import {
 	type ProposeEditParams, type ProposeEditResult,
 	type RecordRejectionParams, type RecordRejectionResult,
 	type RecordContractOverrideParams, type RecordContractOverrideResult,
+	type CreateDecisionNodeParams, type CreateDecisionNodeResult,
 	type AtomicAcceptParams, type AtomicAcceptResult,
 	type QueryAttemptByStagingPathParams, type QueryAttemptByStagingPathResult,
 	type QueryNodesParams, type QueryNodesResult,
@@ -454,6 +456,21 @@ export class KernelClient {
 	// Phase 7 Plan 07-07 — DRIFT-06 + DRIFT-01 + DRIFT-03 + DRIFT-04 + DRIFT-05 surfaces.
 	recordContractOverride(params: RecordContractOverrideParams): Promise<RecordContractOverrideResult> {
 		return this.sendWithTimeout(RecordContractOverrideRequest, params);
+	}
+	/**
+	 * Phase 20 AUTH-01 — author a DecisionNode via the kernel write path.
+	 *
+	 * Mandate A: `params.body` MUST come from a human-authored input. The SOLE production
+	 * caller is canvas/authoring-flow.ts (Plan 20-03), which enforces opts.value === '' on
+	 * the rationale showInputBox so the rationale text originates from human keystrokes
+	 * (never an LLM template / autocomplete prefill).
+	 *
+	 * Mandate B fence: refuse-deep05-write.sh blocks any inspector/ import of this method.
+	 * The method lives on KernelClient ONLY; ReadonlyKernelClient Pick<> intentionally
+	 * excludes 'createDecisionNode' (AUTH-04 / Pitfall E).
+	 */
+	createDecisionNode(params: CreateDecisionNodeParams): Promise<CreateDecisionNodeResult> {
+		return this.sendWithTimeout(CreateDecisionNodeRequest, params);
 	}
 	runDriftAndLock(params: RunDriftAndLockParams): Promise<RunDriftAndLockResult> {
 		return this.sendWithTimeout(RunDriftAndLockRequest, params);

@@ -561,6 +561,38 @@ export interface RecordContractOverrideResult {
 
 export const RecordContractOverrideRequest = new RequestType<RecordContractOverrideParams, RecordContractOverrideResult, Error>('graph.recordContractOverride');
 
+// -------- graph.createDecisionNode (Phase 20 AUTH-01) --------
+//
+// Bridge-side mirror of the kernel's CreateDecisionNodeRequest. Wire name
+// 'graph.createDecisionNode' MUST match kernel/src/rpc/methods.ts byte-for-byte
+// (transport-level string equality).
+//
+// Mandate A: the SOLE production caller is canvas/authoring-flow.ts (Plan 20-03),
+// which enforces showInputBox.value === '' so the rationale body originates from human
+// keystrokes (never an LLM template / autocomplete prefill).
+//
+// Mandate B fence: refuse-deep05-write.sh BANNED array includes 'createDecisionNode' since
+// Plan 20-01 — inspector/ cannot import CreateDecisionNodeRequest. The new method lives on
+// KernelClient (NOT in ReadonlyKernelClient Pick<>).
+
+export interface CreateDecisionNodeParams {
+	body: string;
+	anchor: {
+		file?: string;
+		symbol?: string;
+		ticket_id?: string;
+		line?: number;
+	};
+	derived_under_priority?: string;
+	repo_id?: string;
+}
+
+export interface CreateDecisionNodeResult {
+	node_id: string;
+}
+
+export const CreateDecisionNodeRequest = new RequestType<CreateDecisionNodeParams, CreateDecisionNodeResult, Error>('graph.createDecisionNode');
+
 // -------- graph.runDriftAndLock (Plan 07-07 — DRIFT-01 + DRIFT-03 bridge integration) --------
 //
 // Bridge-side mirror of the kernel's RunDriftAndLockRequest. on-will-save.ts calls this
