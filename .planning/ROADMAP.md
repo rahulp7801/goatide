@@ -505,7 +505,7 @@
 2. On Windows, the GoatIDE NSIS installer is signed via Azure Trusted Signing; running the installer shows the publisher name in the SmartScreen dialog (if shown) rather than "Unknown Publisher"; `signtool verify /pa GoatIDE-Setup.exe` exits 0.
 3. On a GoatIDE install that is one or more versions behind the latest GitHub Release, the app surfaces an in-app notification "GoatIDE update available (vX.Y.Z) — Restart Now / Later" within the first launch after the new release is published; clicking "Restart Now" applies the NSIS/DMG update; the updater NEVER fires when `VSCODE_DEV` is set (dev-mode guard, enforced by unit test); VS Code's built-in `IUpdateService` is stubbed to no-op so no duplicate update logic runs.
 
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 **Plan 22-01:** Closed -- Wave-0 fences + electron-builder Wave-1 baseline
 
@@ -540,5 +540,5 @@
 | 19. Walkthrough Foregrounding Fix | 3/4 | Complete    | 2026-05-17 |
 | 20. DecisionNode Authoring Write Path | 5/5 | Complete    | 2026-05-18 |
 | 21. Cross-Repo Activation (Single-DB) | 4/4 | Complete | 2026-05-18 |
-| 22. Distribution (C1/C2/C3) | 2/5 | In Progress|  |
+| 22. Distribution (C1/C2/C3) | 3/5 | In Progress|  |
 

@@ -38,7 +38,7 @@
 ### Distribution (Phase 22 — external-cert gated)
 
 - [ ] **C1**: macOS notarization via `@electron/notarize ^3.1.1` (notarytool only; altool removed by Apple). `beforeSign` hook re-signs `better_sqlite3.node` + all `.node` files with hardened runtime before main `.app` signing. `xcrun stapler staple` post-notarize embeds ticket in DMG. Requires Apple Developer account ($99/yr — operational prereq). **Infrastructure complete (Plan 22-02, commit `0763ed9fe6c`) — cert-gated; live signed-build UAT deferred to CI when Apple Developer ID secrets land.**
-- [ ] **C2**: Windows code-signing via **Azure Trusted Signing** (CI-friendly path — EV USB tokens cannot be used in GitHub Actions). `win.azureSignOptions` in `electron-builder.yml`. SmartScreen reputation accumulates over time (no instant EV bypass post-March 2024). Requires Azure Trusted Signing account (operational prereq).
+- [ ] **C2**: Windows code-signing via **Azure Trusted Signing** (CI-friendly path -- EV USB tokens cannot be used in GitHub Actions). `win.azureSignOptions` in `electron-builder.yml`. SmartScreen reputation accumulates over time (no instant EV bypass post-March 2024). Requires Azure Trusted Signing account (operational prereq). **Infrastructure complete (Plan 22-03, commits `8f095bd2991`..`f915f395c69`) -- cert-gated; live signed-build UAT deferred to CI when Azure Trusted Signing account + secrets land.**
 - [x] **C3**: Auto-update unified via `electron-updater ^6.8.3` on GitHub Releases (Squirrel.Windows deprecated). Single `goatideUpdater.ts` module at `src/vs/goatide/update/`; call site in `src/vs/code/electron-main/main.ts` guarded by `!process.env.VSCODE_DEV` (HARDEN-06 pattern). VS Code's upstream `IUpdateService` stubbed to prevent duplicate update notifications. `update-downloaded` event prompts "Restart Now / Later" — never auto-restart (Mandate D spirit). NSIS for Windows; `mac.target: [dmg, zip]` for macOS (zip required for `latest-mac.yml` update metadata).
 
 ---
@@ -316,5 +316,5 @@
 | XREPO-02 | 21 — Cross-Repo Activation (Single-DB) | Closed 2026-05-18 (`9881d24ef7f`) |
 | XREPO-03 | 21 — Cross-Repo Activation (Single-DB) | Closed 2026-05-18 (`741a8c7b7a2`) |
 | C1 | 22 — Distribution | Infrastructure complete — cert-gated; awaiting CI Apple secrets |
-| C2 | 22 — Distribution | Pending |
+| C2 | 22 — Distribution | Infrastructure complete -- cert-gated; awaiting Azure Trusted Signing provisioning |
 | C3 | 22 — Distribution | Complete |
