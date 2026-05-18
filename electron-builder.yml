@@ -34,9 +34,18 @@ mac:
   target:
     - dmg
     - zip
-  hardenedRuntime: true   # Phase 22 needs hardened runtime for notarization; harmless without notarization
-  category: public.app-category.developer-tools
+  hardenedRuntime: true                                          # Phase 18 (already present)
+  category: public.app-category.developer-tools                  # Phase 18 (already present)
+  entitlements: build/signing/entitlements.mac.plist             # Phase 22 C1
+  entitlementsInherit: build/signing/entitlements.mac.inherit.plist  # Phase 22 C1
+  notarize: false                                                # Phase 22 C1: custom afterSign hook controls notarization (no double-notarize)
+  gatekeeperAssess: false                                        # Phase 22 C1: suppress local gatekeeper check during build (CI does not have a user keychain)
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false
+
+# Phase 22 C1 (Plan 22-02): macOS signing + notarization hooks. Hooks short-circuit on non-darwin platforms.
+beforeSign: build/signing/beforeSign.cjs
+afterSign: build/signing/afterSign.cjs
+afterAllArtifactBuild: build/signing/afterAllArtifactBuild.cjs
