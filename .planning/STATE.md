@@ -1,5 +1,19 @@
 ---
 gsd_state_version: 1.0
+milestone: v2.1
+milestone_name: Verify + Ship
+status: executing
+last_updated: "2026-05-18T01:57:00Z"
+last_activity: 2026-05-18 — Plan 20-02 closed; graph.createDecisionNode kernel RPC + bridge KernelClient.createDecisionNode method shipped; Wave-0 RED stub createDecisionNode.spec.ts flipped GREEN; commits 6768e7985d5 (kernel) + 3e7198ca2bd (bridge)
+progress:
+  total_phases: 24
+  completed_phases: 6
+  total_plans: 36
+  completed_plans: 35
+---
+
+---
+gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Closeout
 status: planning
@@ -102,18 +116,29 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 ## Current
 
 - **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
-- **Active phase:** none (Phase 20 next -- DecisionNode Authoring Write Path)
-- **Status:** Ready to plan
+- **Active phase:** 20 -- DecisionNode Authoring Write Path (executing)
+- **Status:** Executing — Plans 20-01 + 20-02 closed; Plans 20-03 (authoring-flow), 20-04 (post-hoc Reject button), 20-05 (phase verify) remain
 - **Last closed phase:** 19 -- Walkthrough Foregrounding Fix (WALK-01 GREEN; SC3b 13/13 PASS) (closed 2026-05-17)
-- **Last closed plan:** 19-04 -- Wave 3 phase verify + SC3b DOM-based detection + closure ceremony
-- **Last activity:** 2026-05-17 — Phase 19 closed; WALK-01 GREEN; flakiness fence 3/3 EXIT 0; 19-VERIFICATION.md + 19-SUMMARY.md authored
-- **Last session:** 2026-05-17
+- **Last closed plan:** 20-02 -- AUTH-01 Wave-1 graph.createDecisionNode kernel RPC + bridge KernelClient method
+- **Last activity:** 2026-05-18 — Plan 20-02 closed; graph.createDecisionNode kernel RPC + bridge method shipped; Wave-0 RED stub flipped GREEN; commits 6768e7985d5 + 3e7198ca2bd
+- **Last session:** 2026-05-18
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-18 — Plan 20-02 closed (AUTH-01 Wave-1: graph.createDecisionNode kernel RPC + bridge KernelClient method)
+
+- **Plan 20-02 closure:** 2/2 tasks completed; 2 commits (`6768e7985d5` kernel RPC + `3e7198ca2bd` bridge method). AUTH-01 requirement: kernel write path live; bridge transport adapter ready for Plan 20-03 to call from canvas/authoring-flow.ts.
+- **Decision (handler is synchronous):** kernel `connection.onRequest(CreateDecisionNodeRequest, requireAuth(...))` is a sync arrow function, mirroring the `RecordContractOverrideRequest` sibling shape. `dao.seed` is sync (better-sqlite3 + drizzle-orm). No `await` needed.
+- **Decision (Mandate A boundary check at handler entry):** Even though Plan 20-03's `canvas/authoring-flow.ts` will enforce `showInputBox.value === ''` upstream, the kernel handler defensively throws on empty/whitespace `body`. Defense-in-depth — a future regression of the bridge fence would be caught at the kernel boundary instead of producing a DecisionNode with empty body.
+- **Decision (repo_id rides in provenance.detail, NOT payload.anchor):** Payload.anchor is the per-file/symbol pointer that drives `resolveAnchor` at query time; repo_id is workspace-level scoping that belongs in provenance bookkeeping. Phase 21 XREPO-01 forward-compat default `'primary'`.
+- **Decision (NO edge write in handler):** Phase 20 OQ#3 scope-cut. Constraint-link picker UI (which would let the user select 1+ ConstraintNodes the new DecisionNode `derived_from`) is deferred to v2.2. Standalone DecisionNodes can be wired to ConstraintNodes by Phase 21+ tooling — the bitemporal model permits late edge insertion at any valid_from.
+- **Decision (track Plan 20-01's uncommitted Wave-0 RED stub as part of Plan 20-02):** `kernel/src/test/rpc/createDecisionNode.spec.ts` was authored by Plan 20-01 but never committed. To make the RED→GREEN flip claim reproducible across clean clones, Plan 20-02's Task 01 commit included the stub. Plan 20-01's own SUMMARY (when authored) should reference commit `6768e7985d5` for the stub artifact rather than re-introducing it.
+- **Mandate B fence verified live:** `refuse-deep05-write.sh` exit 0 (12 inspector/ files scanned, zero `createDecisionNode` token). `refuse-deep05-write.meta.sh` `META PASS` with positive control firing on Phase 3 fixture (banned `createDecisionNode` token).
+- **Pre-existing flakiness observed:** Kernel suite `dao-repo-id.spec.ts > queryAsOf rows carry repo_id="primary"` failed on first run, then passed on subsequent runs (flaky initialization race; not introduced by Plan 20-02). Bridge suite has 16 pre-existing failing tests (Phase 7 drift-flow ×6, POLISH-01 walkthrough ×1, CANV-01 ×4, DriftFindings ×2, HypotheticalImpact ×3) — confirmed pre-existing via `git stash` baseline. Out-of-scope for Plan 20-02; future plans may address.
 
 ### 2026-05-17 — Phase 19 closed (Walkthrough Foregrounding Fix)
 
