@@ -39,6 +39,7 @@ import {
 	ProposeEditRequest,
 	RecordRejectionRequest,
 	RecordContractOverrideRequest,
+	CreateDecisionNodeRequest,
 	AtomicAcceptRequest,
 	QueryAttemptByStagingPathRequest,
 	QueryNodesRequest,
@@ -65,6 +66,7 @@ import {
 	type ProposeEditResult,
 	type RecordRejectionResult,
 	type RecordContractOverrideResult,
+	type CreateDecisionNodeResult,
 	type AtomicAcceptResult,
 	type QueryAttemptByStagingPathResult,
 	type QueryNodesResult,
@@ -445,6 +447,60 @@ function bindHandlers(
 		}
 
 		return { attempt_node_id: attemptId };
+	}));
+
+	// Phase 20 Plan 20-02 — graph.createDecisionNode (AUTH-01).
+	//
+	// Human-authored DecisionNode write path. The bridge canvas/authoring-flow.ts (Plan 20-03)
+	// is the SOLE production caller; it enforces Mandate A upstream by calling showInputBox
+	// with opts.value === '' so the rationale body originates from human keystrokes.
+	//
+	// Mandate B fence: refuse-deep05-write.sh BANNED array includes 'createDecisionNode' since
+	// Plan 20-01 — inspector/ cannot import CreateDecisionNodeRequest. The new method lives on
+	// KernelClient (NOT in the ReadonlyKernelClient Pick<>) so the structural narrowing keeps
+	// the read-only inspector layer ignorant of the write surface.
+	//
+	// Pattern reference: RecordContractOverrideRequest handler above. Differs in that no edge
+	// is written (Phase 20 OQ#3 scope-cut: constraint-link picker deferred to v2.2). Single-tx
+	// dao.seed call + provenance attachment, then return {node_id}.
+	//
+	// Boundary validation: body must be non-empty trimmed (Mandate A boundary check; upstream
+	// the bridge enforces showInputBox.value === ''). Anchor: at least one of file|symbol|
+	// ticket_id required so the node is queryable via resolveAnchor.
+	//
+	// repo_id: optional; defaults to 'primary' (Phase 21 XREPO-01 forward-compat). The
+	// repo_id rides in provenance.detail, NOT in payload.anchor — payload.anchor is the
+	// per-file/symbol pointer that drives anchor resolution.
+	connection.onRequest(CreateDecisionNodeRequest, requireAuth((params): CreateDecisionNodeResult => {
+		if (!params.body || params.body.trim().length === 0) {
+			throw new Error('graph.createDecisionNode: body must be a non-empty trimmed string (Mandate A: human-authored rationale required)');
+		}
+		const a = params.anchor;
+		if (!a || (!a.file && !a.symbol && !a.ticket_id)) {
+			throw new Error('graph.createDecisionNode: anchor must include at least one of file|symbol|ticket_id');
+		}
+
+		const { id: nodeId } = ctx.dao.seed({
+			payload: {
+				kind: 'DecisionNode',
+				body: params.body,
+				anchor: params.anchor,
+				derived_under_priority: params.derived_under_priority,
+				cite_eligible: true,
+				detail: {},
+			},
+			provenance: {
+				source: 'canvas',
+				actor: 'developer',
+				detail: {
+					action: 'create_decision_node',
+					via: 'authoring-flow',
+					repo_id: params.repo_id ?? 'primary',
+				},
+			},
+		});
+
+		return { node_id: nodeId };
 	}));
 
 	// Phase 7 Plan 07-07 — graph.runDriftAndLock (DRIFT-01 + DRIFT-03 bridge integration).

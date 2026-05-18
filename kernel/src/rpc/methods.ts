@@ -220,6 +220,44 @@ export interface RecordContractOverrideResult {
 
 export const RecordContractOverrideRequest = new RequestType<RecordContractOverrideParams, RecordContractOverrideResult, Error>('graph.recordContractOverride');
 
+// -------- graph.createDecisionNode (Phase 20 AUTH-01) --------
+//
+// Human-authored DecisionNode write path. The bridge canvas/authoring-flow.ts (Plan 20-03)
+// is the SOLE production caller; it enforces Mandate A by calling showInputBox with
+// opts.value === '' so the rationale body originates from human keystrokes, never an LLM.
+//
+// Mandate B fence: refuse-deep05-write.sh BANNED array includes 'createDecisionNode' since
+// Plan 20-01; any inspector/*.ts file importing this RPC fails the CI gate. The new method
+// lives on KernelClient (NOT in the ReadonlyKernelClient Pick<>) so the structural narrowing
+// keeps the read-only inspector layer ignorant of the write surface.
+//
+// Pattern reference: RecordContractOverrideRequest (lines 194-221) — closest single-tx write
+// RPC. createDecisionNode differs in that it does NOT write an edge (Phase 20 OQ#3 scope-cut:
+// constraint-link picker deferred to v2.2; this RPC creates a standalone DecisionNode with
+// no outgoing edges, equivalent to the historical Plan 04-02 atomicAccept pre-edge state).
+//
+// repo_id: optional, default 'primary'. Phase 21 XREPO-01 forward-compat — once cross-repo
+// workspace support lands, the bridge will pass the active workspace's repo_id; for v2.1 the
+// param is always omitted on the bridge side and the server defaults it to 'primary'.
+
+export interface CreateDecisionNodeParams {
+	body: string;
+	anchor: {
+		file?: string;
+		symbol?: string;
+		ticket_id?: string;
+		line?: number;
+	};
+	derived_under_priority?: string;
+	repo_id?: string;
+}
+
+export interface CreateDecisionNodeResult {
+	node_id: string;
+}
+
+export const CreateDecisionNodeRequest = new RequestType<CreateDecisionNodeParams, CreateDecisionNodeResult, Error>('graph.createDecisionNode');
+
 // -------- graph.atomicAccept (CANV-07) --------
 //
 // Persists an Attempt node with attempt_kind='accepted', tier, accept_latency_ms in the
