@@ -12,7 +12,7 @@
 | v1.1      | Closed | 03, 04, 05, 06, 07 | Traversal, Canvas, Telemetry, MCP, Drift |
 | v1.2      | Closed (2026-05-13) | 08, 09, 10, 11, 12, 13 | Runtime fixes, ergonomics, polish, ceremony, hardening, closeout |
 | v2.0      | Closed (2026-05-16) | 14, 15, 16, 17 | 10 requirements: DEEP-01..06, POLISH-01..04; C3 auto-update → v2.1 |
-| v2.1      | Active (started 2026-05-16) | 18, 19, 20, 21, 22 | 4/5 phases closed (18, 19, 20, 21); Phase 22 (distribution) cert-gated |
+| v2.1      | Partial (4.5/5 cert-gated) | 18, 19, 20, 21, 22 | 5/5 phases executed; C3 GREEN (closed 2026-05-18); C1/C2 cert-gated (infrastructure landed; cert procurement pending) |
 
 > Milestone boundaries above are *best-guess* from commit dates + your `project_v2_milestone_locked.md` memory entry. If wrong, edit this table — the v1.x phases are closed work and the boundary doesn't affect ongoing decisions.
 
@@ -43,7 +43,7 @@
 - [x] **Phase 19: Walkthrough Foregrounding Fix** - GoatIDE walkthrough wins first-launch race against VS Code default (closed 2026-05-17)
 - [x] **Phase 20: DecisionNode Authoring Write Path** ✓ Closed - addDecisionNode write path + post-hoc Reject button + Mandate A/B fence extensions
 - [x] **Phase 21: Cross-Repo Activation (Single-DB)** - repo_id on 4 write RPCs + WorkspaceRepoState + native HTML title tooltip + first end-to-end cross-repo edge integration test (closed 2026-05-18)
-- [ ] **Phase 22: Distribution (C1/C2/C3)** - macOS notarization, Windows Azure Trusted Signing, electron-updater auto-update
+- [~] **Phase 22: Distribution (C1/C2/C3)** ~ Partially closed (C3 GREEN; C1/C2 cert-gated) - electron-updater wiring + Mandate D dialog GREEN; macOS notarization + Azure Trusted Signing infrastructure landed; cert procurement pending
 
 ---
 
@@ -505,11 +505,20 @@
 2. On Windows, the GoatIDE NSIS installer is signed via Azure Trusted Signing; running the installer shows the publisher name in the SmartScreen dialog (if shown) rather than "Unknown Publisher"; `signtool verify /pa GoatIDE-Setup.exe` exits 0.
 3. On a GoatIDE install that is one or more versions behind the latest GitHub Release, the app surfaces an in-app notification "GoatIDE update available (vX.Y.Z) — Restart Now / Later" within the first launch after the new release is published; clicking "Restart Now" applies the NSIS/DMG update; the updater NEVER fires when `VSCODE_DEV` is set (dev-mode guard, enforced by unit test); VS Code's built-in `IUpdateService` is stubbed to no-op so no duplicate update logic runs.
 
-**Plans:** 4/5 plans executed
+**Closed:** 2026-05-18 (partial -- C3 GREEN; C1/C2 cert-gated)
 
-**Plan 22-01:** Closed -- Wave-0 fences + electron-builder Wave-1 baseline
+**Plans:** 5/5 plans complete
 
-**Plan 22-02:** Closed cert-gated -- C1 macOS signing infrastructure complete (electron-builder.yml hooks + entitlements plists + @electron/notarize); live signed-build UAT deferred to CI (Windows host, Apple Developer ID secrets not yet available). Next: Plan 22-03 (C2 Windows Azure Trusted Signing config, also cert-gated).
+- [x] Plan 22-01 -- Wave-0 fences: IUpdateService no-op stub + VSCODE_DEV guard + dev-app-update.yml gitignore
+- [x] Plan 22-02 -- C1 macOS signing infrastructure (cert-gated): electron-builder.yml hooks + entitlements plists + @electron/notarize
+- [x] Plan 22-03 -- C2 Windows Azure Trusted Signing config (cert-gated): azureSignOptions block + operator runbook + sentinel-detector
+- [x] Plan 22-04 -- C3 electron-updater wiring + Mandate D Restart Now/Later dialog (GREEN)
+- [x] Plan 22-05 -- Wave 3 phase verify + closure ceremony
+
+**What shipped:**
+- C1 (macOS notarization): infrastructure complete (`build/signing/` hooks + entitlements + @electron/notarize); cert procurement pending (Apple Developer account + 5 CI env vars required)
+- C2 (Windows Azure Trusted Signing): infrastructure complete (azureSignOptions block + 22-03-AZURE-SETUP.md runbook + sentinel-detector); Azure account provisioning pending (follow runbook Steps 1-8)
+- C3 (electron-updater + Mandate D): CLOSED -- GoatIdeNoOpUpdateService replaces VS Code IUpdateService; electron-updater@^6.8.3 wired to GitHub Releases; VSCODE_DEV guard; autoInstallOnAppQuit=false; Restart Now/Later dialog (5/5 unit tests GREEN; 3-run flakiness fence 3/3 EXIT 0; 0 code.visualstudio.com requests confirmed)
 
 ---
 
@@ -540,5 +549,5 @@
 | 19. Walkthrough Foregrounding Fix | 3/4 | Complete    | 2026-05-17 |
 | 20. DecisionNode Authoring Write Path | 5/5 | Complete    | 2026-05-18 |
 | 21. Cross-Repo Activation (Single-DB) | 4/4 | Complete | 2026-05-18 |
-| 22. Distribution (C1/C2/C3) | 4/5 | In Progress|  |
+| 22. Distribution (C1/C2/C3) | 5/5 | Partial (C3 closed; C1/C2 cert-gated) | 2026-05-18 |
 

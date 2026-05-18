@@ -1,5 +1,20 @@
 ---
 gsd_state_version: 1.0
+milestone: v2.1
+milestone_name: Verify + Ship
+status: completed
+last_updated: "2026-05-18T19:00:00Z"
+last_activity: 2026-05-18 -- Phase 22 closed; C3 GREEN; C1/C2 cert-gated; v2.1 4.5/5 phases; 22-VERIFICATION.md + 22-SUMMARY.md authored
+progress:
+  total_phases: 24
+  completed_phases: 9
+  total_plans: 48
+  completed_plans: 48
+  percent: 100
+---
+
+---
+gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Closeout
 status: completed
@@ -200,26 +215,39 @@ progress:
 
 See: `.planning/PROJECT.md` (updated 2026-05-16)
 
-**Core value:** Every save produces a tier-classified receipt anchored to explicit graph rationale — no LLM-generated explanations in the receipt path (Mandate A).
-**Current focus:** v2.1 milestone — verification gate (Phase 18) before distribution + authoring + cross-repo + walkthrough work.
+**Core value:** Every save produces a tier-classified receipt anchored to explicit graph rationale -- no LLM-generated explanations in the receipt path (Mandate A).
+**Current focus:** v2.1 milestone partial-close (4.5/5 phases; C3 GREEN; C1/C2 cert-gated). v2.2 backlog next after cert procurement (Apple Developer + Azure Trusted Signing accounts).
 
 ---
 
 ## Current
 
-- **Active milestone:** v2.1 -- Verify + Ship (started 2026-05-16)
-- **Active phase:** none (Phase 22 next -- Distribution C1/C2/C3, cert-gated)
-- **Status:** Phase 21 closed -- v2.1 milestone 4/5 phases complete (Phases 18, 19, 20, 21 closed; Phase 22 pending cert procurement)
-- **Last closed phase:** 21 -- Cross-Repo Activation (Single-DB) (XREPO-01..03 GREEN; 13/13 SC3b PASS; 3-run flakiness fence 3/3 EXIT 0) (closed 2026-05-18)
-- **Last closed plan:** 21-04 -- Wave 3 phase verify + closure ceremony
-- **Last activity:** 2026-05-18 -- Phase 21 closed; XREPO-01..03 GREEN; flakiness fence 3/3 EXIT 0; 21-VERIFICATION.md + 21-SUMMARY.md authored
-- **Last session:** 2026-05-18T18:07:00.897Z
+- **Active milestone:** v2.1 -- Verify + Ship (partial; 4.5/5 -- C3 GREEN; C1/C2 cert-gated; revisit when Apple Developer + Azure Trusted Signing accounts are provisioned)
+- **Active phase:** 22 partial (C1/C2 cert-gated; C3 GREEN). Revisit when Apple Developer + Azure Trusted Signing accounts are provisioned.
+- **Status:** Phase 22 closed (partial) -- C3 GREEN (5/5 unit tests; 3-run flakiness fence 3/3 EXIT 0; 0 CDN hits); C1/C2 infrastructure landed cert-gated; v2.1 milestone 4.5/5 phases; v2.2 backlog next after cert procurement
+- **Last closed phase:** 22 -- Distribution (C1/C2/C3) (C3 GREEN; C1/C2 cert-gated; 5/5 plans; Phase 18 SC13 regression gate held) (closed 2026-05-18)
+- **Last closed plan:** 22-05 -- Wave 3 phase verify + closure ceremony
+- **Last activity:** 2026-05-18 -- Phase 22 closed; C3 GREEN; C1/C2 cert-gated; 22-VERIFICATION.md + 22-SUMMARY.md authored
+- **Last session:** 2026-05-18T19:00:00Z
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
+
+v2.1 status (2026-05-18): 5/5 phases executed. C3 GREEN (closed). C1+C2 cert-gated (infrastructure complete; Apple Developer + Azure Trusted Signing account procurement pending). Phase 22 is the final v2.1 phase. Next: v2.2 backlog (see ROADMAP).
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-18 -- Phase 22 closed (Distribution C1/C2/C3)
+
+- **Phase 22 closure:** C3 GREEN (1/3 requirements closed); C1+C2 cert-gated (2/3 infrastructure landed; cert procurement pending); 5/5 plans executed (Plans 22-01..22-05); 4-wave structure: Wave 0 (IUpdateService stub + VSCODE_DEV guard + gitignore) -> Wave 1 (C1 macOS signing + C2 Windows Azure Trusted Signing, both cert-gated) -> Wave 2 (C3 electron-updater wiring + Mandate D dialog) -> Wave 3 (phase verify + closure ceremony). Phase 18 SC13 regression gate held: 3-run flakiness fence 3/3 EXIT 0; 0 code.visualstudio.com requests. GoatIde unit tests 5/5 PASS. Bridge 145/157 (16 pre-existing); Kernel byte-equal vs Phase 21. 5 CI gates EXIT 0; 2 meta-tests META PASS; tsc GREEN; layers GREEN.
+- **Decision (5-plan partition rationale):** Wave 0 fences before any feature code -- IUpdateService no-op stub + VSCODE_DEV guard + gitignore before electron-updater wiring to prevent Pitfall H dual-updater crash. Wave 1 C1+C2 in parallel (cert-gated) -- both touch only electron-builder.yml (non-overlapping mac: vs win: sections) and planning artifacts. Wave 2 C3 -- electron-updater wiring + Mandate D dialog. Wave 3 closure ceremony. Total: 5 plans executed in sequence.
+- **Mandate D enforcement strategy:** `autoInstallOnAppQuit: false` + `Restart Now / Later` dialog (response===0 -> `quitAndInstall(false, true)`; response>0 -> no action). Updates ONLY apply on explicit user click. NEVER silently on next quit. Stricter than electron-updater Pattern 4 default (autoInstallOnAppQuit true = silent next-quit-applies). Deliberate -- revisit in v2.2 if user feedback indicates looser semantics preferred.
+- **Pitfall H mitigation chain:** GoatIdeNoOpUpdateService replaces all 4 platform-specific IUpdateService bindings at app.ts:1073-1089 (`Win32UpdateService`, `LinuxUpdateService`, `SnapUpdateService`, `DarwinUpdateService` removed from DI container). electron-updater wired to GitHub Releases ONLY (not code.visualstudio.com). SC13 CDP smoke confirms 0 code.visualstudio.com requests across all 3 flakiness-fence runs.
+- **Lazy provider pattern for testability:** Static `import { autoUpdater } from 'electron-updater'` causes `TypeError: Cannot read properties of undefined (reading 'getVersion')` in Electron renderer test context (electron.app unavailable). Solution: lazy `_autoUpdaterProvider.get()` and `_dialogApi.showMessageBox()` functions; tests replace `.get` / `.showMessageBox` with stubs. This pattern is reusable for any future main-process-only API integration.
+- **Cert-availability status:** C1 -- cert-absent (2026-05-18); Windows host used in-session; Apple Developer ID secrets (APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID + CSC_LINK + CSC_KEY_PASSWORD) not available on CI macOS runner; infrastructure complete (build/signing/ hooks + entitlements + @electron/notarize). C2 -- cert-absent (2026-05-18); Azure Trusted Signing account not yet provisioned; YAML `<TBD-...>` placeholders remain; infrastructure complete (azureSignOptions block + operator runbook + sentinel-detector).
+- **Deferred to v2.2:** kernel shutdown RPC (explicit flush + exit before quitAndInstall to prevent NSIS update failure on Windows with open kernel file handle); CI workflow YAML authoring (`.github/workflows/*.yml` for automated build + publish pipeline); SmartScreen reputation accumulation timeline; possible Restart-Later -> next-quit-applies semantics revision; UAT automation for the auto-update flow; inner-exe Windows signing verification (22-RESEARCH.md Open Question #1 MEDIUM confidence).
+- **v2.1 milestone status:** Phase 22 closed partial (4.5/5). C3 GREEN. C1+C2 cert-gated. Phase 22 is the LAST v2.1 phase. When C1+C2 certs land: flip REQUIREMENTS C1/C2 from [ ] to [x]; flip ROADMAP Phase 22 from [~] to [x]; update STATE.md decisions ledger; mark v2.1 milestone complete (5/5). v2.2 backlog available in ROADMAP.
 
 ### 2026-05-18 -- Phase 21 closed (Cross-Repo Activation Single-DB)
 

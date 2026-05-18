@@ -315,6 +315,6 @@
 | XREPO-01 | 21 — Cross-Repo Activation (Single-DB) | Closed 2026-05-18 (`a8a18abdc06`, `9881d24ef7f`) |
 | XREPO-02 | 21 — Cross-Repo Activation (Single-DB) | Closed 2026-05-18 (`9881d24ef7f`) |
 | XREPO-03 | 21 — Cross-Repo Activation (Single-DB) | Closed 2026-05-18 (`741a8c7b7a2`) |
-| C1 | 22 — Distribution | Infrastructure complete — cert-gated; awaiting CI Apple secrets |
-| C2 | 22 — Distribution | Infrastructure complete -- cert-gated; awaiting Azure Trusted Signing provisioning |
-| C3 | 22 — Distribution | Complete |
+| C1 | 22 — Distribution | Blocked 2026-05-18 (infrastructure landed Plan 22-02 commits `3cf21910b6c`..`0763ed9fe6c`; cert procurement pending -- Apple Developer account required; 5 CI env vars: APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID + CSC_LINK + CSC_KEY_PASSWORD) |
+| C2 | 22 — Distribution | Blocked 2026-05-18 (infrastructure landed Plan 22-03 commits `8f095bd2991`..`f915f395c69`; Azure account provisioning pending -- follow 22-03-AZURE-SETUP.md Steps 1-8; 3 CI env vars: AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET; 4 YAML placeholders to replace) |
+| C3 | 22 — Distribution | Closed 2026-05-18 (`b2437d3`, `89aa451`, `8d89b46`, `74ab538`) -- 5/5 unit tests GREEN; IUpdateService stub + VSCODE_DEV guard + Mandate D Restart Now/Later dialog + autoInstallOnAppQuit=false |
