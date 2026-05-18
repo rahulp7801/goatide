@@ -28,6 +28,10 @@ export interface LockfileContent {
 	auth_token: string;
 	started_at: string;
 	version: string;
+	// Phase 21 XREPO-01 -- canonical realpath of the daemon's graph.db (single-DB WAL isolation fence).
+	// Optional for backward compat: old lockfiles (pre-Phase-21) do not carry this field; the
+	// dbPath-keyed fence in startDaemon guards via `existing.db_path &&` before comparing.
+	db_path?: string;
 }
 
 /**

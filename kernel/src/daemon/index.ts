@@ -13,7 +13,7 @@
 // kernel/src/rpc/server.ts createKernelRpcServer factory.
 
 import * as net from 'node:net';
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync, realpathSync, unlinkSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { bindEphemeralPort, createTcpRpcServer } from './port-discovery.js';
@@ -122,12 +122,25 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 	// Bind first so we have the port for the lockfile.
 	const { server, port } = await bindEphemeralPort();
 
+	// Phase 21 XREPO-01 -- resolve symlinks and normalize separators once before lockfile construction.
+	// Graceful fallback: if the DB file does not exist yet (rare in practice -- callers run
+	// openDatabase before startDaemon), realpathSync would throw ENOENT; use the raw path so
+	// the startup guard is still written to the lockfile (the path will be consistent within
+	// a single test run where the file doesn't exist yet).
+	let canonicalDbPath: string;
+	try {
+		canonicalDbPath = realpathSync(args.dbPath);
+	} catch {
+		canonicalDbPath = args.dbPath;
+	}
+
 	const content: LockfileContent = {
 		pid: process.pid,
 		rpc_port: port,
 		auth_token: authToken,
 		started_at: new Date().toISOString(),
 		version: args.version,
+		db_path: canonicalDbPath,
 	};
 
 	// Atomic-create with one stale-clear retry. Two concurrent kernels racing here will
@@ -137,6 +150,15 @@ export async function startDaemon(args: StartDaemonArgs): Promise<DaemonHandle> 
 	if (creationResult === 'exists') {
 		const existing = readLockfile(lockfilePath);
 		if (existing && isPidAlive(existing.pid)) {
+			// Phase 21 XREPO-01 -- dbPath-keyed second-opener fence.
+			if (existing.db_path && existing.db_path === canonicalDbPath) {
+				await new Promise<void>((r) => server.close(() => r()));
+				throw new Error(
+					`startDaemon: another kernel daemon is already serving the same graph.db ` +
+					`(pid=${existing.pid}, port=${existing.rpc_port}, db_path=${existing.db_path}). ` +
+					`Single-DB WAL isolation: only one daemon may readwrite-open the same DB file.`,
+				);
+			}
 			await new Promise<void>((r) => server.close(() => r()));
 			throw new Error(`startDaemon: another kernel daemon is already serving (pid=${existing.pid}, port=${existing.rpc_port})`);
 		}
