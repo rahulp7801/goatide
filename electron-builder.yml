@@ -62,3 +62,14 @@ nsis:
 beforeSign: build/signing/beforeSign.cjs
 afterSign: build/signing/afterSign.cjs
 afterAllArtifactBuild: build/signing/afterAllArtifactBuild.cjs
+
+# Phase 22 C3 (Plan 22-04): GitHub Releases as the auto-update source.
+# electron-updater fetches latest.yml + latest-mac.yml from the latest release.
+# releaseType: draft means electron-builder uploads to a DRAFT GitHub Release --
+# promoting to a public release is a manual operator step (gate against publishing
+# broken/unsigned builds).
+publish:
+  provider: github
+  owner: rahulp7801
+  repo: goatide
+  releaseType: draft
