@@ -28,8 +28,21 @@ electronFuses:
   onlyLoadAppFromAsar: true
   enableEmbeddedAsarIntegrityValidation: true
 win:
-  target: nsis
-  artifactName: "${productName}-Setup-${arch}.${ext}"
+  target: nsis                                          # Phase 18 (already present)
+  artifactName: "${productName}-Setup-${arch}.${ext}"   # Phase 18 (already present)
+  # Phase 22 C2 (Plan 22-03): Azure Trusted Signing.
+  # Replace all <TBD-...> sentinels per .planning/phases/22-distribution/22-03-AZURE-SETUP.md
+  # before the first signed CI build. CI auth via AZURE_TENANT_ID / AZURE_CLIENT_ID /
+  # AZURE_CLIENT_SECRET env vars (service principal, NOT OIDC -- electron-builder uses
+  # Invoke-TrustedSigning PowerShell module which does not understand federated identity).
+  azureSignOptions:
+    publisherName: "<TBD-AZURE-CN>"                     # MUST match the CN in the Certificate Profile exactly
+    endpoint: "<TBD-AZURE-REGION-ENDPOINT>"             # e.g. https://neu.codesigning.azure.net/ for North Europe
+    certificateProfileName: "<TBD-PROFILE-NAME>"
+    codeSigningAccountName: "<TBD-ACCOUNT-NAME>"        # Trusted Signing Account name (NOT the App Registration name)
+    fileDigest: "SHA256"
+    timestampDigest: "SHA256"
+    timestampRfc3161: "http://timestamp.acs.microsoft.com"
 mac:
   target:
     - dmg
