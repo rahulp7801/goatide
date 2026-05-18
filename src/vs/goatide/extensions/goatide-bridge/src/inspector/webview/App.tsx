@@ -39,7 +39,7 @@ import {
 	type WireNodeSnapshot,
 	type WireEdgeSnapshot,
 } from './wireToInspectorRow.js';
-import { Graph } from './Graph.js';
+import { Graph, type WorkspaceRepoEntry } from './Graph.js';
 import { Slider } from './Slider.js';
 import { TruncationBanner } from './TruncationBanner.js';
 import { PALETTE } from './palette.js';
@@ -53,6 +53,8 @@ interface AppState {
 	loading: boolean;
 	error: string | null;
 	selectedNodeId: string | null;
+	/** Phase 21 XREPO-03 -- workspace repos from inspector.show payload for node tooltip repoLabel. */
+	workspaceRepos: WorkspaceRepoEntry[];
 }
 
 type Action =
@@ -63,6 +65,7 @@ type Action =
 		edges: InspectorEdgeRow[];
 		truncated: boolean;
 		transitions: string[] | undefined;
+		workspaceRepos: WorkspaceRepoEntry[] | undefined;
 	}
 	| { type: 'error'; reason: string }
 	| { type: 'select'; id: string }
@@ -78,6 +81,7 @@ function reducer(state: AppState, action: Action): AppState {
 				edges: action.edges,
 				truncated: action.truncated,
 				transitions: action.transitions ?? state.transitions,
+				workspaceRepos: action.workspaceRepos ?? state.workspaceRepos,
 				loading: false,
 				error: null,
 			};
@@ -99,6 +103,7 @@ const INITIAL_STATE: AppState = {
 	loading: true,
 	error: null,
 	selectedNodeId: null,
+	workspaceRepos: [],
 };
 
 export interface AppProps {
@@ -130,6 +135,8 @@ export function App({ rpc }: AppProps): React.ReactElement {
 					edges: msg.edges.map((e) => wireToInspectorEdgeRow(e as WireEdgeSnapshot)),
 					truncated: msg.truncated,
 					transitions: msg.transitions,
+					// Phase 21 XREPO-03 -- thread workspace_repos from inspector.show into reducer state.
+					workspaceRepos: msg.workspace_repos as WorkspaceRepoEntry[] | undefined,
 				});
 			} else if (msg.type === 'inspector.error') {
 				dispatch({ type: 'error', reason: msg.reason });
@@ -154,6 +161,7 @@ export function App({ rpc }: AppProps): React.ReactElement {
 			<Graph
 				snapshot={{ nodes: state.nodes, edges: state.edges }}
 				onSelectNode={(id) => dispatch({ type: 'select', id })}
+				workspaceRepos={state.workspaceRepos}
 			/>
 			{state.transitions.length > 0 && state.currentAsOf !== null && (
 				<Slider

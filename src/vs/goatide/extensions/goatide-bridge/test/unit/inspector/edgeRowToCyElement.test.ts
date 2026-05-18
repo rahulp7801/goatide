@@ -16,6 +16,7 @@ import {
 	edgeRowToCyElement,
 	type InspectorEdgeRow,
 } from '../../../src/inspector/edgeRowToCyElement.js';
+import type { InspectorNodeRow } from '../../../src/inspector/kernelRowToCyElement.js';
 
 describe('edgeRowToCyElement', () => {
 	it('does not mutate the input row (Pitfall 1 fence)', () => {
@@ -70,5 +71,70 @@ describe('edgeRowToCyElement', () => {
 		};
 		const el = edgeRowToCyElement(row);
 		assert.strictEqual(el.data.kind, 'supersedes');
+	});
+
+	it('edgeRowToCyElement crossRepo true: src.repo_id !== dst.repo_id sets data.crossRepo === true', () => {
+		// Phase 21 XREPO-03a -- proves Phase 17 endpoint-based cross-repo detection at edgeRowToCyElement.ts:87
+		// fires correctly when src and dst nodes have different repo_ids.
+		const srcNode: InspectorNodeRow = {
+			id: 'src-attempt-1',
+			kind: 'Attempt',
+			label: 'Attempt src',
+			valid_from: '2026-05-18T00:00:00.000Z',
+			invalidated_at: null,
+			repo_id: 'repoA12345abc',
+		};
+		const dstNode: InspectorNodeRow = {
+			id: 'dst-constraint-1',
+			kind: 'ConstraintNode',
+			label: 'Constraint dst',
+			valid_from: '2026-05-18T00:00:00.000Z',
+			invalidated_at: null,
+			repo_id: 'repoB98765def',
+		};
+		const edgeRow: InspectorEdgeRow = {
+			id: 'edge-cross-repo-1',
+			kind: 'references',
+			src_id: 'src-attempt-1',
+			dst_id: 'dst-constraint-1',
+			valid_from: '2026-05-18T00:00:00.000Z',
+			invalidated_at: null,
+			repo_id: 'repoA12345abc',
+		};
+		const nodesById = new Map<string, InspectorNodeRow>([[srcNode.id, srcNode], [dstNode.id, dstNode]]);
+		const cyEdge = edgeRowToCyElement(edgeRow, nodesById);
+		assert.strictEqual(cyEdge.data.crossRepo, true, 'Cross-repo edge must set data.crossRepo === true when src.repo_id !== dst.repo_id');
+	});
+
+	it('edgeRowToCyElement crossRepo false: src.repo_id === dst.repo_id keeps data.crossRepo === false (negative control)', () => {
+		// Phase 21 XREPO-03a negative control -- same-repo edge must NOT set crossRepo.
+		const srcNode: InspectorNodeRow = {
+			id: 'src-attempt-same',
+			kind: 'Attempt',
+			label: 'Attempt src',
+			valid_from: '2026-05-18T00:00:00.000Z',
+			invalidated_at: null,
+			repo_id: 'repoA12345abc',
+		};
+		const dstNode: InspectorNodeRow = {
+			id: 'dst-constraint-same',
+			kind: 'ConstraintNode',
+			label: 'Constraint dst',
+			valid_from: '2026-05-18T00:00:00.000Z',
+			invalidated_at: null,
+			repo_id: 'repoA12345abc', // same repo as src
+		};
+		const edgeRow: InspectorEdgeRow = {
+			id: 'edge-same-repo-1',
+			kind: 'references',
+			src_id: 'src-attempt-same',
+			dst_id: 'dst-constraint-same',
+			valid_from: '2026-05-18T00:00:00.000Z',
+			invalidated_at: null,
+			repo_id: 'repoA12345abc',
+		};
+		const nodesById = new Map<string, InspectorNodeRow>([[srcNode.id, srcNode], [dstNode.id, dstNode]]);
+		const cyEdge = edgeRowToCyElement(edgeRow, nodesById);
+		assert.strictEqual(cyEdge.data.crossRepo, false, 'Same-repo edge must keep data.crossRepo === false');
 	});
 });

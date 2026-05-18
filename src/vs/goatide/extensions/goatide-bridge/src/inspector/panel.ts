@@ -200,6 +200,7 @@ export class GraphInspectorPanel {
 							cross_repo_mode: true,
 							workspace_repos: crossRepoRepos.map(r => ({
 								folder_uri: r.folder.uri.toString(),
+								folder_name: r.folder.name,
 								repo_id: r.repoId,
 								remote_url: r.remoteUrl,
 							})),

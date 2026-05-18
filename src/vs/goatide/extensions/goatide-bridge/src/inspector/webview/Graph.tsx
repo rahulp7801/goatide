@@ -42,9 +42,40 @@ import { vscodeApi } from './vscode-api.js';
 // registrations are a Cytoscape warning, not an error, but it's cleaner here.
 cytoscape.use(fcose as cytoscape.Ext);
 
+/** Phase 21 XREPO-03 (Open Decision Sec.11) -- serialized workspace repo entry for tooltip rendering. */
+export interface WorkspaceRepoEntry {
+	readonly folder_name: string;
+	readonly repo_id: string;
+}
+
+/**
+ * Compute a human-readable repo label for a Cytoscape node tooltip. The label
+ * format is `${folder_name} (${repo_id})` for known workspace repos. For nodes
+ * with `repo_id === 'primary'` or an unknown repo_id (no matching workspace_repo
+ * entry), the label falls back to the bare repo_id string.
+ *
+ * Phase 21 XREPO-03 (Open Decision Sec.6) — native HTML `title` attribute approach;
+ * zero new npm dependencies (Pitfall G defense).
+ *
+ * @param repoId        The node's repo_id from the kernel wire shape.
+ * @param workspaceRepos The workspace_repos[] from the inspector.show payload.
+ */
+export function buildRepoLabel(repoId: string, workspaceRepos: ReadonlyArray<WorkspaceRepoEntry>): string {
+	if (repoId === 'primary') {
+		return 'primary';
+	}
+	const match = workspaceRepos.find(wr => wr.repo_id === repoId);
+	if (!match) {
+		return repoId;
+	}
+	return `${match.folder_name} (${repoId})`;
+}
+
 export interface GraphProps {
 	snapshot: { nodes: InspectorNodeRow[]; edges: InspectorEdgeRow[] };
 	onSelectNode?: (nodeId: string) => void;
+	/** Phase 21 XREPO-03 -- workspace repos from inspector.show payload for node tooltip repoLabel computation. */
+	workspaceRepos?: ReadonlyArray<WorkspaceRepoEntry>;
 }
 
 /**
@@ -102,6 +133,23 @@ export function Graph(props: GraphProps): React.ReactElement {
 						props.onSelectNode!(id);
 					});
 				}
+				// Phase 21 XREPO-03 (Open Decision Sec.6) — native HTML title tooltip via Cytoscape
+				// mouseover/mouseout event handlers. Zero new npm deps (Pitfall G defense).
+				// The repoLabel data field is set on every node during element construction below.
+				cyRef.current.on('mouseover', 'node', (event: cytoscape.EventObject) => {
+					const node = event.target as cytoscape.NodeSingular;
+					const repoLabel = node.data('repoLabel') as string | undefined;
+					const cnt = containerRef.current;
+					if (cnt && repoLabel) {
+						cnt.title = repoLabel;
+					}
+				});
+				cyRef.current.on('mouseout', 'node', () => {
+					const cnt = containerRef.current;
+					if (cnt) {
+						cnt.title = '';
+					}
+				});
 			}
 			const cy = cyRef.current;
 
@@ -110,8 +158,20 @@ export function Graph(props: GraphProps): React.ReactElement {
 			// over the node set; the per-edge lookup is O(1). In v2.0 all nodes are 'primary' so
 			// crossRepo is always false; v2.1 cross-repo writes will activate the dashed styling.
 			const nodesById = new Map(props.snapshot.nodes.map(n => [n.id, n]));
+			// Phase 21 XREPO-03 — resolve workspace repos for repoLabel computation (fallback to empty).
+			const workspaceRepos = props.workspaceRepos ?? [];
 			const elements: cytoscape.ElementDefinition[] = [
-				...props.snapshot.nodes.map(kernelRowToCyElement),
+				...props.snapshot.nodes.map(row => {
+					const base = kernelRowToCyElement(row);
+					return {
+						...base,
+						data: {
+							...base.data,
+							// Phase 21 XREPO-03 -- human-readable repo label for node tooltip.
+							repoLabel: buildRepoLabel(row.repo_id, workspaceRepos),
+						},
+					};
+				}),
 				...props.snapshot.edges.map(e => edgeRowToCyElement(e, nodesById)),
 			];
 

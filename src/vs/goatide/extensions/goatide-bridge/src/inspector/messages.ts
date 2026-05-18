@@ -68,6 +68,8 @@ export const InspectorWebviewToHostSchema = z.discriminatedUnion('type', [
  */
 const SerializedWorkspaceRepoSchema = z.object({
 	folder_uri: z.string(),
+	// Phase 21 XREPO-03 (Open Decision Sec.11) -- readable folder name from vscode.WorkspaceFolder.name.
+	folder_name: z.string(),
 	repo_id: z.string(),
 	remote_url: z.string().nullable(),
 });
