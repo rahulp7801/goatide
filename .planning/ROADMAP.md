@@ -444,7 +444,7 @@
 3. `refuse-llm-in-canvas.meta.sh` CI gate passes against all host-side authoring files (`canvas/panel.ts`, `canvas/authoring-*.ts`) in addition to the existing `canvas/webview/*` scope — positive test: a clean authoring file passes; negative test: a file importing a forbidden LLM token fails.
 4. `refuse-deep05-write.sh` BANNED array includes the v2.1 write RPC token and the CI gate fails if any file under `inspector/` imports it — Mandate B fence covers the new write surface before any inspector UI is written.
 
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 ---
 
@@ -518,7 +518,7 @@
 | 17. Cross-Repo UI + Polish Cluster | 5/5 | Closed | 2026-05-16 |
 | 18. E2E Verification Gate | 5/5 | Complete    | 2026-05-17 |
 | 19. Walkthrough Foregrounding Fix | 3/4 | Complete    | 2026-05-17 |
-| 20. DecisionNode Authoring Write Path | 2/5 | In Progress|  |
+| 20. DecisionNode Authoring Write Path | 3/5 | In Progress|  |
 | 21. Cross-Repo Activation (Single-DB) | 0/TBD | Not started | — |
 | 22. Distribution (C1/C2/C3) | 0/TBD | Not started | — |
 

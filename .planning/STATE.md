@@ -3,10 +3,26 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Verify + Ship
 status: executing
+last_updated: "2026-05-18T02:15:30Z"
+last_activity: 2026-05-18 — Plan 20-01 closed; all 6 Wave-0 tasks landed across two sessions (Tasks 1-3 in commits 454080f2eb8/cdea35d6667/6768e7985d5; Tasks 4-6 in commits 25037a87eff/13e68bc1eff/767eeb81f6f); 7 RED stubs + Mandate D recordRejectionCalls column; AUTH-03/AUTH-04 marked complete in REQUIREMENTS
+progress:
+  [██████████] 95%
+  total_phases: 24
+  completed_phases: 6
+  total_plans: 39
+  completed_plans: 37
+  percent: 95
+---
+
+---
+gsd_state_version: 1.0
+milestone: v2.1
+milestone_name: Verify + Ship
+status: executing
 last_updated: "2026-05-18T02:01:04.339Z"
 last_activity: 2026-05-18 — Plan 20-04 closed; dispatchHover Step 4 gains Reject button + kernel.recordRejection wiring (note 'user_post_hoc_reject_benign_hover'); commit 61bb7a1973a; Mandate D fence preserved; Phase 19 SC3b smoke 13/13 PASS EXIT 0
 progress:
-  [█████████░] 92%
+  [██████████] 95%
   total_phases: 24
   completed_phases: 6
   total_plans: 39
@@ -133,10 +149,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 
 - **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
 - **Active phase:** 20 -- DecisionNode Authoring Write Path (executing)
-- **Status:** Executing — Plans 20-01 + 20-02 + 20-04 closed; Plans 20-03 (authoring-flow + extension.ts command swap), 20-05 (phase verify) remain
+- **Status:** Executing — Plans 20-01 + 20-02 + 20-04 closed (all 6 Plan 20-01 Wave-0 tasks now landed); Plans 20-03 (authoring-flow + extension.ts command swap), 20-05 (phase verify) remain
 - **Last closed phase:** 19 -- Walkthrough Foregrounding Fix (WALK-01 GREEN; SC3b 13/13 PASS) (closed 2026-05-17)
-- **Last closed plan:** 20-04 -- AUTH-02 Wave-2 dispatchHover post-hoc Reject button + recordRejection wiring
-- **Last activity:** 2026-05-18 — Plan 20-04 closed; dispatchHover Step 4 gains Reject button + kernel.recordRejection wiring (note 'user_post_hoc_reject_benign_hover'); commit 61bb7a1973a; Mandate D fence preserved; Phase 19 SC3b smoke 13/13 PASS EXIT 0
+- **Last closed plan:** 20-01 -- Wave-0 fences + RED stubs (retroactively closed after parallel-execution merge; Tasks 4-6 authored as immediately GREEN regression gates per the Wave-1/Wave-2 implementations that landed first)
+- **Last activity:** 2026-05-18 — Plan 20-01 closed across two sessions; 6 task commits total (454080f2eb8, cdea35d6667, 6768e7985d5, 25037a87eff, 13e68bc1eff, 767eeb81f6f); 7 RED stubs + Mandate D matrix recordRejectionCalls column; AUTH-03/AUTH-04 marked complete
 - **Last session:** 2026-05-18
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
@@ -144,6 +160,17 @@ v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-18 — Plan 20-01 closed (AUTH-01..04 Wave-0: fences + 7 RED stubs + Mandate D matrix extension)
+
+- **Plan 20-01 closure (across two sessions):** Tasks 1-3 landed in a prior session (commits `454080f2eb8` Mandate B BANNED extension, `cdea35d6667` Mandate A canvas/*.ts widening, `6768e7985d5` kernel RED stub bundled with Plan 20-02's GREEN-flip). Tasks 4-6 landed in this continuation session (commits `25037a87eff` bridge KernelClient regression gate, `13e68bc1eff` 3 canvas authoring-flow RED stubs, `767eeb81f6f` 2 dispatchHover Reject regression gates + Mandate D matrix recordRejectionCalls column).
+- **Decision (Task 3 stub tracked under Plan 20-02 commit, not re-authored):** `kernel/src/test/rpc/createDecisionNode.spec.ts` is in commit `6768e7985d5` (Plan 20-02). Recreating it in this session would diverge from the version that paired with the GREEN-flip implementation. Plan 20-01 SUMMARY references the existing commit.
+- **Decision (retroactive RED-stub authoring as regression gates):** Because parallel-execution merge ordered Plans 20-02 and 20-04 BEFORE Plan 20-01's Tasks 4 and 6, the bridge KernelClient stub and the 2 dispatchHover Reject stubs are authored as IMMEDIATELY GREEN regression gates. TDD philosophy preserved -- the spec still encodes the contract; failure message references the original GREEN-flip plan; if a future refactor removes the surface, the test RED-flips.
+- **Decision (Mandate D matrix `recordRejectionCalls === 0` in every cell):** Matrix test simulates dispatchTier once per cell with `showInformationMessage` returning `undefined` (default dismissal). The Reject branch in dispatchHover only fires on explicit user click+confirm, which the matrix doesn't simulate. Destructive cells stay 0 by structural impossibility (dispatchHover only reachable on `(silent, false, 'hover')`).
+- **Decision (showWarningMessage undefined-safe pattern):** dispatchHover-reject-confirm.test.ts mocks `vscode.window.showWarningMessage` using the Phase 14 `integration/mcp/liveness-banner-ext.test.ts` pattern (store `unknown`, restore via `delete` if original was undefined). The electron-as-node harness doesn't natively define `showWarningMessage`.
+- **Pitfall F caller-count fence preserved:** `grep -c "\bdispatchHover\b" tier-dispatch.ts` returns 2 (1 declaration + 1 caller). Mandate D matrix `LOCKED_CALLER_COUNT_WAVE1` constant unchanged at 2.
+- **Phase-level invariants intact:** Mandate D structural fence GREEN (extended); Mandate B fence GREEN; Mandate A canvas fence GREEN (widened); 4 meta-tests `META PASS`; 12/13 CI refuse-*.sh gates exit 0 (1 pre-existing FORK-04 issue out of scope).
+- **AUTH-03 + AUTH-04 marked complete in REQUIREMENTS.md.** (AUTH-01 + AUTH-02 already complete from Plans 20-02 + 20-04.) Phase 20 requirement set fully closed at REQUIREMENTS-table level; phase formal closure pending Plans 20-03 + 20-05.
 
 ### 2026-05-18 — Plan 20-04 closed (AUTH-02 Wave-2: dispatchHover post-hoc Reject button + recordRejection wiring)
 
