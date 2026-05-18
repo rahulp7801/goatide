@@ -64,3 +64,5 @@ dist
 .github/prompts/*.local.prompt.md
 .agents/skills/.local/
 .github/skills/.local/
+# Phase 22 C3: electron-updater auto-generates this file in dev mode; never commit (Pitfall 5).
+dev-app-update.yml

@@ -1832,6 +1832,7 @@ export default tseslint.config(
 						'vs/editor/~',
 						'vs/editor/contrib/*/~',
 						'vs/code/~',
+						'vs/goatide/**', // GoatIDE platform modules (Phase 22 C3, Plan 22-01)
 						{
 							'when': 'hasBrowser',
 							'pattern': 'vs/workbench/workbench.web.main.js'
@@ -2424,7 +2425,7 @@ export default tseslint.config(
 	// GoatIDE first-party extensions live under src/vs/goatide/extensions/** with
 	// isolated dep trees (per Phase 01-04 source-of-truth-vs-build-path pattern) and
 	// don't follow upstream's layered import-patterns model. Disable the layer-driven
-	// `local/code-import-patterns` rule for these files — they bundle their deps
+	// `local/code-import-patterns` rule for these files -- they bundle their deps
 	// per-package (vscode-jsonrpc, monaco-editor, etc.) rather than going through the
 	// upstream module graph. FORK-04 is the structural enforcement; this rule is
 	// upstream-internal layering insurance that doesn't apply here.
@@ -2435,5 +2436,30 @@ export default tseslint.config(
 		],
 		rules: {
 			'local/code-import-patterns': 'off',
+		}
+	},
+	// GoatIDE platform files under src/vs/goatide/** (excluding extensions, which have
+	// their own isolated dep trees above). These files follow the same layered-import
+	// convention as vs/platform/** -- they may import from vs/base/**, vs/platform/**,
+	// and vs/goatide/**. Phase 22 C3 (Plan 22-01) introduced src/vs/goatide/update/.
+	{
+		files: [
+			'src/vs/goatide/**/*.ts',
+		],
+		rules: {
+			'local/code-import-patterns': [
+				'warn',
+				{
+					'target': 'src/vs/goatide/**',
+					'restrictions': [
+						'vs/base/**',
+						'vs/base/parts/**',
+						'vs/platform/**',
+						'vs/goatide/**',
+						'vs/nls.js',
+						'assert', // allowed in test files (electron-main / node layer standard)
+					]
+				}
+			]
 		}
 	});

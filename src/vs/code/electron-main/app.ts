@@ -17,7 +17,7 @@ import { getPathLabel } from '../../base/common/labels.js';
 import { Disposable, DisposableStore, MutableDisposable } from '../../base/common/lifecycle.js';
 import { Schemas, VSCODE_AUTHORITY } from '../../base/common/network.js';
 import { join, posix } from '../../base/common/path.js';
-import { INodeProcess, IProcessEnvironment, isLinux, isLinuxSnap, isMacintosh, isWindows, OS } from '../../base/common/platform.js';
+import { INodeProcess, IProcessEnvironment, isLinux, isMacintosh, isWindows, OS } from '../../base/common/platform.js';
 import { assertType } from '../../base/common/types.js';
 import { URI } from '../../base/common/uri.js';
 import { generateUuid } from '../../base/common/uuid.js';
@@ -86,10 +86,7 @@ import { UpdateChannel } from '../../platform/update/common/updateIpc.js';
 import { AbstractUpdateService } from '../../platform/update/electron-main/abstractUpdateService.js';
 import { CrossAppUpdateCoordinator } from '../../platform/update/electron-main/crossAppUpdateIpc.js';
 import { MacOSCrossAppSecretSharing } from '../../platform/secrets/electron-main/macOSCrossAppSecretSharing.js';
-import { DarwinUpdateService } from '../../platform/update/electron-main/updateService.darwin.js';
-import { LinuxUpdateService } from '../../platform/update/electron-main/updateService.linux.js';
-import { SnapUpdateService } from '../../platform/update/electron-main/updateService.snap.js';
-import { Win32UpdateService } from '../../platform/update/electron-main/updateService.win32.js';
+import { GoatIdeNoOpUpdateService } from '../../goatide/update/noOpUpdateService.js';
 import { IOpenURLOptions, IURLService } from '../../platform/url/common/url.js';
 import { URLHandlerChannelClient, URLHandlerRouter } from '../../platform/url/common/urlIpc.js';
 import { NativeURLService } from '../../platform/url/common/urlService.js';
@@ -1070,23 +1067,12 @@ export class CodeApplication extends Disposable {
 		const services = new ServiceCollection();
 
 		// Update
-		switch (process.platform) {
-			case 'win32':
-				services.set(IUpdateService, new SyncDescriptor(Win32UpdateService));
-				break;
-
-			case 'linux':
-				if (isLinuxSnap) {
-					services.set(IUpdateService, new SyncDescriptor(SnapUpdateService, [process.env['SNAP'], process.env['SNAP_REVISION']]));
-				} else {
-					services.set(IUpdateService, new SyncDescriptor(LinuxUpdateService));
-				}
-				break;
-
-			case 'darwin':
-				services.set(IUpdateService, new SyncDescriptor(DarwinUpdateService));
-				break;
-		}
+		// GoatIDE Phase 22 C3 (Plan 22-01): electron-updater (Plan 22-04) replaces VS Code's
+		// platform-specific IUpdateService bindings entirely. The no-op stub returns State.Disabled
+		// and prevents dual-updater races with electron-updater (Pitfall H from 22-RESEARCH.md).
+		// The downstream UpdateChannel wiring below (~lines 1267-1280) is unchanged -- it consumes
+		// whatever IUpdateService is registered here.
+		services.set(IUpdateService, new SyncDescriptor(GoatIdeNoOpUpdateService));
 
 		// Windows
 		services.set(IWindowsMainService, new SyncDescriptor(WindowsMainService, [machineId, sqmId, devDeviceId, this.userEnv], false));
