@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Closeout
+milestone: v2.1
+milestone_name: Verify + Ship
 status: executing
-last_updated: "2026-05-18T02:34:11.261Z"
-last_activity: 2026-05-18 — Plan 20-01 closed across two sessions; 6 task commits total (454080f2eb8, cdea35d6667, 6768e7985d5, 25037a87eff, 13e68bc1eff, 767eeb81f6f); 7 RED stubs + Mandate D matrix recordRejectionCalls column; AUTH-03/AUTH-04 marked complete
+last_updated: "2026-05-18T03:30:00.000Z"
+last_activity: 2026-05-18 — Phase 20 closed; AUTH-01..04 GREEN; flakiness fence 3/3 EXIT 0; 20-VERIFICATION.md + 20-SUMMARY.md authored
 progress:
   total_phases: 24
-  completed_phases: 6
-  total_plans: 39
-  completed_plans: 38
-  percent: 97
+  completed_phases: 7
+  total_plans: 40
+  completed_plans: 39
+  percent: 98
 ---
 
 ---
@@ -179,11 +179,11 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 ## Current
 
 - **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
-- **Active phase:** 20 -- DecisionNode Authoring Write Path (executing)
-- **Status:** Executing — Plans 20-01 + 20-02 + 20-04 closed (all 6 Plan 20-01 Wave-0 tasks now landed); Plans 20-03 (authoring-flow + extension.ts command swap), 20-05 (phase verify) remain
-- **Last closed phase:** 19 -- Walkthrough Foregrounding Fix (WALK-01 GREEN; SC3b 13/13 PASS) (closed 2026-05-17)
-- **Last closed plan:** 20-01 -- Wave-0 fences + RED stubs (retroactively closed after parallel-execution merge; Tasks 4-6 authored as immediately GREEN regression gates per the Wave-1/Wave-2 implementations that landed first)
-- **Last activity:** 2026-05-18 — Plan 20-01 closed across two sessions; 6 task commits total (454080f2eb8, cdea35d6667, 6768e7985d5, 25037a87eff, 13e68bc1eff, 767eeb81f6f); 7 RED stubs + Mandate D matrix recordRejectionCalls column; AUTH-03/AUTH-04 marked complete
+- **Active phase:** none (Phase 21 next -- Cross-Repo Activation (Single-DB))
+- **Status:** Phase 20 closed -- v2.1 milestone 3/5 phases complete (Phases 18, 19, 20 closed; Phases 21, 22 pending)
+- **Last closed phase:** 20 -- DecisionNode Authoring Write Path (AUTH-01..04 GREEN; 13/13 SC3b PASS; 7 new GREEN tests) (closed 2026-05-18)
+- **Last closed plan:** 20-05 -- Wave 3 phase verify + closure ceremony
+- **Last activity:** 2026-05-18 — Phase 20 closed; AUTH-01..04 GREEN; flakiness fence 3/3 EXIT 0; 20-VERIFICATION.md + 20-SUMMARY.md authored
 - **Last session:** 2026-05-18T02:34:11.255Z
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
@@ -191,6 +191,22 @@ v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-18 — Phase 20 closed (DecisionNode Authoring Write Path)
+
+- **Phase 20 closure:** 4/4 requirements closed (AUTH-01, AUTH-02, AUTH-03, AUTH-04); 5/5 plans executed (Plans 20-01..20-05). Wave structure: Wave 0 (fence-before-surface) → Wave 1 (kernel RPC + bridge client) → Wave 2 (authoring flow + Reject button in parallel) → Wave 3 (phase verify + closure ceremony). Phase 19 SC3b 13/13 regression gate held throughout (3-run flakiness fence: 3/3 EXIT 0).
+- **Decision (5-plan partition with parallel Wave 2):** Plans 20-03 (authoring flow) and 20-04 (Reject button) touch disjoint files (canvas/authoring-flow.ts + extension.ts vs save-gate/tier-dispatch.ts) so they ran in the same wave (Wave 2). Plan 20-05 (Wave 3) depends on both. Total wall-clock: ~2 plans saved vs strictly-sequential.
+- **Decision (OQ#1 resolution -- recordRejection signature reuse):** Reused existing `recordRejection({receipt_id, change_id, note})` RPC verbatim. Note literal `'user_post_hoc_reject_benign_hover'` distinguishes the post-hoc reject path from the inline-tier Dismiss path. Zero kernel-side changes for AUTH-02.
+- **Decision (OQ#2 resolution -- new write RPC name):** Used `createDecisionNode` as the new write RPC name (mirrors RecordContractOverrideRequest naming convention). Added to refuse-deep05-write.sh BANNED array in Wave 0 -- fence-before-surface intact.
+- **Decision (OQ#3 resolution -- constraint-link picker deferred):** Constraint-link picker out of v2.1 scope (would enumerate all ConstraintNodes -- slow at scale). DecisionNode authored with body + anchor + optional `derived_under_priority` only. Constraint linkage deferred to v2.2.
+- **Decision (OQ#4 resolution -- no CanvasShowPayload schema change):** Anchor auto-populated from `vscode.window.activeTextEditor.document.uri.fsPath` (and `opts.prefilledAnchorPath` from the empty-state CTA path). No new `anchor_path` field on CanvasShowPayload -- zero Zod schema diff.
+- **Decision (OQ#5 resolution -- QuickPick chain, not WebviewPanel):** v2.1 ships with QuickPick + InputBox multi-step flow. Mandate A safe by default (no new webview to fence). WebviewPanel form deferred to v2.2.
+- **Mandate A widening (AUTH-03):** Pitfall C pre-flight grep confirmed clean baseline before widening refuse-llm-in-canvas.meta.sh. New `HOST_CANVAS_DIR` + `grep_host_canvas` sibling to the existing webview/ scope. `canvas/authoring-flow.ts` (NEW) born under the widened fence.
+- **Mandate B fence-before-surface (AUTH-04):** BANNED array entry `createDecisionNode` landed in Wave 0 BEFORE Plan 20-02 added the literal to kernel/bridge code. ReadonlyKernelClient `Pick<>` UNCHANGED (Pitfall E: never grants write capability to inspector tree).
+- **Mandate D fence preservation (AUTH-02 SC#2b):** 4×3 matrix test extended with `recordRejectionCalls` column; invariant `recordRejectionCalls === 0` in every cell holds (matrix test does not simulate user clicks; reject branch reachable only via interactive Reject + confirm). Pitfall F caller-count fence (`LOCKED_CALLER_COUNT_WAVE1 = 2`) UNCHANGED -- dispatchHover identifier count stays at 2 (1 decl + 1 caller).
+- **Pitfall G mitigation (Phase 19 SC3b regression gate):** extension.ts new command body wrapped in try/catch; new import of runAddDecisionNodeFlow is top-level (does not throw at activation). 3-run consecutive smoke produced 3/3 EXIT 0 -- foreground race fix is deterministic; Phase 20 changes have zero impact on the walkthrough foreground race.
+- **Pitfall A reconciliation (REQUIREMENTS.md + ROADMAP.md):** Canonical AUTH-01 row in REQUIREMENTS.md (around line 27) and ROADMAP.md Phase 20 SC#1 description (around line 442) edited in-place: `via proposeEdit + atomicAccept RPCs` replaced with `via the new graph.createDecisionNode kernel RPC` plus a parenthetical noting the departure from ROADMAP wording. Phase 20 research §Pitfall A identified the original wording as technically wrong -- proposeEdit/atomicAccept operate on file diffs and create Attempt nodes; the new RPC is the correct primitive.
+- **v2.1 milestone status:** Phase 20 closed (3/5 phases). Phase 21 (Cross-Repo Activation Single-DB) is the next unblocked phase.
 
 ### 2026-05-18 — Plan 20-01 closed (AUTH-01..04 Wave-0: fences + 7 RED stubs + Mandate D matrix extension)
 

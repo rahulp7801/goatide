@@ -22,9 +22,9 @@
 - [x] **VERIFY-04**: Test-package vs GA-package build split decided in Phase 18 Wave 0 — test package keeps `EnableNodeCliInspectArguments` Electron fuse ON for CDP automation; GA package may disable for distribution. Both build targets reachable from `electron-builder.yml`.
 - [x] **VERIFY-05**: E2E manual UAT checklist walks every v2.0 user-visible surface on the installed binary: walkthrough renders (foregrounding fix follow-up in Phase 19), Canvas tier dispatch fires on save, Graph Inspector opens via command, save-gate destructive prompt appears, settings UI exposes 3 saveGate.* properties, empty-state CTA visible, dispatchHover status-bar message appears for benign saves, `goatide.openCrossRepoGraph` shows graceful single-folder notification.
 
-### Authoring (Phase 20)
+### Authoring (Phase 20 — Closed 2026-05-18)
 
-- [x] **AUTH-01**: `goatide.canvas.addDecisionNode` placeholder replaced with real write path. User can author a DecisionNode via command palette (table stakes: anchor selection from current file's known anchors → required rationale text via InputBox → optional constraint links picker → atomic write via existing `proposeEdit` + `atomicAccept` RPCs). Anchor auto-population from `CanvasShowPayload.anchor_path` when triggered from the POLISH-03 empty-state CTA.
+- [x] **AUTH-01**: `goatide.canvas.addDecisionNode` placeholder replaced with real write path. User can author a DecisionNode via command palette (table stakes: anchor selection from current file's known anchors → required rationale text via InputBox → optional constraint links picker → atomic write via the new `graph.createDecisionNode` kernel RPC — departed from original ROADMAP wording per Phase 20 research Pitfall A: `proposeEdit`/`atomicAccept` operate on file diffs and create Attempt nodes, not DecisionNodes; the new RPC is the correct primitive). Anchor auto-population from `CanvasShowPayload.anchor_path` when triggered from the POLISH-03 empty-state CTA.
 - [x] **AUTH-02**: Post-hoc rejection — `dispatchHover` benign-tier status-bar message gains a "Reject" action button. Click → confirmation modal → `kernel.recordRejection(attemptId)`. Reject button NEVER appears on destructive-tier saves (Mandate D fence; byte-identity matrix test extended).
 - [x] **AUTH-03**: `refuse-llm-in-canvas.meta.sh` Mandate A fence extended to cover host-side authoring files (`canvas/authoring-*.ts`) — closes the v2.0 blind spot where the fence scanned only `canvas/webview/*`. New meta-test asserts positive + negative round-trip.
 - [x] **AUTH-04**: `refuse-deep05-write.sh` Mandate B fence BANNED array forward-declared to include the v2.1 write RPC token(s) BEFORE any authoring inspector-adjacent code is written. CI gate fails if inspector/ imports the new write surface.
@@ -85,6 +85,15 @@
 | ID | What shipped | Closure commit(s) |
 |----|-------------|-------------------|
 | WALK-01 | Bridge `package.json` `contributes.configurationDefaults["workbench.startupEditor"] = "none"` so VS Code's `StartupPageRunnerContribution.run()` falls through when the value is not `'welcomePage'`; `setTimeout(2000ms)` double-invoke in `maybeAutoOpenWalkthrough` as belt+suspenders fallback for Pitfall 5 / VS Code issue #152265; Phase 18 CDP smoke SC3b detection switched from window.title() (VS Code does not update `walkthroughPageTitle` when switching walkthrough via `openWalkthrough` command) to DOM-based `x-category-title-for` attribute fingerprint written by `buildCategorySlide()`; gate threshold raised from 12/13 to 13/13; Pitfall 9 fence preserved (`registerWalkthroughCompletion` still uses `context.globalState`, NOT `WorkspaceConfiguration.update`). Flakiness fence: 3/3 consecutive smoke runs EXIT 0. | `da8e7d03707`, `8cb0b4cff4b`, `ae957b68130`, `57f83c71f7e`, `53624da51ba`, `3e511fb506b` |
+
+### Phase 20 — DecisionNode Authoring Write Path — Closed 2026-05-18
+
+| ID | What shipped | Closure commit(s) |
+|----|-------------|-------------------|
+| AUTH-01 | New `graph.createDecisionNode` kernel RPC (mirror RecordContractOverrideRequest shape) + bridge `KernelClient.createDecisionNode` method + new `canvas/authoring-flow.ts` host-side multi-step orchestrator (QuickPick anchor picker → InputBox rationale `value: ''` Mandate A → optional priority confirm → final confirm → kernel write); `extension.ts` command body swap from v2.0 placeholder to `runAddDecisionNodeFlow` invocation via try/catch (Pitfall G). N3 ordering invariant preserved. Anchor auto-populated from `activeTextEditor` (OQ#4). Constraint-link picker deferred to v2.2 (OQ#3). | `6768e7985d5`, `3e7198ca2bd`, `ebddd84497f`, `476348448a9` |
+| AUTH-02 | `dispatchHover` Step 4 gains Reject branch: `showInformationMessage` action triplet `('Reject', 'Open full receipt')` + modal confirmation `showWarningMessage('Reject this benign save post-hoc? ...', {modal:true}, 'Reject')` + try/catch-wrapped `kernel.recordRejection({receipt_id, change_id, note:'user_post_hoc_reject_benign_hover'})` on confirm (OQ#1+OQ#2: reuse existing RPC verbatim). Mandate D fence preserved: Reject button NEVER appears on destructive-tier saves (`(silent, false, 'hover')` structural gate). 4×3 matrix test extended (Plan 20-01) with `recordRejectionCalls` column; `recordRejectionCalls === 0` invariant in every cell. Pitfall F caller-count fence (`LOCKED_CALLER_COUNT_WAVE1 = 2`) UNCHANGED. | `767eeb81f6f`, `61bb7a1973a` |
+| AUTH-03 | `scripts/test/refuse-llm-in-canvas.meta.sh` widened (new `HOST_CANVAS_DIR` + `grep_host_canvas` sibling to existing webview/ scope). Top-level `canvas/*.ts` host files now covered by Mandate A fence. Phase 1 positive control + Phase 2 negative control (two probes -- one per scope) + `META PASS`. Pitfall C pre-flight grep confirmed clean baseline before widening. | `cdea35d6667` |
+| AUTH-04 | `scripts/ci/refuse-deep05-write.sh` BANNED array gains `createDecisionNode` as 5th entry (Phase 14 lineage preserved). `scripts/test/refuse-deep05-write.meta.sh` gains Phase 3 positive control with `_fixture-violation-createDecisionNode.ts` round-trip. ReadonlyKernelClient `Pick<>` UNCHANGED (Pitfall E — never add createDecisionNode to readonly view). Fence-before-surface: BANNED entry landed in Wave 0 BEFORE Plan 20-02 introduced the literal in kernel/bridge code. | `454080f2eb8` |
 
 ### Phase 18 — E2E Verification Gate — Closed 2026-05-17
 
@@ -299,10 +308,10 @@
 | VERIFY-04 | 18 — E2E Verification Gate | Closed 2026-05-17 (`b36225882a2`, `dccd6f607ec`) |
 | VERIFY-05 | 18 — E2E Verification Gate | Closed 2026-05-17 (AUTO-APPROVED UAT — 18-UAT-CHECKLIST.md) |
 | WALK-01 | 19 — Walkthrough Foregrounding Fix | Closed 2026-05-17 (`3e511fb506b`, `53624da51ba`, `ae957b68130`, `57f83c71f7e`) |
-| AUTH-01 | 20 — DecisionNode Authoring Write Path | Complete |
-| AUTH-02 | 20 — DecisionNode Authoring Write Path | Complete |
-| AUTH-03 | 20 — DecisionNode Authoring Write Path | Complete |
-| AUTH-04 | 20 — DecisionNode Authoring Write Path | Complete |
+| AUTH-01 | 20 — DecisionNode Authoring Write Path | Closed 2026-05-18 (`6768e7985d5`, `3e7198ca2bd`, `ebddd84497f`, `476348448a9`) |
+| AUTH-02 | 20 — DecisionNode Authoring Write Path | Closed 2026-05-18 (`767eeb81f6f`, `61bb7a1973a`) |
+| AUTH-03 | 20 — DecisionNode Authoring Write Path | Closed 2026-05-18 (`cdea35d6667`) |
+| AUTH-04 | 20 — DecisionNode Authoring Write Path | Closed 2026-05-18 (`454080f2eb8`) |
 | XREPO-01 | 21 — Cross-Repo Activation (Single-DB) | Pending |
 | XREPO-02 | 21 — Cross-Repo Activation (Single-DB) | Pending |
 | XREPO-03 | 21 — Cross-Repo Activation (Single-DB) | Pending |

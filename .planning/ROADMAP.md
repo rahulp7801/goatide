@@ -41,7 +41,7 @@
 - [x] **Phase 17: Cross-Repo UI + Polish Cluster** - Cross-repo stitching UI, onboarding, settings UI, empty-state, hover receipt (closed 2026-05-16)
 - [x] **Phase 18: E2E Verification Gate** - Real installable build, bridge registration gap closed, 12/13 CDP smoke SCs pass (closed 2026-05-17)
 - [x] **Phase 19: Walkthrough Foregrounding Fix** - GoatIDE walkthrough wins first-launch race against VS Code default (closed 2026-05-17)
-- [ ] **Phase 20: DecisionNode Authoring Write Path** - addDecisionNode write path + post-hoc Reject button + Mandate A/B fence extensions
+- [x] **Phase 20: DecisionNode Authoring Write Path** ✓ Closed - addDecisionNode write path + post-hoc Reject button + Mandate A/B fence extensions
 - [ ] **Phase 21: Cross-Repo Activation (Single-DB)** - repo_id on write RPCs, WorkspaceRepoState, real cross-repo edges in Inspector
 - [ ] **Phase 22: Distribution (C1/C2/C3)** - macOS notarization, Windows Azure Trusted Signing, electron-updater auto-update
 
@@ -439,12 +439,20 @@
 - Write a RED unit test confirming the Reject button NEVER renders on destructive-tier saves — byte-identity matrix test extension (Mandate D).
 
 **Success Criteria** (what must be TRUE when Phase 20 completes):
-1. User invokes "GoatIDE: Add DecisionNode" from the command palette (or clicks the "Add DecisionNode" CTA in the empty-state canvas); a multi-step flow prompts for anchor selection (from the current file's known anchors) and a human-authored rationale text; on confirmation, the DecisionNode is written to the graph via `proposeEdit` + `atomicAccept` RPCs; a success notification shows the new node ID and "It will appear as a citation on your next save."
+1. User invokes "GoatIDE: Add DecisionNode" from the command palette (or clicks the "Add DecisionNode" CTA in the empty-state canvas); a multi-step flow prompts for anchor selection (from the current file's known anchors) and a human-authored rationale text; on confirmation, the DecisionNode is written to the graph via the new `graph.createDecisionNode` kernel RPC (departed from original ROADMAP wording per Phase 20 research Pitfall A — `proposeEdit`/`atomicAccept` operate on file diffs and create Attempt nodes, not DecisionNodes; the new RPC is the correct primitive); a success notification shows the new node ID and "It will appear as a citation on your next save."
 2. User makes a benign-tier save and sees the `dispatchHover` status-bar message; the message includes a "Reject" action button; clicking Reject shows a confirmation modal; confirming calls `kernel.recordRejection(attemptId)` and the attempt is marked rejected in the graph. The Reject button NEVER appears on destructive-tier saves (Mandate D — byte-identity matrix test extended to cover this).
 3. `refuse-llm-in-canvas.meta.sh` CI gate passes against all host-side authoring files (`canvas/panel.ts`, `canvas/authoring-*.ts`) in addition to the existing `canvas/webview/*` scope — positive test: a clean authoring file passes; negative test: a file importing a forbidden LLM token fails.
 4. `refuse-deep05-write.sh` BANNED array includes the v2.1 write RPC token and the CI gate fails if any file under `inspector/` imports it — Mandate B fence covers the new write surface before any inspector UI is written.
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
+
+- [x] 20-01-wave0-fences-red-stubs-PLAN.md -- Wave 0: AUTH-03/04 fence extensions + 7 RED stubs + Mandate D matrix extension (CLOSED 2026-05-18)
+- [x] 20-02-kernel-rpc-bridge-client-PLAN.md -- Wave 1: graph.createDecisionNode kernel RPC + bridge KernelClient method (CLOSED 2026-05-18)
+- [x] 20-03-authoring-flow-and-command-swap-PLAN.md -- Wave 2: canvas/authoring-flow.ts multi-step flow + extension.ts command body swap (CLOSED 2026-05-18)
+- [x] 20-04-reject-button-dispatchHover-PLAN.md -- Wave 2: dispatchHover Reject branch + recordRejection wiring (CLOSED 2026-05-18)
+- [x] 20-05-phase-verify-and-closure-PLAN.md -- Wave 3: full-suite verify + 3-run flakiness fence + REQUIREMENTS/ROADMAP/STATE flips + 20-VERIFICATION + 20-SUMMARY (CLOSED 2026-05-18)
+
+**Closed:** 2026-05-18
 
 ---
 
@@ -518,7 +526,7 @@
 | 17. Cross-Repo UI + Polish Cluster | 5/5 | Closed | 2026-05-16 |
 | 18. E2E Verification Gate | 5/5 | Complete    | 2026-05-17 |
 | 19. Walkthrough Foregrounding Fix | 3/4 | Complete    | 2026-05-17 |
-| 20. DecisionNode Authoring Write Path | 4/5 | In Progress|  |
+| 20. DecisionNode Authoring Write Path | 5/5 | Complete    | 2026-05-18 |
 | 21. Cross-Repo Activation (Single-DB) | 0/TBD | Not started | — |
 | 22. Distribution (C1/C2/C3) | 0/TBD | Not started | — |
 
