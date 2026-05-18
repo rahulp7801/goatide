@@ -28,6 +28,7 @@ import { registerSchemaDriftBanner } from './mcp/schema-drift-banner.js';
 import { registerMcpReconnectCommand } from './mcp/reconnect-command.js';
 import { registerWalkthroughCompletion, maybeAutoOpenWalkthrough } from './onboarding/walkthrough-completion.js';
 import { registerCrossRepoGraphCommand } from './inspector/cross-repo-command.js';
+import { runAddDecisionNodeFlow } from './canvas/authoring-flow.js';
 
 /**
  * BRIDGE-RT-01: resolves `<fork-root>/kernel/dist/main.js` across both bridge load modes.
@@ -262,18 +263,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	// First — register the walkthrough completion command (Pitfall 9 fence — landed Plan 17-01 Task 2):
 	context.subscriptions.push(registerWalkthroughCompletion(context));
 
-	// Phase 17 Plan 17-03 POLISH-03 — placeholder authoring command. The CTA in the
-	// Verification Canvas empty-state posts a canvas.requestAddDecisionNode message
-	// which routes to this command via canvas/panel.ts handleMessage. v2.1 will swap
-	// the placeholder for the real authoring flow without touching the empty-state JSX.
+	// Phase 20 Plan 20-03 AUTH-01 — real DecisionNode authoring flow (replaces the
+	// v2.0 POLISH-03 placeholder). The CTA in the Verification Canvas empty-state posts
+	// a canvas.requestAddDecisionNode message which routes here via canvas/panel.ts
+	// handleMessage; the command is also invokable from the command palette.
 	// Registered HERE (before maybeAutoOpenWalkthrough) so the empty-state CTA has a
 	// valid command target the moment the user encounters it (e.g. on a same-session
 	// first-save right after the walkthrough completes).
+	//
+	// Pitfall G mitigation: try/catch wrap so any runtime error inside the multi-step
+	// flow surfaces as showErrorMessage rather than throwing into activation. Bridge
+	// activation MUST NOT throw — Phase 19 SC3b smoke regression check enforces this.
 	context.subscriptions.push(
 		vscode.commands.registerCommand('goatide.canvas.addDecisionNode', async () => {
-			await vscode.window.showInformationMessage(
-				'GoatIDE: Adding DecisionNode is coming in v2.1 - for now, edit your contracts file directly to add a new ## ConstraintNode or ## DecisionNode section.',
-			);
+			try {
+				const editor = vscode.window.activeTextEditor;
+				await runAddDecisionNodeFlow(context, kernel, panel, {
+					prefilledAnchorPath: editor?.document.uri.fsPath,
+				});
+			} catch (e) {
+				void vscode.window.showErrorMessage(
+					'GoatIDE: addDecisionNode flow failed -- ' + (e instanceof Error ? e.message : String(e)),
+				);
+			}
 		}),
 	);
 
