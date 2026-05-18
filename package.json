@@ -148,6 +148,7 @@
     "vscode-oniguruma": "1.7.0",
     "vscode-regexpp": "^3.1.0",
     "vscode-textmate": "^9.3.2",
+    "electron-updater": "^6.8.3",
     "ws": "^8.19.0",
     "yauzl": "^3.0.0",
     "yazl": "^2.4.3"
@@ -199,7 +200,6 @@
     "deemon": "^1.13.6",
     "electron": "39.8.7",
     "electron-builder": "^26.10.0",
-    "electron-updater": "^6.8.3",
     "eslint": "^9.36.0",
     "eslint-formatter-compact": "^8.40.0",
     "eslint-plugin-header": "3.1.1",
