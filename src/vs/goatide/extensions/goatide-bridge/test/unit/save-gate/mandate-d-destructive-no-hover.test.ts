@@ -76,35 +76,44 @@ describe('POLISH-04 Mandate D — destructive saves never use hover dispatch', (
 		] as const;
 		const benignSettings = ['modal', 'hover', 'suppress'] as const;
 
-		// Build expected map per Mandate D contract
-		const expectedMap: Record<string, { showAndAwaitCalls: number; setStatusBarCalls: number }> = {};
+		// Build expected map per Mandate D contract.
+		//
+		// Phase 20 Plan 20-01 Wave-0 extension: `recordRejectionCalls` column added.
+		// Contract: recordRejectionCalls === 0 in EVERY cell because the matrix test does
+		// NOT simulate the user clicking the post-hoc Reject button -- showInformationMessage
+		// is stubbed to return `undefined` (= user dismissal), which short-circuits the
+		// Reject branch in dispatchHover. The Reject branch IS reachable on (silent, false,
+		// 'hover') -- but only via user interaction simulated by dispatchHover-reject-confirm.test.ts.
+		// Mandate D destructive cells stay 0 by structural impossibility (dispatchHover is
+		// only reachable on the single (silent, false, 'hover') cell).
+		const expectedMap: Record<string, { showAndAwaitCalls: number; setStatusBarCalls: number; recordRejectionCalls: number }> = {};
 		for (const { tier, isDestructive } of rows) {
 			for (const benignSetting of benignSettings) {
 				const key = `${tier}/${isDestructive}/${benignSetting}`;
 				if (tier === 'silent' && !isDestructive) {
 					if (benignSetting === 'hover') {
-						expectedMap[key] = { showAndAwaitCalls: 0, setStatusBarCalls: 1 };
+						expectedMap[key] = { showAndAwaitCalls: 0, setStatusBarCalls: 1, recordRejectionCalls: 0 };
 					} else if (benignSetting === 'modal') {
-						expectedMap[key] = { showAndAwaitCalls: 1, setStatusBarCalls: 0 };
+						expectedMap[key] = { showAndAwaitCalls: 1, setStatusBarCalls: 0, recordRejectionCalls: 0 };
 					} else {
 						// suppress
-						expectedMap[key] = { showAndAwaitCalls: 0, setStatusBarCalls: 0 };
+						expectedMap[key] = { showAndAwaitCalls: 0, setStatusBarCalls: 0, recordRejectionCalls: 0 };
 					}
 				} else if (tier === 'inline' && !isDestructive) {
 					// inline: un-gated, applyEdit immediately, fire-and-forget toast (not showAndAwait)
-					expectedMap[key] = { showAndAwaitCalls: 0, setStatusBarCalls: 0 };
+					expectedMap[key] = { showAndAwaitCalls: 0, setStatusBarCalls: 0, recordRejectionCalls: 0 };
 				} else if (tier === 'modal' && !isDestructive) {
 					// highImpactSetting defaults to 'confirm' → showAndAwait called once
-					expectedMap[key] = { showAndAwaitCalls: 1, setStatusBarCalls: 0 };
+					expectedMap[key] = { showAndAwaitCalls: 1, setStatusBarCalls: 0, recordRejectionCalls: 0 };
 				} else {
 					// (modal, true): destructiveSetting defaults to 'confirm' → showAndAwait called once
 					// Mandate D: benignSetting does NOT affect this branch
-					expectedMap[key] = { showAndAwaitCalls: 1, setStatusBarCalls: 0 };
+					expectedMap[key] = { showAndAwaitCalls: 1, setStatusBarCalls: 0, recordRejectionCalls: 0 };
 				}
 			}
 		}
 
-		const resultMap: Record<string, { showAndAwaitCalls: number; setStatusBarCalls: number }> = {};
+		const resultMap: Record<string, { showAndAwaitCalls: number; setStatusBarCalls: number; recordRejectionCalls: number }> = {};
 
 		const origSetStatusBarMessage = vscode.window.setStatusBarMessage.bind(vscode.window);
 		const origGetConfig = vscode.workspace.getConfiguration.bind(vscode.workspace);
@@ -119,6 +128,10 @@ describe('POLISH-04 Mandate D — destructive saves never use hover dispatch', (
 
 					let showAndAwaitCalls = 0;
 					let setStatusBarCalls = 0;
+					// Phase 20 Plan 20-01 Wave-0 extension: per-cell recordRejection counter.
+					// Must remain 0 in every cell (matrix test does not simulate user clicks
+					// on the post-hoc Reject button).
+					let recordRejectionCalls = 0;
 
 					// Spy on setStatusBarMessage
 					(vscode.window as unknown as Record<string, unknown>)['setStatusBarMessage'] = () => {
@@ -168,7 +181,8 @@ describe('POLISH-04 Mandate D — destructive saves never use hover dispatch', (
 						queryNodes: async () => ({ nodes: [] }),
 						atomicAccept: async () => ({ attempt_node_id: 'test-attempt' }),
 						proposeEdit: async () => { throw new Error('should not be called'); },
-						recordRejection: async () => { },
+						// Phase 20 Plan 20-01 Wave-0 extension: count recordRejection invocations per cell.
+						recordRejection: async () => { recordRejectionCalls++; },
 						recordContractOverride: async () => ({ attempt_node_id: 'test-override' }),
 						onDriftProgress: () => () => { },
 						runRippleProgressive: async () => ({ report: { contract_node_id: '', max_hops: 1, definitely_affected: [], potentially_affected: [], truncated: false, generated_at: '' } }),
@@ -215,7 +229,7 @@ describe('POLISH-04 Mandate D — destructive saves never use hover dispatch', (
 						// Some paths may throw (e.g. when applyEditAtomically is called).
 					}
 
-					resultMap[key] = { showAndAwaitCalls, setStatusBarCalls };
+					resultMap[key] = { showAndAwaitCalls, setStatusBarCalls, recordRejectionCalls };
 				}
 			}
 		} finally {
