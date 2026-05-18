@@ -25,6 +25,8 @@ export interface AcceptParams {
 	accept_latency_ms: number;
 	body: string;        // Attempt body — short summary
 	anchor: { file?: string; symbol?: string; line?: number; ticket_id?: string };
+	// Phase 21 XREPO-01 -- workspace-level scoping; default 'primary'.
+	repo_id?: string;
 }
 
 /**
@@ -62,7 +64,7 @@ export interface AcceptParams {
  *   (For Phase-4 v1 we trust the staging filename's ULID uniqueness; sha256 lands as a
  *   Phase-4-iter hardening note.)
  */
-export async function applyEditAtomically(kernel: KernelClient, params: AcceptParams): Promise<{ attempt_node_id: string }> {
+export async function applyEditAtomically(params: AcceptParams, kernel: KernelClient): Promise<{ attempt_node_id: string }> {
 	const targetPath = params.target_path;
 	const stagingPath = `${targetPath}.goat-staging-${ulid()}`;
 
@@ -95,6 +97,7 @@ export async function applyEditAtomically(kernel: KernelClient, params: AcceptPa
 			target_path: targetPath,
 			body: params.body,
 			anchor: params.anchor,
+			repo_id: params.repo_id ?? 'primary',   // Phase 21 XREPO-01
 		});
 
 		// Phase 3: rename — POSIX-atomic; Windows-atomic on NTFS via MoveFileEx.

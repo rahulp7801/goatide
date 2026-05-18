@@ -163,6 +163,8 @@ export interface ProposeEditParams {
 	 * Mandate-C exact-equality (Pitfall 5: 'Quality' !== 'Quality-First').
 	 */
 	session_priority?: string;
+	// Phase 21 XREPO-01 -- workspace-level scoping; default 'primary'.
+	repo_id?: string;
 }
 
 export interface ProposeEditResult {
@@ -183,6 +185,8 @@ export interface RecordRejectionParams {
 	receipt_id: string;
 	change_id: string;
 	note: string;
+	// Phase 21 XREPO-01 -- workspace-level scoping; default 'primary'.
+	repo_id?: string;
 }
 
 export interface RecordRejectionResult {
@@ -212,6 +216,8 @@ export interface RecordContractOverrideParams {
 	contract_node_id: string;
 	section_name: string;
 	note: string;        // >=1 char required (CANV-03 precedent)
+	// Phase 21 XREPO-01 (Open Decision §8 fence-symmetry) -- workspace-level scoping; default 'primary'.
+	repo_id?: string;
 }
 
 export interface RecordContractOverrideResult {
@@ -273,6 +279,8 @@ export interface AtomicAcceptParams {
 	target_path: string;
 	body: string;
 	anchor: { file?: string; symbol?: string; line?: number; ticket_id?: string };
+	// Phase 21 XREPO-01 -- workspace-level scoping; default 'primary'.
+	repo_id?: string;
 }
 
 export interface AtomicAcceptResult {

@@ -81,7 +81,7 @@ describe('CANV-06 + CANV-07 — save gate apply-edit + recovery scan integration
 		});
 		assert.equal(propose.receipt.destructive, false);
 
-		const result = await applyEditAtomically(kernel, {
+		const result = await applyEditAtomically({
 			target_path: target,
 			new_content: 'const a = 1;\nconst b = 2;\n',
 			change_id: propose.receipt.change_id,
@@ -90,7 +90,7 @@ describe('CANV-06 + CANV-07 — save gate apply-edit + recovery scan integration
 			accept_latency_ms: 333,
 			body: 'accepted modal save',
 			anchor: { file: target },
-		});
+		}, kernel);
 
 		assert.match(result.attempt_node_id, /^[0-9A-HJKMNP-TV-Z]{26}$/);
 		assert.equal(fs.readFileSync(target, 'utf8'), 'const a = 1;\nconst b = 2;\n');
@@ -111,13 +111,13 @@ describe('CANV-06 + CANV-07 — save gate apply-edit + recovery scan integration
 		});
 
 		await assert.rejects(
-			applyEditAtomically(kernel, {
+			applyEditAtomically({
 				target_path: target, new_content: 'const a = 1;\nconst b = 2;\n',
 				change_id: propose.receipt.change_id, receipt_id: propose.receipt.id,
 				tier: 'modal', accept_latency_ms: 100,
 				body: 'thanks for the change',  // Ghosting → Zod rejects
 				anchor: { file: target },
-			}),
+			}, kernel),
 		);
 		// File unchanged:
 		assert.equal(fs.readFileSync(target, 'utf8'), 'const a = 1;');
@@ -147,12 +147,12 @@ describe('CANV-06 + CANV-07 — save gate apply-edit + recovery scan integration
 			diff: `diff --git a/${target} b/${target}\n--- a/${target}\n+++ b/${target}\n@@ -1,1 +1,2 @@\n const x = 0;\n+const y = 0;\n`,
 			destructive: false, asOf: new Date().toISOString(),
 		});
-		const result = await applyEditAtomically(kernel, {
+		const result = await applyEditAtomically({
 			target_path: target, new_content: 'const x = 0;\nconst y = 0;\n',
 			change_id: propose.receipt.change_id, receipt_id: propose.receipt.id,
 			tier: 'inline', accept_latency_ms: 7777,
 			body: 'inline accepted', anchor: { file: target },
-		});
+		}, kernel);
 
 		// Verify by querying the Attempt node back. queryNodes returns kind + body + contract_path
 		// + invalidated_at + successor_id; the accept_latency_ms field lives in payload (queried via

@@ -47,6 +47,12 @@ export interface PendingAttemptRecord {
 	anchor: { file?: string; symbol?: string; line?: number; ticket_id?: string };
 	/** ISO-8601 timestamp captured at appendAttempt time (for forensics). */
 	queued_at: string;
+	/**
+	 * Phase 21 XREPO-01 -- repo_id of the workspace folder at queue time.
+	 * Optional for backward compat: pre-Phase-21 queued records lack this field.
+	 * drainAll defaults to 'primary' when absent (Pitfall E mitigation).
+	 */
+	repo_id?: string;
 }
 
 export interface DrainReport {
@@ -114,6 +120,12 @@ export class PendingAttemptsQueue {
 		let failed = 0;
 		for (const rec of records) {
 			try {
+				// Phase 21 XREPO-01 Pitfall E mitigation: if repo_id is absent (pre-Phase-21
+				// queued record), default to 'primary' and log a warning so operators can identify
+				// any records that predate the cross-repo audit trail.
+				if (rec.repo_id === undefined) {
+					console.warn('[goatide-bridge] pending-attempt replay missing repo_id; defaulting to primary (Pitfall E)');
+				}
 				await kernel.atomicAccept({
 					change_id: rec.change_id,
 					receipt_id: rec.receipt_id ?? '',
@@ -123,6 +135,7 @@ export class PendingAttemptsQueue {
 					target_path: rec.target_path,
 					body: rec.body,
 					anchor: rec.anchor,
+					repo_id: rec.repo_id ?? 'primary',   // Phase 21 XREPO-01
 				});
 				drained++;
 			} catch (e) {

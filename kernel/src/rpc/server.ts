@@ -312,6 +312,8 @@ function bindHandlers(
 	}));
 
 	connection.onRequest(ProposeEditRequest, requireAuth((params): ProposeEditResult => {
+		// Phase 21 XREPO-01 -- proposeEdit accepts repo_id for signature uniformity; persistence
+		// happens in atomicAccept's provenance.detail. See research §Pitfall A.
 		const asOf = params.asOf ?? new Date().toISOString();
 		const receipt = buildReceipt(
 			{ diff: params.diff, destructive: params.destructive, asOf },
@@ -360,6 +362,8 @@ function bindHandlers(
 					receipt_id: params.receipt_id,
 					rejected_change_id: params.change_id,
 					action: 'reject_with_note',
+					// Phase 21 XREPO-01 -- additive provenance trail.
+					repo_id: params.repo_id ?? 'primary',
 				},
 			},
 		});
@@ -424,6 +428,8 @@ function bindHandlers(
 					contract_node_id: params.contract_node_id,
 					section_name: params.section_name,
 					action: 'contract_override',
+					// Phase 21 XREPO-01 (Open Decision §8) -- additive provenance trail.
+					repo_id: params.repo_id ?? 'primary',
 				},
 			},
 		});
@@ -573,6 +579,8 @@ function bindHandlers(
 					staging_path: params.staging_path,
 					target_path: params.target_path,
 					action: 'atomic_accept',
+					// Phase 21 XREPO-01 -- additive provenance trail.
+					repo_id: params.repo_id ?? 'primary',
 				},
 			},
 		});

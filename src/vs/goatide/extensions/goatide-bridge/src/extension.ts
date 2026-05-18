@@ -29,6 +29,7 @@ import { registerMcpReconnectCommand } from './mcp/reconnect-command.js';
 import { registerWalkthroughCompletion, maybeAutoOpenWalkthrough } from './onboarding/walkthrough-completion.js';
 import { registerCrossRepoGraphCommand } from './inspector/cross-repo-command.js';
 import { runAddDecisionNodeFlow } from './canvas/authoring-flow.js';
+import { WorkspaceRepoState } from './save-gate/workspace-repo-state.js';
 
 /**
  * BRIDGE-RT-01: resolves `<fork-root>/kernel/dist/main.js` across both bridge load modes.
@@ -156,6 +157,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	await getCanvasModule().catch((e) => {
 		console.error('[goatide-bridge] canvas module pre-warm failed (save-gate destructive detection will fall back to silent-pass)', e);
 	});
+
+	// Phase 21 XREPO-02 -- initialize WorkspaceRepoState BEFORE save-gate registration
+	// (N3 ordering invariant: any save event firing after registerSaveGate may call
+	// WorkspaceRepoState.getActiveRepoId; the listener must be registered first).
+	WorkspaceRepoState.initialize(context);
 
 	registerSaveGate(context, kernel, getPanel, queue);
 

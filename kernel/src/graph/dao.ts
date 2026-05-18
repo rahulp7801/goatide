@@ -422,11 +422,18 @@ export class GraphDAO {
 	 * Two-arg callers (all existing call sites) default to repoId='primary' — back-compat
 	 * guaranteed since all pre-Phase-16 rows have repo_id='primary' via migration 0008.
 	 * Three-arg callers (future cross-repo readers, Phase 17 phase-B) filter to that repo only.
+	 *
+	 * Phase 21 Plan 21-02 Open Decision §9 (Path B) -- cross-repo opt-in:
+	 * Passing `repoId=undefined` skips the `repo_id = ?` predicate entirely, returning
+	 * matching rows across ALL repos. Use only on the save-gate citation discovery path
+	 * (buildReceipt) so cross-repo ConstraintNode citations surface for multi-root workspaces.
+	 * All other callers (harvester, anchor resolution) continue to pass a concrete repoId
+	 * and receive single-repo results.
 	 */
 	queryByAnchor(
 		args: { jsonPath: string; value: string },
 		asOf: string,
-		repoId: string = 'primary',
+		repoId?: string,
 	): NodeRow[] {
 		// drizzle-orm 0.45.2's `drizzle()` factory return type intersects BetterSQLite3Database
 		// with `{ $client: Database }` — accessing the underlying handle is the path of least
@@ -434,17 +441,30 @@ export class GraphDAO {
 		// from the JSON-stored shape; no Zod re-parse needed at the read boundary (DAO trusts
 		// what it wrote).
 		const sqlite = (this.db as unknown as { $client: BetterSqliteHandle }).$client;
-		const stmt = sqlite.prepare(`
-			SELECT id, kind, payload, confidence, valid_from, invalidated_at, recorded_at, superseded_by
-			FROM nodes
-			WHERE json_extract(payload, ?) = ?
-			  AND repo_id = ?
-			  AND valid_from <= ?
-			  AND (invalidated_at IS NULL OR invalidated_at > ?)
-			  AND recorded_at <= ?
-			ORDER BY valid_from ASC
-		`);
-		const rows = stmt.all(args.jsonPath, args.value, repoId, asOf, asOf, asOf) as Array<{
+		// Phase 21 XREPO-03 Path B: skip repo_id filter when repoId is undefined (cross-repo opt-in).
+		// All other cases keep the single-repo predicate for correctness (Phase 16 back-compat).
+		const effectiveRepoId = repoId ?? 'primary';
+		const useCrossRepo = repoId === undefined;
+		const sql = useCrossRepo
+			? `SELECT id, kind, payload, confidence, valid_from, invalidated_at, recorded_at, superseded_by, repo_id
+			   FROM nodes
+			   WHERE json_extract(payload, ?) = ?
+			     AND valid_from <= ?
+			     AND (invalidated_at IS NULL OR invalidated_at > ?)
+			     AND recorded_at <= ?
+			   ORDER BY valid_from ASC`
+			: `SELECT id, kind, payload, confidence, valid_from, invalidated_at, recorded_at, superseded_by, repo_id
+			   FROM nodes
+			   WHERE json_extract(payload, ?) = ?
+			     AND repo_id = ?
+			     AND valid_from <= ?
+			     AND (invalidated_at IS NULL OR invalidated_at > ?)
+			     AND recorded_at <= ?
+			   ORDER BY valid_from ASC`;
+		const stmt = sqlite.prepare(sql);
+		const rows = (useCrossRepo
+			? stmt.all(args.jsonPath, args.value, asOf, asOf, asOf)
+			: stmt.all(args.jsonPath, args.value, effectiveRepoId, asOf, asOf, asOf)) as Array<{
 			id: string;
 			kind: string;
 			payload: string;
@@ -453,6 +473,7 @@ export class GraphDAO {
 			invalidated_at: string | null;
 			recorded_at: string;
 			superseded_by: string | null;
+			repo_id: string;
 		}>;
 		return rows.map((r) => ({
 			id: r.id,
@@ -463,7 +484,7 @@ export class GraphDAO {
 			invalidated_at: r.invalidated_at,
 			recorded_at: r.recorded_at,
 			superseded_by: r.superseded_by,
-			repo_id: 'primary',
+			repo_id: r.repo_id,
 		}));
 	}
 

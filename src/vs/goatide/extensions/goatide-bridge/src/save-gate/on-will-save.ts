@@ -32,6 +32,7 @@ import type { CanvasPanel } from '../canvas/panel.js';
 import { dispatchTier } from './tier-dispatch.js';
 import { getCanvasModule, getCanvasModuleSync } from './canvas-module.js';
 import type { PendingAttemptsQueue, PendingAttemptRecord } from './pending-attempts.js';
+import { WorkspaceRepoState } from './workspace-repo-state.js';
 
 /**
  * Phase 12 Plan 12-01 (CONTEXT.md Option B): synchronous high-impact-contract detection
@@ -196,14 +197,8 @@ export function registerSaveGate(
 		// rejection (extHostDocumentSaveParticipant has no reporter for it — it'd surface as
 		// `(node:###) UnhandledPromiseRejectionWarning` in the extension-host log only).
 		void (async () => {
-			let original: string;
 			try {
-				original = await fsp.readFile(doc.uri.fsPath, 'utf8');
-			} catch {
-				original = '';   // new file
-			}
-			try {
-				await handleProposedSave(kernel, getPanel(), doc, original, modified, queue);
+				await handleProposedSave(event, kernel, queue, getPanel(), modified);
 			} catch (err) {
 				console.error('[goatide-bridge] handleProposedSave failed', err);
 			}
@@ -213,23 +208,53 @@ export function registerSaveGate(
 	return sub;
 }
 
-async function handleProposedSave(
+/**
+ * Handle a proposed save event: resolve repo_id, call kernel.proposeEdit, then dispatchTier.
+ *
+ * Phase 21 XREPO-02 (Open Decision Sec.7): repo_id is resolved ONCE per save via
+ * WorkspaceRepoState.getActiveRepoId(event.document.uri) and threaded into BOTH
+ * kernel.proposeEdit AND dispatchTier to avoid 4+ redundant cache lookups.
+ *
+ * Exported for direct testability in unit tests (test/unit/save-gate/tier-dispatch-repo-id-threading.test.ts).
+ *
+ * @param event     The onWillSaveTextDocument event.
+ * @param kernel    KernelClient (must be connected; caller checks isConnected() when delegating from degraded fork).
+ * @param queue     PendingAttemptsQueue for kernel-degraded path.
+ * @param panel     CanvasPanel instance (optional; defaults to getPanel() in listener context).
+ * @param modified  In-memory modified content captured synchronously before async work (optional; defaults to event.document.getText()).
+ */
+export async function handleProposedSave(
+	event: Pick<vscode.TextDocumentWillSaveEvent, 'document'>,
 	kernel: KernelClient,
-	panel: CanvasPanel,
-	doc: vscode.TextDocument,
-	original: string,
-	modified: string,
-	queue: PendingAttemptsQueue,
+	queue: PendingAttemptsQueue | undefined,
+	panel?: CanvasPanel,
+	modified?: string,
 ): Promise<void> {
-	if (!kernel.isConnected()) {
+	const doc = event.document;
+	const modifiedContent = modified ?? doc.getText();
+
+	let original: string;
+	try {
+		original = await fsp.readFile(doc.uri.fsPath, 'utf8');
+	} catch {
+		original = '';   // new file
+	}
+
+	if (!(kernel.isConnected?.() ?? true)) {
 		// Plan 04-06: kernel-degraded fork (CANV-10). Forks BEFORE classifyTier because
 		// kernel.proposeEdit is unavailable in this state — we can't classify a tier
 		// without a receipt + citationDetails.
-		await handleKernelDegradedSave(doc, original, modified, queue);
+		if (queue !== undefined) {
+			await handleKernelDegradedSave(doc, original, modifiedContent, queue);
+		}
 		return;
 	}
-	const diff = createPatch(doc.uri.fsPath, original, modified, '', '');
+	const diff = createPatch(doc.uri.fsPath, original, modifiedContent, '', '');
 	console.log('[goatide-bridge]   handleProposedSave fsPath=' + doc.uri.fsPath + ' diff.length=' + diff.length);
+
+	// Phase 21 XREPO-02 (Open Decision Sec.7) -- resolve repo_id ONCE per save before
+	// calling proposeEdit AND dispatchTier. Single cache hit instead of 4+ lookups.
+	const repo_id = await WorkspaceRepoState.getActiveRepoId(doc.uri);
 
 	// Phase 7 Plan 07-05 (DRIFT-02): read goatide.session.priority from VS Code config and
 	// thread it through kernel.proposeEdit. The kernel runs evaluateIntentDrift over the
@@ -247,6 +272,7 @@ async function handleProposedSave(
 			destructive: false,
 			asOf: new Date().toISOString(),
 			session_priority: sessionPriority,
+			repo_id,   // Phase 21 XREPO-01
 		});
 	} catch (e) {
 		console.error('[goatide-bridge] proposeEdit failed', e);
@@ -277,18 +303,25 @@ async function handleProposedSave(
 		console.error('[goatide-bridge] runDriftAndLock failed (continuing with empty findings)', e);
 	}
 
+	if (panel === undefined) {
+		// panel is required for dispatchTier; if not provided (e.g. in degraded test context), skip dispatch.
+		console.warn('[goatide-bridge] handleProposedSave: no panel provided; skipping dispatchTier');
+		return;
+	}
+
 	const startMs = Date.now();
 	await dispatchTier({
 		kernel,
 		panel,
 		doc,
 		original,
-		modified,
+		modified: modifiedContent,
 		diff,
 		receipt,
 		startMs,
 		driftFindings,
 		lockTrigger,
+		repo_id,   // Phase 21 XREPO-02 (Open Decision Sec.7) -- single source of truth
 	});
 }
 

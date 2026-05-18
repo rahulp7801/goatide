@@ -64,10 +64,15 @@ describe('WorkspaceRepoState XREPO-02a/b (RED stub -- Phase 21 Plan 21-01)', () 
 		const restoreFolders = mockWorkspaceFolders([folder]);
 
 		// Mock vscode.workspace.getWorkspaceFolder to return our test folder for the mock URI.
-		const origGetWorkspaceFolder = vscode.workspace.getWorkspaceFolder.bind(vscode.workspace);
+		// Guard against undefined (the mock vscode environment may not provide this method).
+		const origGetWorkspaceFolder = typeof vscode.workspace.getWorkspaceFolder === 'function'
+			? vscode.workspace.getWorkspaceFolder.bind(vscode.workspace)
+			: undefined;
 		(vscode.workspace as unknown as Record<string, unknown>)['getWorkspaceFolder'] = (_uri: vscode.Uri) => folder;
 
 		// Mock vscode.extensions.getExtension to return a synthetic git extension.
+		// Use folder.uri.fsPath (not the raw POSIX FIXTURE_FOLDER_PATH literal) so the
+		// rootUri.fsPath comparison in enumerateWorkspaceRepos matches on all platforms.
 		const origGetExtension = vscode.extensions.getExtension.bind(vscode.extensions);
 		(vscode.extensions as unknown as Record<string, unknown>)['getExtension'] = (id: string) => {
 			if (id === 'vscode.git') {
@@ -77,7 +82,7 @@ describe('WorkspaceRepoState XREPO-02a/b (RED stub -- Phase 21 Plan 21-01)', () 
 						getAPI: (_version: number) => ({
 							repositories: [
 								{
-									rootUri: { fsPath: FIXTURE_FOLDER_PATH },
+									rootUri: { fsPath: folder.uri.fsPath },
 									state: {
 										remotes: [
 											{ name: 'origin', fetchUrl: FIXTURE_URL },
@@ -95,7 +100,6 @@ describe('WorkspaceRepoState XREPO-02a/b (RED stub -- Phase 21 Plan 21-01)', () 
 		try {
 			const { WorkspaceRepoState } = await import('../../../src/save-gate/workspace-repo-state.js');
 			WorkspaceRepoState.__resetForTest();
-			// RED today: getActiveRepoId throws 'not implemented yet'.
 			// GREEN after Plan 21-02 implements the method.
 			const result = await WorkspaceRepoState.getActiveRepoId(mockUri);
 			assert.strictEqual(result.length, 12, 'result must be 12 chars');
@@ -103,7 +107,11 @@ describe('WorkspaceRepoState XREPO-02a/b (RED stub -- Phase 21 Plan 21-01)', () 
 			assert.strictEqual(result, FIXTURE_FINGERPRINT, 'fingerprint must match SHA-256/12 of normalized URL');
 		} finally {
 			restoreFolders();
-			(vscode.workspace as unknown as Record<string, unknown>)['getWorkspaceFolder'] = origGetWorkspaceFolder;
+			if (origGetWorkspaceFolder !== undefined) {
+				(vscode.workspace as unknown as Record<string, unknown>)['getWorkspaceFolder'] = origGetWorkspaceFolder;
+			} else {
+				delete (vscode.workspace as unknown as Record<string, unknown>)['getWorkspaceFolder'];
+			}
 			(vscode.extensions as unknown as Record<string, unknown>)['getExtension'] = origGetExtension;
 		}
 	});
@@ -114,11 +122,15 @@ describe('WorkspaceRepoState XREPO-02a/b (RED stub -- Phase 21 Plan 21-01)', () 
 
 		const restoreFolders = mockWorkspaceFolders([folder]);
 
-		// Mock workspace folder resolution
-		const origGetWorkspaceFolder = vscode.workspace.getWorkspaceFolder.bind(vscode.workspace);
+		// Mock workspace folder resolution.
+		// Guard against undefined (the mock vscode environment may not provide this method).
+		const origGetWorkspaceFolder = typeof vscode.workspace.getWorkspaceFolder === 'function'
+			? vscode.workspace.getWorkspaceFolder.bind(vscode.workspace)
+			: undefined;
 		(vscode.workspace as unknown as Record<string, unknown>)['getWorkspaceFolder'] = (_uri: vscode.Uri) => folder;
 
-		// Mock git extension with NO remotes for this folder
+		// Mock git extension with NO remotes for this folder.
+		// Use folder.uri.fsPath for cross-platform path matching.
 		const origGetExtension = vscode.extensions.getExtension.bind(vscode.extensions);
 		(vscode.extensions as unknown as Record<string, unknown>)['getExtension'] = (id: string) => {
 			if (id === 'vscode.git') {
@@ -128,7 +140,7 @@ describe('WorkspaceRepoState XREPO-02a/b (RED stub -- Phase 21 Plan 21-01)', () 
 						getAPI: (_version: number) => ({
 							repositories: [
 								{
-									rootUri: { fsPath: '/tmp/no-git-repo' },
+									rootUri: { fsPath: folder.uri.fsPath },
 									state: {
 										remotes: [], // no remotes -- triggers 'primary' fallback
 									},
@@ -144,13 +156,16 @@ describe('WorkspaceRepoState XREPO-02a/b (RED stub -- Phase 21 Plan 21-01)', () 
 		try {
 			const { WorkspaceRepoState } = await import('../../../src/save-gate/workspace-repo-state.js');
 			WorkspaceRepoState.__resetForTest();
-			// RED today: getActiveRepoId throws 'not implemented yet'.
 			// GREEN after Plan 21-02 implements the 'primary' fallback path.
 			const result = await WorkspaceRepoState.getActiveRepoId(mockUri);
 			assert.strictEqual(result, 'primary', 'must return primary when no git remote');
 		} finally {
 			restoreFolders();
-			(vscode.workspace as unknown as Record<string, unknown>)['getWorkspaceFolder'] = origGetWorkspaceFolder;
+			if (origGetWorkspaceFolder !== undefined) {
+				(vscode.workspace as unknown as Record<string, unknown>)['getWorkspaceFolder'] = origGetWorkspaceFolder;
+			} else {
+				delete (vscode.workspace as unknown as Record<string, unknown>)['getWorkspaceFolder'];
+			}
 			(vscode.extensions as unknown as Record<string, unknown>)['getExtension'] = origGetExtension;
 		}
 	});

@@ -64,6 +64,8 @@ export interface DispatchInputs {
 	// only when populated.
 	driftFindings?: DriftFinding[];
 	lockTrigger?: LockTrigger | null;
+	// Phase 21 XREPO-02 -- threaded from on-will-save.ts; default 'primary' when omitted.
+	repo_id?: string;
 }
 
 /**
@@ -276,11 +278,12 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 				contract_node_id: payload.contract_node_id,
 				section_name: payload.section_name,
 				note: payload.note,
+				repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02 (Open Decision Sec.8)
 			});
 			// Apply the file write atomically (Plan 04-05 path) so the override is the
 			// "accept this save" outcome — the developer chose to bypass the lock with a
 			// written reason; the file should land on disk just like a modal-tier accept.
-			await applyEditAtomically(inputs.kernel, {
+			await applyEditAtomically({
 				target_path: inputs.doc.uri.fsPath,
 				new_content: inputs.modified,
 				change_id: inputs.receipt.change_id,
@@ -289,7 +292,8 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 				accept_latency_ms: Date.now() - inputs.startMs,
 				body: `contract_override: ${payload.note}`,
 				anchor: { file: inputs.doc.uri.fsPath },
-			});
+				repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02
+			}, inputs.kernel);
 			return { ok: true, attempt_node_id };
 		} catch (e) {
 			return { ok: false, error: String((e as Error)?.message ?? e) };
@@ -304,7 +308,7 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		if (benignSetting === 'suppress') {
 			// CANV-05: even silent emits a receipt. atomicAccept persists the Attempt.
 			// Pre-Phase-17 behavior preserved verbatim when benignSetting === 'suppress'.
-			await applyEditAtomically(inputs.kernel, {
+			await applyEditAtomically({
 				target_path: inputs.doc.uri.fsPath,
 				new_content: inputs.modified,
 				change_id: inputs.receipt.change_id,
@@ -313,7 +317,8 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 				accept_latency_ms: 0,
 				body: `silent save of ${inputs.doc.uri.fsPath}`,
 				anchor: { file: inputs.doc.uri.fsPath },
-			});
+				repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02
+			}, inputs.kernel);
 			return;
 		}
 		if (benignSetting === 'hover') {
@@ -337,7 +342,7 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		// If the user clicks Accept, the Attempt is already on the graph - the click is a
 		// no-op on the current Attempt but logged for analytics.
 		const attemptStartMs = Date.now();
-		await applyEditAtomically(inputs.kernel, {
+		await applyEditAtomically({
 			target_path: inputs.doc.uri.fsPath,
 			new_content: inputs.modified,
 			change_id: inputs.receipt.change_id,
@@ -346,7 +351,8 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 			accept_latency_ms: 0,    // user did not see a Canvas; latency is N/A
 			body: `inline save of ${inputs.doc.uri.fsPath}`,
 			anchor: { file: inputs.doc.uri.fsPath },
-		});
+			repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02
+		}, inputs.kernel);
 		// Fire-and-forget the toast - DO NOT await; the function returns immediately so the
 		// editor stays unblocked.
 		void (async () => {
@@ -361,6 +367,7 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 						receipt_id: inputs.receipt.id,
 						change_id: inputs.receipt.change_id,
 						note: `inline_dismiss after ${Date.now() - attemptStartMs}ms (user dismissed the inline prompt; the file write already completed)`,
+						repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02
 					});
 				} catch (e) {
 					console.error('[goatide-bridge] inline_dismiss recordRejection failed', e);
@@ -402,7 +409,7 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 		}
 		if (highImpactSetting === 'suppress') {
 			// Silent accept — apply atomically without UI.
-			await applyEditAtomically(inputs.kernel, {
+			await applyEditAtomically({
 				target_path: inputs.doc.uri.fsPath,
 				new_content: inputs.modified,
 				change_id: inputs.receipt.change_id,
@@ -411,7 +418,8 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 				accept_latency_ms: 0,
 				body: `highImpact-suppressed save of ${inputs.doc.uri.fsPath}`,
 				anchor: { file: inputs.doc.uri.fsPath },
-			});
+				repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02
+			}, inputs.kernel);
 			return;
 		}
 		// highImpactSetting === 'confirm' (default) — fall through to panel.showAndAwait below.
@@ -471,7 +479,7 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 	// CanvasPanel.dispose() is synchronous (returns void); awaiting a non-Promise is a
 	// no-op so the surrounding async/await call shape stays intact for diff minimality.
 	if (decision.kind === 'accept') {
-		await applyEditAtomically(inputs.kernel, {
+		await applyEditAtomically({
 			target_path: inputs.doc.uri.fsPath,
 			new_content: inputs.modified,
 			change_id: inputs.receipt.change_id,
@@ -480,15 +488,27 @@ export async function dispatchTier(inputs: DispatchInputs): Promise<void> {
 			accept_latency_ms: decision.accept_latency_ms ?? Date.now() - inputs.startMs,
 			body: `accepted ${tier} save of ${inputs.doc.uri.fsPath}`,
 			anchor: { file: inputs.doc.uri.fsPath },
-		});
+			repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02
+		}, inputs.kernel);
 		await inputs.panel.dispose();
 	} else if (decision.kind === 'reject') {
+		// Phase 21 XREPO-02 -- record all rejections (including no-note) so the audit trail
+		// is complete. Empty-note reject is distinguishable from reject_with_note by note=''.
+		await inputs.kernel.recordRejection({
+			receipt_id: inputs.receipt.id,
+			change_id: inputs.receipt.change_id,
+			note: '',
+			repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02
+		}).catch((e) => {
+			console.error('[goatide-bridge] reject recordRejection failed', e);
+		});
 		await inputs.panel.dispose();
 	} else if (decision.kind === 'reject_with_note') {
 		await inputs.kernel.recordRejection({
 			receipt_id: inputs.receipt.id,
 			change_id: inputs.receipt.change_id,
 			note: decision.note ?? '',
+			repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02
 		}).catch((e) => {
 			console.error('[goatide-bridge] recordRejection failed', e);
 		});
@@ -513,7 +533,7 @@ async function dispatchHover(
 ): Promise<void> {
 	// Step 1: apply atomically — same path as current silent branch.
 	// Attempt recorded with tier: 'silent'.
-	await applyEditAtomically(inputs.kernel, {
+	await applyEditAtomically({
 		target_path: inputs.doc.uri.fsPath,
 		new_content: inputs.modified,
 		change_id: inputs.receipt.change_id,
@@ -522,7 +542,8 @@ async function dispatchHover(
 		accept_latency_ms: 0,
 		body: `hover-silent save of ${inputs.doc.uri.fsPath}`,
 		anchor: { file: inputs.doc.uri.fsPath },
-	});
+		repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02
+	}, inputs.kernel);
 
 	// Step 2: top-2 citation labels (short — node_id last 6 chars fallback when no label).
 	const top2 = citationDetails.slice(0, 2).map(c => (c as unknown as { label?: string }).label ?? c.node_id.slice(-6)).join(', ');
@@ -558,6 +579,7 @@ async function dispatchHover(
 					receipt_id: inputs.receipt.id,
 					change_id: inputs.receipt.change_id,
 					note: 'user_post_hoc_reject_benign_hover',
+					repo_id: inputs.repo_id ?? 'primary',   // Phase 21 XREPO-02
 				});
 			} catch (e) {
 				console.error('[goatide-bridge] post-hoc reject failed', e);
