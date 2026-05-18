@@ -531,19 +531,43 @@ async function dispatchHover(
 	// em-dash) per N5 — Windows terminal/hook encoding safety.
 	vscode.window.setStatusBarMessage(`GoatIDE: benign save - top 2 citations: ${top2}`, 4000);
 
-	// Step 4: non-blocking info notification with Open-full-receipt action.
+	// Step 4: non-blocking info notification with Reject + Open-full-receipt actions.
+	// Phase 20 AUTH-02 closure: post-hoc Reject button added per ROADMAP SC#2.
+	// Mandate D fence still holds: this function is reachable ONLY on (silent, false, 'hover')
+	// -- destructive saves NEVER see the Reject button (matrix snapshot in
+	// test/unit/save-gate/mandate-d-destructive-no-hover.test.ts asserts the 4x3 invariant +
+	// recordRejectionCalls === 0 in every cell; the recordRejectionCalls column was added
+	// in Plan 20-01 Wave 0 and continues to PASS after this edit).
+	// OQ#1 + OQ#2 resolution: reuse existing kernel.recordRejection signature verbatim;
+	// note literal 'user_post_hoc_reject_benign_hover' distinguishes the post-hoc reject
+	// from the inline-tier Dismiss path's note (which uses decision.note).
 	const choice = await vscode.window.showInformationMessage(
 		'GoatIDE: benign save accepted',
+		'Reject',                            // Phase 20 AUTH-02 -- post-hoc reject button
 		'Open full receipt',
 	);
+	if (choice === 'Reject') {
+		const confirmed = await vscode.window.showWarningMessage(
+			'Reject this benign save post-hoc? The file remains on disk; an OpenQuestion will be recorded against the cited rationale.',
+			{ modal: true },
+			'Reject',
+		);
+		if (confirmed === 'Reject') {
+			try {
+				await inputs.kernel.recordRejection({
+					receipt_id: inputs.receipt.id,
+					change_id: inputs.receipt.change_id,
+					note: 'user_post_hoc_reject_benign_hover',
+				});
+			} catch (e) {
+				console.error('[goatide-bridge] post-hoc reject failed', e);
+			}
+		}
+		return;
+	}
 	if (choice === 'Open full receipt') {
 		// Fallback: same modal path the user would have seen at benignSetting === 'modal'.
 		// NOTE: the write has ALREADY happened in Step 1; this modal is informational.
-		// If the user clicks 'Reject' in the modal, that would record a post-hoc rejection
-		// analogous to the inline-tier Dismiss path (tier-dispatch.ts lines ~358-369). For v2.0
-		// simplicity, we drop the modal's decision: the file is already on disk and the
-		// hover-tier semantics treat the save as accepted regardless. Future v2.1 may
-		// surface 'Reject' here as a recordRejection equivalent; out of scope for Phase 17.
 		try {
 			await inputs.panel.showAndAwait(showPayload);
 		} catch (e) {
