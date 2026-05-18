@@ -87,6 +87,7 @@ import { AbstractUpdateService } from '../../platform/update/electron-main/abstr
 import { CrossAppUpdateCoordinator } from '../../platform/update/electron-main/crossAppUpdateIpc.js';
 import { MacOSCrossAppSecretSharing } from '../../platform/secrets/electron-main/macOSCrossAppSecretSharing.js';
 import { GoatIdeNoOpUpdateService } from '../../goatide/update/noOpUpdateService.js';
+import { initGoatIdeUpdater } from '../../goatide/update/goatideUpdater.js';
 import { IOpenURLOptions, IURLService } from '../../platform/url/common/url.js';
 import { URLHandlerChannelClient, URLHandlerRouter } from '../../platform/url/common/urlIpc.js';
 import { NativeURLService } from '../../platform/url/common/urlService.js';
@@ -663,6 +664,10 @@ export class CodeApplication extends Disposable {
 			}, 2500));
 		}, 2500));
 		eventuallyPhaseScheduler.schedule();
+
+		// Phase 22 C3 (Plan 22-04): kick off the electron-updater auto-update check.
+		// No-ops in dev mode (VSCODE_DEV guard). Mandate D dialog ('Restart Now / Later') applies.
+		initGoatIdeUpdater();
 	}
 
 	private async setupProtocolUrlHandlers(accessor: ServicesAccessor, mainProcessElectronServer: ElectronIPCServer): Promise<IInitialProtocolUrls | undefined> {
