@@ -3,9 +3,10 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Verify + Ship
 status: executing
-last_updated: "2026-05-18T17:14:00Z"
-last_activity: 2026-05-18 -- Phase 22 Plan 01 closed; GoatIdeNoOpUpdateService (IUpdateService stub) + VSCODE_DEV guard + dev-app-update.yml gitignore; 3/3 GoatIde tests GREEN; SC13 0 CDN hits; Wave-0 fences landed; commit b2437d3
+last_updated: "2026-05-18T10:35:00Z"
+last_activity: 2026-05-18 -- Phase 22 Plan 02 tasks 1-5 landed; C1 macOS signing infra (electron-builder.yml hooks + 5 files in build/signing/ + @electron/notarize); checkpoint at Task 6 (cert-gate); C1 blocked on cert procurement; commits 3cf21910b6c..0763ed9fe6c
 progress:
+  [█████████░] 94%
   total_phases: 24
   completed_phases: 8
   total_plans: 48
@@ -214,7 +215,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 - **Last closed phase:** 21 -- Cross-Repo Activation (Single-DB) (XREPO-01..03 GREEN; 13/13 SC3b PASS; 3-run flakiness fence 3/3 EXIT 0) (closed 2026-05-18)
 - **Last closed plan:** 21-04 -- Wave 3 phase verify + closure ceremony
 - **Last activity:** 2026-05-18 -- Phase 21 closed; XREPO-01..03 GREEN; flakiness fence 3/3 EXIT 0; 21-VERIFICATION.md + 21-SUMMARY.md authored
-- **Last session:** 2026-05-18T17:14:04.652Z
+- **Last session:** 2026-05-18T17:23:40.936Z
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
 
