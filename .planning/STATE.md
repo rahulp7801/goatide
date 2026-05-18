@@ -3,15 +3,16 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Verify + Ship
 status: executing
-last_updated: "2026-05-18T10:35:00Z"
-last_activity: 2026-05-18 -- Phase 22 Plan 02 tasks 1-5 landed; C1 macOS signing infra (electron-builder.yml hooks + 5 files in build/signing/ + @electron/notarize); checkpoint at Task 6 (cert-gate); C1 blocked on cert procurement; commits 3cf21910b6c..0763ed9fe6c
+last_updated: "2026-05-18T11:00:00Z"
+last_activity: 2026-05-18 -- Plan 22-02 closed cert-gated; C1 macOS signing infrastructure complete (electron-builder.yml hooks + 5 files in build/signing/ + @electron/notarize; commits 3cf21910b6c..0763ed9fe6c); live signed-build UAT deferred to CI (Windows host, Apple Developer ID secrets not yet available); ready for Plan 22-03 (C2 Windows Azure Trusted Signing config, also cert-gated)
+current_plan: 22-03
 progress:
   [█████████░] 94%
   total_phases: 24
   completed_phases: 8
   total_plans: 48
-  completed_plans: 45
-  percent: 94
+  completed_plans: 46
+  percent: 96
 ---
 
 ---

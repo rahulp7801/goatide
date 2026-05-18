@@ -507,6 +507,10 @@
 
 **Plans:** 2/5 plans executed
 
+**Plan 22-01:** Closed -- Wave-0 fences + electron-builder Wave-1 baseline
+
+**Plan 22-02:** Closed cert-gated -- C1 macOS signing infrastructure complete (electron-builder.yml hooks + entitlements plists + @electron/notarize); live signed-build UAT deferred to CI (Windows host, Apple Developer ID secrets not yet available). Next: Plan 22-03 (C2 Windows Azure Trusted Signing config, also cert-gated).
+
 ---
 
 ## Progress Table

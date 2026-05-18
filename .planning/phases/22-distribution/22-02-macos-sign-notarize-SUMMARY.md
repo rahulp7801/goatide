@@ -55,7 +55,8 @@ patterns-established:
   - "Pattern: CJS electron-builder hooks short-circuit guard (platform !== darwin / missing env var) enables cert-absent builds without crashing"
   - "Pattern: .node file re-sign before .app codesign -- required whenever Phase 13-style postinstall rebuild signs with a different identity"
 
-requirements-completed: [C1]
+requirements-completed: []
+requirements-cert-gated: [C1]
 
 # Metrics
 duration: 25min
@@ -64,14 +65,14 @@ completed: 2026-05-18
 
 # Phase 22 Plan 02: macOS Sign + Notarize SUMMARY
 
-**macOS C1 signing infrastructure landed: electron-builder hooks + hardened-runtime entitlements plists + @electron/notarize wired; all short-circuit cert-absent so repo absorbs the change today, signed .dmg ships when Apple Developer ID secrets are injected in CI**
+**macOS C1 signing infrastructure landed cert-gated: electron-builder hooks + hardened-runtime entitlements plists + @electron/notarize wired; all hooks short-circuit cert-absent; live signed-build UAT deferred to CI when Apple Developer ID secrets land (Windows host, cannot run macOS dry-run in-session)**
 
 ## Performance
 
 - **Duration:** ~25 min
 - **Started:** 2026-05-18T10:10:00Z
 - **Completed:** 2026-05-18T10:35:00Z
-- **Tasks:** 5 of 7 completed (Tasks 1-5 auto; Task 6 = cert-gate checkpoint; Task 7 = post-checkpoint commit)
+- **Tasks:** 5 of 7 auto-complete + Task 6 cert-gated closure + Task 7 docs commit (see Cert-Gated Status section)
 - **Files modified:** 7 (electron-builder.yml, package.json, package-lock.json + 5 new files in build/signing/)
 
 ## Accomplishments
@@ -89,9 +90,9 @@ completed: 2026-05-18
 4. **Task 4: afterSign.cjs + @electron/notarize** - `6bd6b7d0e98` (feat)
 5. **Task 5: afterAllArtifactBuild.cjs** - `0763ed9fe6c` (feat)
 
-**Task 6 (cert-gate):** CHECKPOINT -- operator validates signed macOS build via CI when Apple Developer ID + secrets are available.
+**Task 6 (cert-gate):** CERT-GATED -- operator validates in CI. User decision: Windows host; cannot run macOS dry-run or live signed-build in-session. No live signed build was executed in this session. Live signed-build UAT deferred to CI when Apple Developer ID secrets land. See "Cert-Gated Status" section for required CI env vars.
 
-**Task 7 (post-checkpoint commit):** Deferred until Task 6 checkpoint is resolved.
+**Task 7 (docs/state commit):** Complete -- planning artifacts (SUMMARY.md, STATE.md, ROADMAP.md, REQUIREMENTS.md) updated to reflect cert-gated closure of plan 22-02.
 
 ## Files Created/Modified
 
@@ -128,19 +129,62 @@ completed: 2026-05-18
 **Total deviations:** 1 auto-fixed (Rule 1 - copyright header format mismatch)
 **Impact on plan:** Required change; no scope creep; all planned functionality delivered exactly as specified.
 
-## Cert-Gated Tasks (Task 6 + Task 7)
+## Cert-Gated Status
 
-**Status: CERT-GATED -- operator validates in CI**
+**Plan 22-02 closed cert-gated.** User decision (2026-05-18): Windows host; cannot run macOS dry-run or live signed-build in-session. Infrastructure is complete and repo-absorbed. Live signed-build UAT deferred to CI when Apple Developer ID secrets land.
 
-Task 6 (`checkpoint:human-verify`) requires the operator to:
-1. Confirm Apple Developer ID Application certificate availability
-2. Confirm GitHub Actions macOS-runner secrets configured (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`, `CSC_LINK`, `CSC_KEY_PASSWORD`)
-3. Either: trigger CI run and verify `xcrun stapler validate` + `codesign --verify --deep --strict` + `spctl --assess` pass
-4. Or: acknowledge cert-absent status; infrastructure is landed; Plan 22-05 will revisit C1 sign-off
+**No live signed build was executed in this session.** The hooks are present, entitlements are present, and the cert-absent short-circuit paths are wired. The macOS dry-run (`npx electron-builder --mac --config electron-builder.yml --dir`) was NOT executed (requires a macOS host).
 
-Task 7 (final commit) deferred until post-Task-6 continuation agent.
+### What remains for CI (Apple Developer ID secrets required)
 
-**STATE.md note:** Phase 22 C1 infrastructure landed (commit `0763ed9fe6c`); `blocked on cert procurement` for C1 full sign-off.
+The following environment variables must be set on the GitHub Actions macOS runner before Plan 22-05 can close C1:
+
+| Env Var | Purpose |
+|---------|---------|
+| `APPLE_ID` | Apple Developer account email (triggers notarization in `afterSign.cjs`) |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password from appleid.apple.com (passed to notarytool) |
+| `APPLE_TEAM_ID` | 10-character Apple Team ID (passed to notarytool) |
+| `CSC_LINK` | Base64-encoded `.p12` Developer ID Application certificate (electron-builder code-signing) |
+| `CSC_KEY_PASSWORD` | Password used to export the `.p12` certificate |
+
+### What was verified in-session
+
+- Hooks present: `build/signing/beforeSign.cjs`, `build/signing/afterSign.cjs`, `build/signing/afterAllArtifactBuild.cjs`
+- Entitlements present: `build/signing/entitlements.mac.plist`, `build/signing/entitlements.mac.inherit.plist`
+- `electron-builder.yml` `mac:` block extended with `entitlements`, `entitlementsInherit`, `notarize: false`, `gatekeeperAssess: false`
+- `@electron/notarize@^3.1.1` in `package.json` devDependencies
+- All 3 hooks parse cleanly (`node -c`) and export `default` async functions
+- Cert-absent short-circuit paths verified by code inspection (NOT by executing on macOS)
+
+### NOT verified in-session
+
+- macOS cert-absent dry-run (`npx electron-builder --mac --config electron-builder.yml --dir`) -- requires macOS host
+- Live signed build (`codesign --verify --deep --strict`, `xcrun stapler validate`, `spctl --assess`) -- requires Apple Developer cert + macOS runner
+- Gatekeeper fresh-machine dialog test -- requires notarized DMG + second Mac
+
+### Resumption
+
+Plan 22-05 (Phase 22 closure ceremony) gates C1 sign-off on cert-availability. When Apple Developer ID secrets are available in CI, run the macOS workflow and verify the 3 verification commands above pass, then flip C1 from cert-gated to Closed in REQUIREMENTS.md and ROADMAP.md.
+
+## Self-Check
+
+**Self-Check: PASSED (with cert-gated scope)**
+
+Files verified present:
+- `build/signing/entitlements.mac.plist` -- FOUND
+- `build/signing/entitlements.mac.inherit.plist` -- FOUND
+- `build/signing/beforeSign.cjs` -- FOUND
+- `build/signing/afterSign.cjs` -- FOUND
+- `build/signing/afterAllArtifactBuild.cjs` -- FOUND
+
+Commits verified:
+- `3cf21910b6c` Task 1 -- FOUND
+- `1cf17c5b258` Task 2 -- FOUND
+- `3600527e95e` Task 3 -- FOUND
+- `6bd6b7d0e98` Task 4 -- FOUND
+- `0763ed9fe6c` Task 5 -- FOUND
+
+**Claims NOT made:** Signed build was NOT verified. macOS dry-run was NOT executed. These are deferred to CI (see Cert-Gated Status section).
 
 ## Issues Encountered
 
