@@ -25,7 +25,7 @@
 ### Authoring (Phase 20)
 
 - [x] **AUTH-01**: `goatide.canvas.addDecisionNode` placeholder replaced with real write path. User can author a DecisionNode via command palette (table stakes: anchor selection from current file's known anchors → required rationale text via InputBox → optional constraint links picker → atomic write via existing `proposeEdit` + `atomicAccept` RPCs). Anchor auto-population from `CanvasShowPayload.anchor_path` when triggered from the POLISH-03 empty-state CTA.
-- [ ] **AUTH-02**: Post-hoc rejection — `dispatchHover` benign-tier status-bar message gains a "Reject" action button. Click → confirmation modal → `kernel.recordRejection(attemptId)`. Reject button NEVER appears on destructive-tier saves (Mandate D fence; byte-identity matrix test extended).
+- [x] **AUTH-02**: Post-hoc rejection — `dispatchHover` benign-tier status-bar message gains a "Reject" action button. Click → confirmation modal → `kernel.recordRejection(attemptId)`. Reject button NEVER appears on destructive-tier saves (Mandate D fence; byte-identity matrix test extended).
 - [ ] **AUTH-03**: `refuse-llm-in-canvas.meta.sh` Mandate A fence extended to cover host-side authoring files (`canvas/authoring-*.ts`) — closes the v2.0 blind spot where the fence scanned only `canvas/webview/*`. New meta-test asserts positive + negative round-trip.
 - [ ] **AUTH-04**: `refuse-deep05-write.sh` Mandate B fence BANNED array forward-declared to include the v2.1 write RPC token(s) BEFORE any authoring inspector-adjacent code is written. CI gate fails if inspector/ imports the new write surface.
 
@@ -300,7 +300,7 @@
 | VERIFY-05 | 18 — E2E Verification Gate | Closed 2026-05-17 (AUTO-APPROVED UAT — 18-UAT-CHECKLIST.md) |
 | WALK-01 | 19 — Walkthrough Foregrounding Fix | Closed 2026-05-17 (`3e511fb506b`, `53624da51ba`, `ae957b68130`, `57f83c71f7e`) |
 | AUTH-01 | 20 — DecisionNode Authoring Write Path | Complete |
-| AUTH-02 | 20 — DecisionNode Authoring Write Path | Pending |
+| AUTH-02 | 20 — DecisionNode Authoring Write Path | Complete |
 | AUTH-03 | 20 — DecisionNode Authoring Write Path | Pending |
 | AUTH-04 | 20 — DecisionNode Authoring Write Path | Pending |
 | XREPO-01 | 21 — Cross-Repo Activation (Single-DB) | Pending |

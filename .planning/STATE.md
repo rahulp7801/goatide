@@ -3,10 +3,26 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Verify + Ship
 status: executing
+last_updated: "2026-05-18T02:01:04.339Z"
+last_activity: 2026-05-18 — Plan 20-04 closed; dispatchHover Step 4 gains Reject button + kernel.recordRejection wiring (note 'user_post_hoc_reject_benign_hover'); commit 61bb7a1973a; Mandate D fence preserved; Phase 19 SC3b smoke 13/13 PASS EXIT 0
+progress:
+  [█████████░] 92%
+  total_phases: 24
+  completed_phases: 6
+  total_plans: 39
+  completed_plans: 36
+  percent: 92
+---
+
+---
+gsd_state_version: 1.0
+milestone: v2.1
+milestone_name: Verify + Ship
+status: executing
 last_updated: "2026-05-18T01:57:00Z"
 last_activity: 2026-05-18 — Plan 20-02 closed; graph.createDecisionNode kernel RPC + bridge KernelClient.createDecisionNode method shipped; Wave-0 RED stub createDecisionNode.spec.ts flipped GREEN; commits 6768e7985d5 (kernel) + 3e7198ca2bd (bridge)
 progress:
-  total_phases: 24
+  [█████████░] 92%
   completed_phases: 6
   total_plans: 36
   completed_plans: 35
@@ -117,10 +133,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 
 - **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
 - **Active phase:** 20 -- DecisionNode Authoring Write Path (executing)
-- **Status:** Executing — Plans 20-01 + 20-02 closed; Plans 20-03 (authoring-flow), 20-04 (post-hoc Reject button), 20-05 (phase verify) remain
+- **Status:** Executing — Plans 20-01 + 20-02 + 20-04 closed; Plans 20-03 (authoring-flow + extension.ts command swap), 20-05 (phase verify) remain
 - **Last closed phase:** 19 -- Walkthrough Foregrounding Fix (WALK-01 GREEN; SC3b 13/13 PASS) (closed 2026-05-17)
-- **Last closed plan:** 20-02 -- AUTH-01 Wave-1 graph.createDecisionNode kernel RPC + bridge KernelClient method
-- **Last activity:** 2026-05-18 — Plan 20-02 closed; graph.createDecisionNode kernel RPC + bridge method shipped; Wave-0 RED stub flipped GREEN; commits 6768e7985d5 + 3e7198ca2bd
+- **Last closed plan:** 20-04 -- AUTH-02 Wave-2 dispatchHover post-hoc Reject button + recordRejection wiring
+- **Last activity:** 2026-05-18 — Plan 20-04 closed; dispatchHover Step 4 gains Reject button + kernel.recordRejection wiring (note 'user_post_hoc_reject_benign_hover'); commit 61bb7a1973a; Mandate D fence preserved; Phase 19 SC3b smoke 13/13 PASS EXIT 0
 - **Last session:** 2026-05-18
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
@@ -128,6 +144,17 @@ v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-18 — Plan 20-04 closed (AUTH-02 Wave-2: dispatchHover post-hoc Reject button + recordRejection wiring)
+
+- **Plan 20-04 closure:** 1/1 task completed; 1 commit (`61bb7a1973a`). AUTH-02 user-facing surface live: benign-tier hover saves now offer a post-hoc Reject button alongside the existing 'Open full receipt' button. Reject click → `showWarningMessage{modal:true}` confirm → `kernel.recordRejection({receipt_id, change_id, note: 'user_post_hoc_reject_benign_hover'})` (note literal verbatim per OQ#1+OQ#2).
+- **Decision (Reject precedence + early return):** Reject branch placed BEFORE Open-full-receipt with explicit `return`. Rationale: user clicking Reject is a decision; preventing fallthrough to Open-full-receipt avoids accidental modal-on-modal stacking. Open-full-receipt remains the legacy info-only path.
+- **Decision (try/catch scope minimal):** Only `recordRejection` is wrapped in try/catch (`console.error('[goatide-bridge] post-hoc reject failed', e)`). The `showWarningMessage` modal returning `undefined` is normal user-cancel flow — handled via the `if (confirmed === 'Reject')` predicate, not an exception path.
+- **Decision (Mandate D fence preserved structurally):** dispatchHover still reachable only on `(silent, false, 'hover')`. The Mandate D fence comment block (lines 499-508) is byte-identical to HEAD. Pitfall F caller-count fence intact (`grep -c "\bdispatchHover\b" tier-dispatch.ts` == 2: line 322 caller + line 509 declaration).
+- **Decision (bridge mirror path is `dist/` not `out/`):** Plan 20-04 text referenced `extensions/goatide-bridge/out/save-gate/tier-dispatch.js` but actual repo layout uses `extensions/goatide-bridge/dist/save-gate/tier-dispatch.js` per bridge's `package.json` `main: "./dist/extension.js"` (Phase 14-19 convention). Mirror byte-equality gate `refuse-stale-bridge-mirror.sh` exit 0 confirms canonical path. Documented as benign artifact-path mismatch in SUMMARY.
+- **Deviation (Rule 3 — Blocking, env recovery):** Initial Phase 19 SC3b smoke run scored 10/13 (SC3b/SC9/SC11 SOFT-FAIL) — root cause from `exthost.log`: `Error: Cannot find module 'ulid'` (bridge mirror `node_modules/` absent because `prepare_goatide.sh` npm-ci step fails on this machine's Node version). Applied documented fallback per STATE.md 2026-05-17 (18-02): `cd extensions/goatide-bridge && npm install --omit=dev --ignore-scripts`. Re-ran smoke → 13/13 PASS EXIT 0. Pre-existing environmental gap, not a Plan 20-04 regression.
+- **Issue tracked (Plan 20-01 unfinished):** Plan 20-01's Wave-0 dispatchHover RED stubs (`dispatchHover-reject-button.test.ts`, `dispatchHover-reject-confirm.test.ts`) were never authored. Plan 20-04 verification cannot perform the RED→GREEN flip step those stubs would provide; structural verification (caller-count fence, Mandate D matrix existing 3/3 PASS, smoke harness 13/13) covers the equivalent invariants. Plan 20-05 (phase verify + closure) inherits the responsibility to either author the missing stubs or document the structural-verification substitute path.
+- **Phase-level invariants intact:** Mandate D structural fence GREEN; Mandate B fence (`refuse-deep05-write.sh`) GREEN; Mandate A canvas fence (`refuse-llm-in-canvas.meta.sh`) GREEN; Phase 19 SC3b regression gate 13/13 EXIT 0; bridge tsc + project `compile-check-ts-native` GREEN.
 
 ### 2026-05-18 — Plan 20-02 closed (AUTH-01 Wave-1: graph.createDecisionNode kernel RPC + bridge KernelClient method)
 
