@@ -19,6 +19,7 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 GATE="${REPO_ROOT}/scripts/ci/refuse-deep05-write.sh"
 FIXTURE="${REPO_ROOT}/src/vs/goatide/extensions/goatide-bridge/src/inspector/_fixture-violation.ts"
+FIXTURE2="${REPO_ROOT}/src/vs/goatide/extensions/goatide-bridge/src/inspector/_fixture-violation-createDecisionNode.ts"
 
 if [[ ! -x "$GATE" ]]; then
 	echo "META FAIL: $GATE does not exist or is not executable" >&2
@@ -30,6 +31,8 @@ cleanup() {
 	# no-op if the fixture was never staged; `rm -f` is a no-op if the file is absent.
 	git -C "$REPO_ROOT" reset HEAD -- "$FIXTURE" >/dev/null 2>&1 || true
 	rm -f "$FIXTURE"
+	git -C "$REPO_ROOT" reset HEAD -- "$FIXTURE2" >/dev/null 2>&1 || true
+	rm -f "$FIXTURE2"
 }
 trap cleanup EXIT
 
@@ -72,6 +75,34 @@ if [ "$RC" -ne 0 ]; then
 	exit 1
 fi
 echo "  OK: gate exited 0 on clean tree"
+
+# ----- Phase 3: positive control for Phase 20 AUTH-04 createDecisionNode entry -----
+# Author a fixture that contains the literal `createDecisionNode` token. Mirrors
+# Phase 1's pattern verbatim; only the token literal changes.
+cat > "$FIXTURE2" <<'EOF'
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+// META-TEST FIXTURE -- intentionally contains a banned write-RPC token (Phase 20 AUTH-04).
+// Removed by scripts/test/refuse-deep05-write.meta.sh trap; if you see this file outside
+// the meta-test run, delete it.
+export const VIOLATION_AUTH04 = 'createDecisionNode';
+EOF
+git add --intent-to-add -- "$FIXTURE2"
+
+RC=0
+bash "$GATE" >/dev/null 2>&1 || RC=$?
+if [ "$RC" -eq 0 ]; then
+	echo "META FAIL: gate did not fire on Phase 3 positive fixture (createDecisionNode; exit code was 0)" >&2
+	exit 1
+fi
+echo "  OK: gate exited $RC on Phase 3 positive fixture (banned createDecisionNode token)"
+
+# Tear down Phase 3 fixture before META PASS (trap also covers).
+git reset HEAD -- "$FIXTURE2" >/dev/null 2>&1 || true
+rm -f "$FIXTURE2"
 
 echo "META PASS"
 exit 0

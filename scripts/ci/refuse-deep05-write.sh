@@ -27,6 +27,8 @@ BANNED=(
 	"proposeEdit"
 	"recordRejection"
 	"recordContractOverride"
+	# Phase 20 AUTH-04 -- v2.1 write surface (createDecisionNode kernel RPC)
+	"createDecisionNode"
 )
 
 # Files to scan: tracked .ts files under inspector/. `git ls-files` so untracked
