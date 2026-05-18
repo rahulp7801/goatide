@@ -12,7 +12,7 @@
 | v1.1      | Closed | 03, 04, 05, 06, 07 | Traversal, Canvas, Telemetry, MCP, Drift |
 | v1.2      | Closed (2026-05-13) | 08, 09, 10, 11, 12, 13 | Runtime fixes, ergonomics, polish, ceremony, hardening, closeout |
 | v2.0      | Closed (2026-05-16) | 14, 15, 16, 17 | 10 requirements: DEEP-01..06, POLISH-01..04; C3 auto-update → v2.1 |
-| v2.1      | Active (started 2026-05-16) | 18, 19, 20, 21, 22 | E2E verification gate, walkthrough fix, DecisionNode authoring, cross-repo activation, distribution |
+| v2.1      | Active (started 2026-05-16) | 18, 19, 20, 21, 22 | 4/5 phases closed (18, 19, 20, 21); Phase 22 (distribution) cert-gated |
 
 > Milestone boundaries above are *best-guess* from commit dates + your `project_v2_milestone_locked.md` memory entry. If wrong, edit this table — the v1.x phases are closed work and the boundary doesn't affect ongoing decisions.
 
@@ -42,7 +42,7 @@
 - [x] **Phase 18: E2E Verification Gate** - Real installable build, bridge registration gap closed, 12/13 CDP smoke SCs pass (closed 2026-05-17)
 - [x] **Phase 19: Walkthrough Foregrounding Fix** - GoatIDE walkthrough wins first-launch race against VS Code default (closed 2026-05-17)
 - [x] **Phase 20: DecisionNode Authoring Write Path** ✓ Closed - addDecisionNode write path + post-hoc Reject button + Mandate A/B fence extensions
-- [ ] **Phase 21: Cross-Repo Activation (Single-DB)** - repo_id on write RPCs, WorkspaceRepoState, real cross-repo edges in Inspector
+- [x] **Phase 21: Cross-Repo Activation (Single-DB)** - repo_id on 4 write RPCs + WorkspaceRepoState + native HTML title tooltip + first end-to-end cross-repo edge integration test (closed 2026-05-18)
 - [ ] **Phase 22: Distribution (C1/C2/C3)** - macOS notarization, Windows Azure Trusted Signing, electron-updater auto-update
 
 ---
@@ -456,30 +456,33 @@
 
 ---
 
-### Phase 21: Cross-Repo Activation (Single-DB Multi-Repo)
+### Phase 21: Cross-Repo Activation (Single-DB Multi-Repo) -- Closed 2026-05-18
 
-**Goal:** Users working in a VS Code multi-root workspace see real cross-repo edges in the Graph Inspector when a save in one repo cites a node from another repo's graph — the dormant `edge[?crossRepo]` Cytoscape styling fires for the first time.
+**Goal:** Users working in a VS Code multi-root workspace see real cross-repo edges in the Graph Inspector when a save in one repo cites a node from another repo's graph -- the dormant `edge[?crossRepo]` Cytoscape styling fires for the first time.
 
 **Depends on:** Phase 20 (both phases modify `tier-dispatch.ts` and kernel write RPC signatures; sequential landing avoids conflicts)
 
 **Requirements:** XREPO-01, XREPO-02, XREPO-03
 
-**Wave-0 imperatives (before any feature code):**
-- Document the single-DB WAL-isolation ADR: single kernel daemon, `repo_id` partitions queries not DB files, multi-daemon per-repo deferred to v2.2. Add a kernel startup assertion that fails fast if a second daemon attempts to open the same `graph.db` in readwrite mode.
-- Author a RED test: `WorkspaceRepoState.getActiveRepoId()` returns `fingerprint(remoteUrl)` (12-char SHA-256 hex) for a folder with a git remote, and `'primary'` for a folder with no git remote — graceful fallback invariant.
-- Confirm that all existing 2-arg call sites for `proposeEdit`, `atomicAccept`, `recordRejection` continue to work after the optional `repo_id` parameter is added — backward-compat regression invariant (full kernel test suite byte-equal).
+**Closed:** 2026-05-18
+
+**Plans:** 4/4 plans complete
+
+- [x] 21-01-wave0-fences-red-stubs-adr-PLAN.md -- Wave 0: ADR + dbPath-keyed daemon fence + 10 RED/GREEN test stubs + WorkspaceRepoState skeleton (CLOSED 2026-05-17)
+- [x] 21-02-kernel-params-bridge-threading-PLAN.md -- Wave 1: kernel write-RPC repo_id? params on 4 RPCs + bridge mirror + WorkspaceRepoState implementation + tier-dispatch threading (CLOSED 2026-05-18)
+- [x] 21-03-xrepo03-tooltip-integration-PLAN.md -- Wave 2: workspace_repos folder_name wire schema + native HTML title tooltip + cross-repo-edge-activation integration test (CLOSED 2026-05-18)
+- [x] 21-04-phase-verify-and-closure-PLAN.md -- Wave 3: full-suite verify + 3-run flakiness fence + 21-VERIFICATION.md + 21-SUMMARY.md + REQUIREMENTS/ROADMAP/STATE closure flips (CLOSED 2026-05-18)
+
+**What shipped:**
+
+- XREPO-01: Optional `repo_id?: string` added to 4 kernel write-RPC params interfaces (`ProposeEditParams`, `AtomicAcceptParams`, `RecordRejectionParams`, `RecordContractOverrideParams`); 3 handlers persist `repo_id ?? 'primary'` into `provenance.detail`; dbPath-keyed daemon fence rejects same-DB second opener; backward-compat preserved (all 2-arg call sites continue to work).
+- XREPO-02: `WorkspaceRepoState` bridge module under `save-gate/`; `getActiveRepoId` fingerprints git remote URL (12-char SHA-256 hex) or returns `'primary'`; cache invalidation on `onDidChangeWorkspaceFolders`; repo_id threaded through tier-dispatch/apply-edit/on-will-save/pending-attempts with single-source-of-truth in `handleProposedSave`; `queryByAnchor` Path B (undefined skips WHERE predicate for cross-repo opt-in).
+- XREPO-03: `workspace_repos[].folder_name` added to wire schema; Graph.tsx `buildRepoLabel` pure function + Cytoscape mouseover/mouseout native HTML title tooltip (zero new deps, Pitfall G defense); end-to-end `cross-repo-edge-activation.integrationTest.ts` proves Phase 16+17+21 chain; dormant Phase 17 `edge[?crossRepo]` selector ACTIVATED for the first time.
 
 **Success Criteria** (what must be TRUE when Phase 21 completes):
 1. In a VS Code multi-root workspace with 2+ git repositories, saving a file in repo-A that cites a node from repo-B's graph causes a cross-repo edge to appear in the Graph Inspector (`edge[?crossRepo]` Cytoscape selector fires, rendering as dashed amber-400 per `PALETTE.crossRepoEdge`); the Inspector node tooltip shows the `repo_id` fingerprint (12-char hex) and a readable repo name derived from the workspace folder name.
 2. `tier-dispatch.ts` reads `WorkspaceRepoState.getActiveRepoId()` on every save and passes the `repo_id` through `proposeEdit` and `atomicAccept` RPCs; all existing 2-arg call sites (tests + extension.ts wiring) continue to work without modification (backward-compat: `repo_id` defaults to `'primary'`).
-3. The single-DB model is preserved — one kernel daemon, one `graph.db`, `repo_id` column partitions rows; the kernel startup guard rejects a second readwrite opener on the same DB path with a clear error message; no new DB file is created for secondary workspace repos.
-
-**Plans:** 3/4 plans executed
-
-- [ ] 21-01-wave0-fences-red-stubs-adr-PLAN.md -- Wave 0: ADR + dbPath-keyed daemon fence + 10 RED test stubs (5 kernel + 5 bridge) + WorkspaceRepoState skeleton
-- [ ] 21-02-kernel-params-bridge-threading-PLAN.md -- Wave 1: kernel write-RPC repo_id? params on 4 RPCs + bridge mirror + WorkspaceRepoState implementation + tier-dispatch threading + on-will-save single-source-of-truth resolution
-- [ ] 21-03-xrepo03-tooltip-integration-PLAN.md -- Wave 2: workspace_repos folder_name wire schema + inspector node tooltip (native HTML title via Cytoscape mouseover) + end-to-end cross-repo-edge-activation integration test
-- [ ] 21-04-phase-verify-and-closure-PLAN.md -- Wave 3: phase verify battery + 3-run flakiness fence + 21-VERIFICATION.md + 21-SUMMARY.md + REQUIREMENTS/ROADMAP/STATE closure flips
+3. The single-DB model is preserved -- one kernel daemon, one `graph.db`, `repo_id` column partitions rows; the kernel startup guard rejects a second readwrite opener on the same DB path with a clear error message; no new DB file is created for secondary workspace repos.
 
 ---
 
@@ -532,6 +535,6 @@
 | 18. E2E Verification Gate | 5/5 | Complete    | 2026-05-17 |
 | 19. Walkthrough Foregrounding Fix | 3/4 | Complete    | 2026-05-17 |
 | 20. DecisionNode Authoring Write Path | 5/5 | Complete    | 2026-05-18 |
-| 21. Cross-Repo Activation (Single-DB) | 3/4 | In Progress|  |
+| 21. Cross-Repo Activation (Single-DB) | 4/4 | Complete | 2026-05-18 |
 | 22. Distribution (C1/C2/C3) | 0/TBD | Not started | — |
 

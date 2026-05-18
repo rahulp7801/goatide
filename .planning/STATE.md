@@ -1,5 +1,20 @@
 ---
 gsd_state_version: 1.0
+milestone: v2.1
+milestone_name: Verify + Ship
+status: executing
+last_updated: "2026-05-18T06:30:00Z"
+last_activity: 2026-05-18 -- Phase 21 closed; XREPO-01..03 GREEN; flakiness fence 3/3 EXIT 0; 21-VERIFICATION.md + 21-SUMMARY.md authored; v2.1 4/5 phases complete
+progress:
+  total_phases: 24
+  completed_phases: 8
+  total_plans: 47
+  completed_plans: 46
+  percent: 98
+---
+
+---
+gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Closeout
 status: completed
@@ -193,19 +208,41 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 
 ## Current
 
-- **Active milestone:** v2.1 — Verify + Ship (started 2026-05-16)
-- **Active phase:** none (Phase 21 next -- Cross-Repo Activation (Single-DB))
-- **Status:** Phase 20 closed -- v2.1 milestone 3/5 phases complete (Phases 18, 19, 20 closed; Phases 21, 22 pending)
-- **Last closed phase:** 20 -- DecisionNode Authoring Write Path (AUTH-01..04 GREEN; 13/13 SC3b PASS; 7 new GREEN tests) (closed 2026-05-18)
-- **Last closed plan:** 20-05 -- Wave 3 phase verify + closure ceremony
-- **Last activity:** 2026-05-18 — Phase 20 closed; AUTH-01..04 GREEN; flakiness fence 3/3 EXIT 0; 20-VERIFICATION.md + 20-SUMMARY.md authored
-- **Last session:** 2026-05-18T06:03:56.033Z
+- **Active milestone:** v2.1 -- Verify + Ship (started 2026-05-16)
+- **Active phase:** none (Phase 22 next -- Distribution C1/C2/C3, cert-gated)
+- **Status:** Phase 21 closed -- v2.1 milestone 4/5 phases complete (Phases 18, 19, 20, 21 closed; Phase 22 pending cert procurement)
+- **Last closed phase:** 21 -- Cross-Repo Activation (Single-DB) (XREPO-01..03 GREEN; 13/13 SC3b PASS; 3-run flakiness fence 3/3 EXIT 0) (closed 2026-05-18)
+- **Last closed plan:** 21-04 -- Wave 3 phase verify + closure ceremony
+- **Last activity:** 2026-05-18 -- Phase 21 closed; XREPO-01..03 GREEN; flakiness fence 3/3 EXIT 0; 21-VERIFICATION.md + 21-SUMMARY.md authored
+- **Last session:** 2026-05-18T06:30:00Z
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
 
 ---
 
 ## Decisions (running ledger)
+
+### 2026-05-18 -- Phase 21 closed (Cross-Repo Activation Single-DB)
+
+- **Phase 21 closure:** 3/3 requirements closed (XREPO-01, XREPO-02, XREPO-03); 4/4 plans executed (Plans 21-01..21-04). 3-wave structure: Wave 0 (ADR + dbPath-keyed fence + RED/GREEN stubs) -> Wave 1 (kernel write-RPC repo_id params + WorkspaceRepoState + tier-dispatch threading) -> Wave 2 (inspector tooltip + integration test) -> Wave 3 (phase verify + closure ceremony). Phase 19 SC3b regression gate held throughout (3-run flakiness fence: 3/3 EXIT 0). Kernel 420/421 PASS; Bridge 145/157 PASS (16 pre-existing failures unchanged); Integration 2/2 PASS; 5 CI gates EXIT 0; 6 meta-tests META PASS.
+- **Decision (4-plan partition rationale):** Wave 0 authored ADR + fence + stubs before any feature write to lock down contracts and catch type errors early (10 test files). Wave 1 handled kernel params + bridge threading as a unit (tight coupling: 4 params interfaces + 3 handlers + WorkspaceRepoState + 4 call sites in save-gate). Wave 2 handled XREPO-03 inspector work + integration test separately (disjoint from save-gate code). Wave 3 is the phase-close ceremony. This partition prevented merge conflicts between Waves 1 and 2 while enabling clear RED->GREEN accounting.
+- **Open Decision Sec.1 (tripartite parity test) resolved:** `fingerprint-tripartite-parity.spec.ts` GREEN sentry verifies kernel fingerprint byte-equality + normalization parity vs bridge `repo-fingerprint.ts` helper.
+- **Open Decision Sec.2 (save-gate module location) resolved:** WorkspaceRepoState placed under `save-gate/` (Plan 21-02). Save-gate boundary owns repo-id resolution -- consistent with where tier-dispatch, apply-edit, and on-will-save live.
+- **Open Decision Sec.3 (dao.seed payload-column repo_id write) resolved:** Deferred to v2.2. Integration test uses raw SQL before daemon start (canonical bypass pattern for non-'primary' repo_id seeds in v2.1).
+- **Open Decision Sec.4 (references edge kind reuse) resolved:** `references` edge kind reused for cross-repo edges. No new `edge_kind = 'cross_repo_citation'` needed. The existing `edgeRowToCyElement.ts` crossRepo endpoint-detection path (Phase 17) handles it.
+- **Open Decision Sec.5 (cache invalidation strategy) resolved:** `onDidChangeWorkspaceFolders` only. Per-save re-fingerprint deferred -- overhead concern for large workspaces.
+- **Open Decision Sec.6 (tooltip approach) resolved:** Native HTML `title` attribute via Cytoscape mouseover/mouseout. Zero new npm deps. Pitfall G mitigated -- no `cytoscape-popper`, no `tippy.js`.
+- **Open Decision Sec.7 (single-source-of-truth) resolved:** `getActiveRepoId` called once per save in `on-will-save.ts handleProposedSave`. Result flows into `DispatchInputs.repo_id?` threaded downstream. Prevents multiple calls to the fingerprint helper per save event.
+- **Open Decision Sec.8 (fence-symmetry 4 RPCs) resolved:** 4 RPCs extended (N1 deliberate departure). REQUIREMENTS XREPO-01 enumerates 3 RPCs (`proposeEdit`, `atomicAccept`, `recordRejection`). Phase 21 adds `recordContractOverride` as 4th for fence symmetry (ensures override audit trail carries repo_id). Documented in 21-01 SUMMARY and 21-SUMMARY.md as N1.
+- **Open Decision Sec.9 (queryByAnchor cross-repo opt-in sentinel) resolved:** Path B -- `repoId === undefined` skips the `WHERE repo_id = ?` predicate entirely. More idiomatic than using a sentinel string ('all' or '*'). Path A (sentinel) would require schema-level escaping.
+- **Open Decision Sec.10 (integration test vs CDP smoke) resolved:** Integration test (`.integrationTest.ts`) chosen over 14th CDP SC. Multi-folder CDP fixture requires significant additional Playwright infrastructure (WorkspaceFolder, multi-root window setup). Integration test provides equivalent end-to-end proof within existing mocha/electron-as-node harness.
+- **Open Decision Sec.11 (folder_name wire schema) resolved:** `folder_name: z.string()` added to `SerializedWorkspaceRepoSchema` as required field. Webview can display readable repo names without basename re-computation from URI strings.
+- **Mandates preserved:** Mandate A -- `buildRepoLabel` tooltip derived from kernel-supplied `repo_id` (deterministic SHA-256) + VS Code `folder.name` (not LLM-generated); `refuse-llm-in-canvas.meta.sh` META PASS. Mandate B -- `refuse-deep05-write.sh` EXIT 0; BANNED array at 5 entries unchanged; Wave-2 inspector changes are metadata/rendering-only with zero write-RPC exposure. Mandate D -- Phase 21 repo_id threading in tier-dispatch.ts is additive; Mandate D fence comment block byte-identical; 4x3 matrix unchanged.
+- **Pitfall A mitigated:** `proposeEdit-repo-id.spec.ts` is a forward-compat sentinel -- Zod passthrough drops `repo_id` silently; proposeEdit does NOT persist it into `provenance.detail`. The 3 other handlers (atomicAccept, recordRejection, recordContractOverride) DO persist.
+- **Pitfall D mitigated:** `fingerprint-tripartite-parity.spec.ts` ensures kernel + bridge fingerprint helpers produce byte-equal output. Without this parity test, a fingerprint divergence would cause WorkspaceRepoState to produce a different repo_id than what the kernel stored, silently routing all cross-repo saves to 'primary'.
+- **Pitfall E mitigated:** `pending-attempts.ts` replay path logs a WARNING (not ERROR) when replaying an attempt that lacks `repo_id`. Defaults to 'primary'. Queue schema extension with persistent `repo_id` field deferred to v2.2.
+- **Pitfall G mitigated:** No `cytoscape-popper` or `tippy.js` installed. Native HTML `title` attribute is zero-cost and browser-native. v2.2 can upgrade to polished tooltip if desired.
+- **v2.1 milestone status:** Phase 21 closed (4/5 phases). Phase 22 (Distribution C1/C2/C3) is the final v2.1 phase -- gated on external Apple Developer ($99/yr) + Azure Trusted Signing account procurement. No Phase 22 work can begin until certs are verified as available.
 
 ### 2026-05-18 — Phase 20 closed (DecisionNode Authoring Write Path)
 

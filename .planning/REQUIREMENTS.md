@@ -312,9 +312,9 @@
 | AUTH-02 | 20 — DecisionNode Authoring Write Path | Closed 2026-05-18 (`767eeb81f6f`, `61bb7a1973a`) |
 | AUTH-03 | 20 — DecisionNode Authoring Write Path | Closed 2026-05-18 (`cdea35d6667`) |
 | AUTH-04 | 20 — DecisionNode Authoring Write Path | Closed 2026-05-18 (`454080f2eb8`) |
-| XREPO-01 | 21 — Cross-Repo Activation (Single-DB) | Complete |
-| XREPO-02 | 21 — Cross-Repo Activation (Single-DB) | Complete |
-| XREPO-03 | 21 — Cross-Repo Activation (Single-DB) | Complete |
+| XREPO-01 | 21 — Cross-Repo Activation (Single-DB) | Closed 2026-05-18 (`a8a18abdc06`, `9881d24ef7f`) |
+| XREPO-02 | 21 — Cross-Repo Activation (Single-DB) | Closed 2026-05-18 (`9881d24ef7f`) |
+| XREPO-03 | 21 — Cross-Repo Activation (Single-DB) | Closed 2026-05-18 (`741a8c7b7a2`) |
 | C1 | 22 — Distribution | Pending |
 | C2 | 22 — Distribution | Pending |
 | C3 | 22 — Distribution | Pending |
