@@ -39,6 +39,17 @@ esac
 # Same pattern on macOS/Linux (gulpfile.vscode.darwin.ts, gulpfile.vscode.linux.ts).
 PORTABLE_APP="$(dirname "$(pwd)")/VSCode-${TARGET_TRIPLE}"
 
+# Phase 22 C2 (Plan 22-03): refuse to build if Azure placeholders are unreplaced when CI signing is intended.
+# Fires ONLY when AZURE_CLIENT_ID or AZURE_TENANT_ID env vars are set (intentional signed build).
+# Cert-absent dogfood builds (no AZURE_* env vars) skip this check and proceed normally.
+if [ -n "${AZURE_CLIENT_ID:-}" ] || [ -n "${AZURE_TENANT_ID:-}" ]; then
+	if grep -q "<TBD-AZURE" electron-builder.yml 2>/dev/null; then
+		echo "ERROR: electron-builder.yml still contains <TBD-AZURE-...> placeholders." >&2
+		echo "ERROR: Replace per .planning/phases/22-distribution/22-03-AZURE-SETUP.md Step 5 before signing." >&2
+		exit 1
+	fi
+fi
+
 # Step 1: bridge mirror sync (VERIFY-02 fence -- installable loads real bridge, not stub).
 echo "[package-goatide] step 1/4: bash scripts/prepare_goatide.sh"
 if ! bash scripts/prepare_goatide.sh; then
