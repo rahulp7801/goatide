@@ -1,12 +1,27 @@
 ---
 gsd_state_version: 1.0
+milestone: v1.2
+milestone_name: Closeout
+status: completed
+last_updated: "2026-05-18T04:56:39.653Z"
+last_activity: 2026-05-18 — Phase 20 closed; AUTH-01..04 GREEN; flakiness fence 3/3 EXIT 0; 20-VERIFICATION.md + 20-SUMMARY.md authored
+progress:
+  total_phases: 24
+  completed_phases: 7
+  total_plans: 43
+  completed_plans: 40
+  percent: 93
+---
+
+---
+gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Verify + Ship
 status: executing
 last_updated: "2026-05-18T03:30:00.000Z"
 last_activity: 2026-05-18 — Phase 20 closed; AUTH-01..04 GREEN; flakiness fence 3/3 EXIT 0; 20-VERIFICATION.md + 20-SUMMARY.md authored
 progress:
-  total_phases: 24
+  [█████████░] 93%
   completed_phases: 7
   total_plans: 40
   completed_plans: 39
@@ -184,7 +199,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-16)
 - **Last closed phase:** 20 -- DecisionNode Authoring Write Path (AUTH-01..04 GREEN; 13/13 SC3b PASS; 7 new GREEN tests) (closed 2026-05-18)
 - **Last closed plan:** 20-05 -- Wave 3 phase verify + closure ceremony
 - **Last activity:** 2026-05-18 — Phase 20 closed; AUTH-01..04 GREEN; flakiness fence 3/3 EXIT 0; 20-VERIFICATION.md + 20-SUMMARY.md authored
-- **Last session:** 2026-05-18T02:34:11.255Z
+- **Last session:** 2026-05-18T04:56:39.645Z
 
 v2.0 closed 2026-05-16 (4/4 phases, 10/10 requirements). See PROJECT.md for full Validated list.
 

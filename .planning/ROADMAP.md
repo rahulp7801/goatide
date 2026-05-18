@@ -474,7 +474,12 @@
 2. `tier-dispatch.ts` reads `WorkspaceRepoState.getActiveRepoId()` on every save and passes the `repo_id` through `proposeEdit` and `atomicAccept` RPCs; all existing 2-arg call sites (tests + extension.ts wiring) continue to work without modification (backward-compat: `repo_id` defaults to `'primary'`).
 3. The single-DB model is preserved — one kernel daemon, one `graph.db`, `repo_id` column partitions rows; the kernel startup guard rejects a second readwrite opener on the same DB path with a clear error message; no new DB file is created for secondary workspace repos.
 
-**Plans:** TBD
+**Plans:** 1/4 plans executed
+
+- [ ] 21-01-wave0-fences-red-stubs-adr-PLAN.md -- Wave 0: ADR + dbPath-keyed daemon fence + 10 RED test stubs (5 kernel + 5 bridge) + WorkspaceRepoState skeleton
+- [ ] 21-02-kernel-params-bridge-threading-PLAN.md -- Wave 1: kernel write-RPC repo_id? params on 4 RPCs + bridge mirror + WorkspaceRepoState implementation + tier-dispatch threading + on-will-save single-source-of-truth resolution
+- [ ] 21-03-xrepo03-tooltip-integration-PLAN.md -- Wave 2: workspace_repos folder_name wire schema + inspector node tooltip (native HTML title via Cytoscape mouseover) + end-to-end cross-repo-edge-activation integration test
+- [ ] 21-04-phase-verify-and-closure-PLAN.md -- Wave 3: phase verify battery + 3-run flakiness fence + 21-VERIFICATION.md + 21-SUMMARY.md + REQUIREMENTS/ROADMAP/STATE closure flips
 
 ---
 
@@ -527,6 +532,6 @@
 | 18. E2E Verification Gate | 5/5 | Complete    | 2026-05-17 |
 | 19. Walkthrough Foregrounding Fix | 3/4 | Complete    | 2026-05-17 |
 | 20. DecisionNode Authoring Write Path | 5/5 | Complete    | 2026-05-18 |
-| 21. Cross-Repo Activation (Single-DB) | 0/TBD | Not started | — |
+| 21. Cross-Repo Activation (Single-DB) | 1/4 | In Progress|  |
 | 22. Distribution (C1/C2/C3) | 0/TBD | Not started | — |
 

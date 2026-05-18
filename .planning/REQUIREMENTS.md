@@ -31,9 +31,9 @@
 
 ### Cross-Repo Activation (Phase 21)
 
-- [ ] **XREPO-01**: Existing write RPCs (`proposeEdit`, `atomicAccept`, `recordRejection`) accept optional `repo_id: string` parameter, defaulting to `'primary'`. Single-DB model preserved — multi-daemon per-repo deferred to v2.2. Backward-compatible: all 2-arg call sites continue to work.
-- [ ] **XREPO-02**: New `WorkspaceRepoState` bridge module enumerates `vscode.workspace.workspaceFolders`, fingerprints each repo via existing `repo-fingerprint.ts` SHA-256 helper, caches the active document's repo_id. `tier-dispatch.ts` threads the active repo_id onto every write through the existing save-gate path.
-- [ ] **XREPO-03**: Real cross-repo edges render in the Graph Inspector when a save in repo-A cites a node in repo-B's graph. The dormant `edge[?crossRepo]` Cytoscape selector (Phase 17) fires for the first time. Inspector node tooltip shows repo_id fingerprint + readable repo name. No new write RPC needed (reuse existing edge insertion path with `edge_kind = 'cross_repo_citation'`).
+- [x] **XREPO-01**: Existing write RPCs (`proposeEdit`, `atomicAccept`, `recordRejection`) accept optional `repo_id: string` parameter, defaulting to `'primary'`. Single-DB model preserved — multi-daemon per-repo deferred to v2.2. Backward-compatible: all 2-arg call sites continue to work.
+- [x] **XREPO-02**: New `WorkspaceRepoState` bridge module enumerates `vscode.workspace.workspaceFolders`, fingerprints each repo via existing `repo-fingerprint.ts` SHA-256 helper, caches the active document's repo_id. `tier-dispatch.ts` threads the active repo_id onto every write through the existing save-gate path.
+- [x] **XREPO-03**: Real cross-repo edges render in the Graph Inspector when a save in repo-A cites a node in repo-B's graph. The dormant `edge[?crossRepo]` Cytoscape selector (Phase 17) fires for the first time. Inspector node tooltip shows repo_id fingerprint + readable repo name. No new write RPC needed (reuse existing edge insertion path with `edge_kind = 'cross_repo_citation'`).
 
 ### Distribution (Phase 22 — external-cert gated)
 
@@ -312,9 +312,9 @@
 | AUTH-02 | 20 — DecisionNode Authoring Write Path | Closed 2026-05-18 (`767eeb81f6f`, `61bb7a1973a`) |
 | AUTH-03 | 20 — DecisionNode Authoring Write Path | Closed 2026-05-18 (`cdea35d6667`) |
 | AUTH-04 | 20 — DecisionNode Authoring Write Path | Closed 2026-05-18 (`454080f2eb8`) |
-| XREPO-01 | 21 — Cross-Repo Activation (Single-DB) | Pending |
-| XREPO-02 | 21 — Cross-Repo Activation (Single-DB) | Pending |
-| XREPO-03 | 21 — Cross-Repo Activation (Single-DB) | Pending |
+| XREPO-01 | 21 — Cross-Repo Activation (Single-DB) | Complete |
+| XREPO-02 | 21 — Cross-Repo Activation (Single-DB) | Complete |
+| XREPO-03 | 21 — Cross-Repo Activation (Single-DB) | Complete |
 | C1 | 22 — Distribution | Pending |
 | C2 | 22 — Distribution | Pending |
 | C3 | 22 — Distribution | Pending |
