@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Verify + Ship
-status: completed
-last_updated: "2026-05-18T19:00:00Z"
-last_activity: 2026-05-18 -- Phase 22 closed; C3 GREEN; C1/C2 cert-gated; v2.1 4.5/5 phases; 22-VERIFICATION.md + 22-SUMMARY.md authored
+status: closed-descoped
+last_updated: "2026-05-19T00:00:00Z"
+last_activity: 2026-05-19 -- v2.1 closed-descoped; C1/C2 deferred (operator opted out of commercial cert procurement this milestone); C3 GREEN; release-mac.yml + release-win.yml CI scaffolded and ready
 progress:
   total_phases: 24
   completed_phases: 9

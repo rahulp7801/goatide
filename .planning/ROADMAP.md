@@ -12,7 +12,7 @@
 | v1.1      | Closed | 03, 04, 05, 06, 07 | Traversal, Canvas, Telemetry, MCP, Drift |
 | v1.2      | Closed (2026-05-13) | 08, 09, 10, 11, 12, 13 | Runtime fixes, ergonomics, polish, ceremony, hardening, closeout |
 | v2.0      | Closed (2026-05-16) | 14, 15, 16, 17 | 10 requirements: DEEP-01..06, POLISH-01..04; C3 auto-update → v2.1 |
-| v2.1      | Partial (4.5/5 cert-gated) | 18, 19, 20, 21, 22 | 5/5 phases executed; C3 GREEN (closed 2026-05-18); C1/C2 cert-gated (infrastructure landed; cert procurement pending) |
+| v2.1      | Closed-Descoped (2026-05-19) | 18, 19, 20, 21, 22 | 5/5 phases executed; 12/14 reqs GREEN; C1/C2 deferred 2026-05-19 (operator opted out of commercial cert procurement this milestone — infrastructure + CI workflows ready, re-open when Apple Developer + Azure Trusted Signing accounts procured) |
 
 > Milestone boundaries above are *best-guess* from commit dates + your `project_v2_milestone_locked.md` memory entry. If wrong, edit this table — the v1.x phases are closed work and the boundary doesn't affect ongoing decisions.
 
@@ -43,7 +43,7 @@
 - [x] **Phase 19: Walkthrough Foregrounding Fix** - GoatIDE walkthrough wins first-launch race against VS Code default (closed 2026-05-17)
 - [x] **Phase 20: DecisionNode Authoring Write Path** ✓ Closed - addDecisionNode write path + post-hoc Reject button + Mandate A/B fence extensions
 - [x] **Phase 21: Cross-Repo Activation (Single-DB)** - repo_id on 4 write RPCs + WorkspaceRepoState + native HTML title tooltip + first end-to-end cross-repo edge integration test (closed 2026-05-18)
-- [~] **Phase 22: Distribution (C1/C2/C3)** ~ Partially closed (C3 GREEN; C1/C2 cert-gated) - electron-updater wiring + Mandate D dialog GREEN; macOS notarization + Azure Trusted Signing infrastructure landed; cert procurement pending
+- [x] **Phase 22: Distribution (C1/C2/C3)** ✓ Closed-Descoped 2026-05-19 - C3 GREEN (electron-updater + Mandate D dialog); C1/C2 deferred (operator opted out of commercial cert procurement this milestone; macOS notarization + Azure Trusted Signing infrastructure + CI workflows are pre-wired and ready to fire when accounts are procured)
 
 ---
 
@@ -505,20 +505,23 @@
 2. On Windows, the GoatIDE NSIS installer is signed via Azure Trusted Signing; running the installer shows the publisher name in the SmartScreen dialog (if shown) rather than "Unknown Publisher"; `signtool verify /pa GoatIDE-Setup.exe` exits 0.
 3. On a GoatIDE install that is one or more versions behind the latest GitHub Release, the app surfaces an in-app notification "GoatIDE update available (vX.Y.Z) — Restart Now / Later" within the first launch after the new release is published; clicking "Restart Now" applies the NSIS/DMG update; the updater NEVER fires when `VSCODE_DEV` is set (dev-mode guard, enforced by unit test); VS Code's built-in `IUpdateService` is stubbed to no-op so no duplicate update logic runs.
 
-**Closed:** 2026-05-18 (partial -- C3 GREEN; C1/C2 cert-gated)
+**Closed:** 2026-05-18 (initial -- C3 GREEN; C1/C2 cert-gated)
+**Descoped:** 2026-05-19 (C1/C2 deferred -- operator opted out of commercial cert procurement this milestone)
 
 **Plans:** 5/5 plans complete
 
 - [x] Plan 22-01 -- Wave-0 fences: IUpdateService no-op stub + VSCODE_DEV guard + dev-app-update.yml gitignore
-- [x] Plan 22-02 -- C1 macOS signing infrastructure (cert-gated): electron-builder.yml hooks + entitlements plists + @electron/notarize
-- [x] Plan 22-03 -- C2 Windows Azure Trusted Signing config (cert-gated): azureSignOptions block + operator runbook + sentinel-detector
+- [x] Plan 22-02 -- C1 macOS signing infrastructure (deferred): electron-builder.yml hooks + entitlements plists + @electron/notarize
+- [x] Plan 22-03 -- C2 Windows Azure Trusted Signing config (deferred): azureSignOptions block + operator runbook + sentinel-detector
 - [x] Plan 22-04 -- C3 electron-updater wiring + Mandate D Restart Now/Later dialog (GREEN)
 - [x] Plan 22-05 -- Wave 3 phase verify + closure ceremony
 
 **What shipped:**
-- C1 (macOS notarization): infrastructure complete (`build/signing/` hooks + entitlements + @electron/notarize); cert procurement pending (Apple Developer account + 5 CI env vars required)
-- C2 (Windows Azure Trusted Signing): infrastructure complete (azureSignOptions block + 22-03-AZURE-SETUP.md runbook + sentinel-detector); Azure account provisioning pending (follow runbook Steps 1-8)
+- C1 (macOS notarization): infrastructure complete (`build/signing/` hooks + entitlements + @electron/notarize) + CI workflow scaffolded (`.github/workflows/release-mac.yml`); DEFERRED 2026-05-19 -- operator opted out of Apple Developer account procurement this milestone. v2.1 ships unsigned macOS builds.
+- C2 (Windows Azure Trusted Signing): infrastructure complete (azureSignOptions block + 22-03-AZURE-SETUP.md runbook + sentinel-detector) + CI workflow scaffolded (`.github/workflows/release-win.yml`); DEFERRED 2026-05-19 -- paired with C1 deferral (no commercial cert procurement this milestone). v2.1 ships unsigned Windows installers.
 - C3 (electron-updater + Mandate D): CLOSED -- GoatIdeNoOpUpdateService replaces VS Code IUpdateService; electron-updater@^6.8.3 wired to GitHub Releases; VSCODE_DEV guard; autoInstallOnAppQuit=false; Restart Now/Later dialog (5/5 unit tests GREEN; 3-run flakiness fence 3/3 EXIT 0; 0 code.visualstudio.com requests confirmed)
+
+**Re-opening C1/C2:** Procure the relevant account (Apple Developer ID for C1; Azure Trusted Signing for C2), configure the documented secrets in repo Settings, push a `v*` tag. The CI workflows will produce signed + verified artifacts with no additional code changes. Then flip C1/C2 from `[~]` to `[x]` in REQUIREMENTS.md.
 
 ---
 

@@ -2,9 +2,11 @@
 phase: 22
 slug: distribution
 closed: 2026-05-18
-status: closed-partial
+descoped: 2026-05-19
+status: closed-descoped
 requirements_closed: [C3]
-requirements_cert_gated: [C1, C2]
+requirements_deferred: [C1, C2]
+deferred_reason: Operator opted out of commercial cert procurement this milestone (no Apple Developer + no Azure Trusted Signing). Infrastructure + CI workflows pre-wired and ready when accounts are procured.
 smoke_score: 13/13
 flakiness_fence: PASS (3/3 EXIT 0)
 mandate_audit: A=GREEN B=GREEN D=ACTIVELY_ENFORCED
@@ -91,13 +93,15 @@ implementation code committed across Plans 22-01 through 22-04.
 
 ## Cert-Availability Status
 
-| Requirement | Status | Blocking Issue | Next Action |
-|-------------|--------|----------------|-------------|
-| C1 -- macOS notarization | CERT-GATED | Apple Developer account ($99/yr) not provisioned; APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID + CSC_LINK + CSC_KEY_PASSWORD env vars not available on CI macOS runner | Procure Apple Developer account; add 5 env vars to GitHub Actions macOS runner secrets; push a `v*` tag -> `.github/workflows/release-mac.yml` builds + verifies (`codesign --verify --deep --strict` + `spctl --assess` + `xcrun stapler validate`) + uploads to draft Release; flip C1 to Closed in REQUIREMENTS.md |
-| C2 -- Windows Azure Trusted Signing | CERT-GATED | Azure Trusted Signing account not provisioned; Service Principal not created; AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET not configured in CI | Follow 22-03-AZURE-SETUP.md Steps 1-8; replace 4 `<TBD-...>` placeholders in electron-builder.yml; add 3 env vars to GitHub Actions Windows runner; push a `v*` tag -> `.github/workflows/release-win.yml` runs the NuGet pre-step (Pitfall 4) + signs + verifies (`signtool verify /pa`) + uploads to draft Release; flip C2 to Closed |
+| Requirement | Status | Reason | Re-opening Path |
+|-------------|--------|--------|-----------------|
+| C1 -- macOS notarization | DEFERRED 2026-05-19 | Operator opted out of Apple Developer account procurement this milestone | Procure Apple Developer account ($99/yr); add 5 env vars (APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID + CSC_LINK + CSC_KEY_PASSWORD) to repo Settings -> Secrets and variables -> Actions; push a `v*` tag -> `.github/workflows/release-mac.yml` builds + verifies (`codesign --verify --deep --strict` + `spctl --assess` + `xcrun stapler validate`) + uploads to draft Release; flip C1 to Closed in REQUIREMENTS.md |
+| C2 -- Windows Azure Trusted Signing | DEFERRED 2026-05-19 | Paired with C1 deferral -- no commercial cert procurement this milestone | Provision Azure Trusted Signing account per 22-03-AZURE-SETUP.md Steps 1-8; replace 4 `<TBD-...>` placeholders in electron-builder.yml; add 3 env vars (AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET); push a `v*` tag -> `.github/workflows/release-win.yml` runs the NuGet pre-step (Pitfall 4) + signs + verifies (`signtool verify /pa`) + uploads to draft Release; flip C2 to Closed in REQUIREMENTS.md |
 | C3 -- electron-updater + Mandate D | GREEN | None | Closed 2026-05-18 |
 
-**Release scaffolding (added 2026-05-19):** `.github/workflows/release-mac.yml` and `.github/workflows/release-win.yml` are wired and ready. Both workflows fail fast if their respective secrets are missing, so a stray tag push on a not-yet-provisioned repo prints a clear "configure these secrets" error rather than producing an unsigned binary.
+**Unsigned-distribution caveat (v2.1):** Until C1/C2 re-open, v2.1 distribution produces unsigned artifacts. macOS recipients use right-click → Open to bypass Gatekeeper on first launch. Windows recipients click SmartScreen `More info` → `Run anyway`. The electron-updater path (C3) still works for unsigned upgrades within the same publisher fingerprint, but a fresh-machine first install requires the recipient to acknowledge the unsigned warning. Cross-publisher updates (i.e. once C1/C2 re-open and signed builds replace unsigned ones) require the recipient to reinstall manually due to publisher-mismatch validation in electron-updater.
+
+**Release scaffolding (added 2026-05-19, commit `8e98a3c749f`):** `.github/workflows/release-mac.yml` and `.github/workflows/release-win.yml` are wired and ready. Both workflows fail fast if their respective secrets are missing, so a stray tag push on a not-yet-provisioned repo prints a clear "configure these secrets" error rather than producing an unsigned binary.
 
 ---
 

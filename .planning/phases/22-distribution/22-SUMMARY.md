@@ -93,9 +93,25 @@ security warnings, and receive in-app notifications when a newer release is avai
 
 | Requirement | Status | Closure Commits | Notes |
 |-------------|--------|-----------------|-------|
-| C1 -- macOS notarization | CERT-GATED | `3cf21910b6c`, `1cf17c5b258`, `3600527e95e`, `6bd6b7d0e98`, `0763ed9fe6c` | Infrastructure complete; Apple Developer ID secrets not yet in CI; live signed-build UAT deferred |
-| C2 -- Windows Azure Trusted Signing | CERT-GATED | `8f095bd2991`, `67d9ef7ffc2`, `f915f395c69` | Infrastructure complete; Azure account not yet provisioned; `<TBD-...>` placeholders pending |
+| C1 -- macOS notarization | DEFERRED 2026-05-19 | `3cf21910b6c`, `1cf17c5b258`, `3600527e95e`, `6bd6b7d0e98`, `0763ed9fe6c` + CI scaffolding `8e98a3c749f` | Infrastructure + CI workflow complete (`.github/workflows/release-mac.yml`). Operator opted out of Apple Developer account procurement this milestone. v2.1 ships unsigned macOS builds. |
+| C2 -- Windows Azure Trusted Signing | DEFERRED 2026-05-19 | `8f095bd2991`, `67d9ef7ffc2`, `f915f395c69` + CI scaffolding `8e98a3c749f` | Infrastructure + CI workflow complete (`.github/workflows/release-win.yml`). Paired with C1 deferral -- no commercial cert procurement this milestone. v2.1 ships unsigned Windows installers. |
 | C3 -- electron-updater + Mandate D | GREEN (2026-05-18) | `b2437d3`, `89aa451`, `8d89b46`, `74ab538` | 5/5 unit tests PASS; 0 code.visualstudio.com requests; IUpdateService stubbed |
+
+### Descope Update (2026-05-19)
+
+After Phase 22 initially closed with C1/C2 cert-gated, the operator decided not to procure either an
+Apple Developer account or an Azure Trusted Signing account this milestone. Both requirements are
+now formally DEFERRED rather than blocked-pending-procurement. The phase's "what shipped" deliverable
+is now:
+
+- **C3 GREEN** (unchanged).
+- **C1/C2 infrastructure + CI scaffolding** -- all electron-builder hooks, entitlements, runbook,
+  sentinel-detector, and both `.github/workflows/release-{mac,win}.yml` workflows are committed and
+  ready. Re-opening C1 or C2 requires only account procurement + secret configuration + a tag push.
+  No additional code changes are anticipated.
+- **Unsigned-distribution path acknowledged** -- v2.1 distributes via unsigned binaries. Recipients
+  bypass Gatekeeper/SmartScreen on first launch (right-click → Open on macOS; "More info" → "Run
+  anyway" on Windows).
 
 ---
 
