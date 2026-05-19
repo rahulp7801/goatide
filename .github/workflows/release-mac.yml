@@ -1,0 +1,167 @@
+# Phase 22 C1 -- macOS signing + notarization release workflow.
+#
+# Triggered by:
+#   - Pushing a tag matching `v*` (e.g. v2.1.0)
+#   - Manual workflow_dispatch (for re-running a tagged build)
+#
+# Cert preconditions (configure in repo Settings -> Secrets and variables -> Actions):
+#   APPLE_ID                       Apple Developer email
+#   APPLE_APP_SPECIFIC_PASSWORD    From appleid.apple.com -> Security -> App-Specific Passwords
+#   APPLE_TEAM_ID                  10-char Team ID (visible in developer.apple.com membership page)
+#   CSC_LINK                       Base64-encoded .p12 export of the Developer ID Application cert
+#   CSC_KEY_PASSWORD               .p12 export password
+#
+# Produces:
+#   dist/GoatIDE-<version>-<arch>.dmg                (notarized + stapled)
+#   dist/GoatIDE-<version>-<arch>-mac.zip            (notarized)
+#   dist/latest-mac.yml                              (electron-updater metadata)
+# Uploaded as a draft GitHub Release (releaseType: draft in electron-builder.yml).
+#
+# Source-of-truth references:
+#   - .planning/phases/22-distribution/22-02-macos-sign-notarize-PLAN.md
+#   - .planning/phases/22-distribution/22-02-macos-sign-notarize-SUMMARY.md (Cert-Gated Status section)
+#   - .planning/phases/22-distribution/22-VERIFICATION.md (Cert-Availability Status table)
+
+name: Release (macOS)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Tag or ref to build (e.g. v2.1.0). Defaults to the current branch HEAD.'
+        required: false
+        type: string
+
+permissions:
+  contents: write  # required for `gh release` upload
+
+jobs:
+  release-mac:
+    name: Sign + notarize macOS build
+    runs-on: macos-14
+    timeout-minutes: 90
+
+    steps:
+      - name: Verify required secrets present
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          MISSING=()
+          [ -z "$APPLE_ID" ]                     && MISSING+=("APPLE_ID")
+          [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ]  && MISSING+=("APPLE_APP_SPECIFIC_PASSWORD")
+          [ -z "$APPLE_TEAM_ID" ]                && MISSING+=("APPLE_TEAM_ID")
+          [ -z "$CSC_LINK" ]                     && MISSING+=("CSC_LINK")
+          [ -z "$CSC_KEY_PASSWORD" ]             && MISSING+=("CSC_KEY_PASSWORD")
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "::error::Missing required secrets: ${MISSING[*]}"
+            echo "::error::Configure these in Settings -> Secrets and variables -> Actions before tagging a release."
+            echo "::error::See .planning/phases/22-distribution/22-02-macos-sign-notarize-SUMMARY.md (Cert-Gated Status) for each value's source."
+            exit 1
+          fi
+          echo "All required Apple secrets present."
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          lfs: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies (root)
+        run: npm ci
+
+      - name: Install dependencies (bridge mirror)
+        run: |
+          if [ -d extensions/goatide-bridge ]; then
+            cd extensions/goatide-bridge
+            npm install --omit=dev --ignore-scripts
+          fi
+
+      - name: Build + sign + notarize (package-goatide.sh)
+        env:
+          APPLE_ID:                    ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID:               ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK:                    ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD:            ${{ secrets.CSC_KEY_PASSWORD }}
+        run: bash scripts/package-goatide.sh
+
+      - name: Verify codesign + notarization
+        run: |
+          set -e
+          APP="$(find dist -maxdepth 4 -name 'GoatIDE.app' -print -quit || true)"
+          if [ -z "$APP" ]; then
+            echo "::error::GoatIDE.app not found under dist/"
+            ls -laR dist/ || true
+            exit 1
+          fi
+          echo "::group::codesign --verify --deep --strict --verbose=2 $APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          echo "::endgroup::"
+
+          echo "::group::spctl --assess --type execute --verbose $APP"
+          spctl --assess --type execute --verbose "$APP" || {
+            echo "::error::spctl assessment did not return 'accepted'. Notarization or stapling likely failed."
+            exit 1
+          }
+          echo "::endgroup::"
+
+          DMG="$(find dist -maxdepth 2 -name 'GoatIDE-*.dmg' -print -quit || true)"
+          if [ -n "$DMG" ]; then
+            echo "::group::xcrun stapler validate $DMG"
+            xcrun stapler validate "$DMG"
+            echo "::endgroup::"
+          fi
+
+      - name: Upload artifacts to draft GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "$TAG" = "$GITHUB_REF" ]; then
+            # workflow_dispatch path: derive tag from input or fail
+            TAG="${{ inputs.ref }}"
+            if [ -z "$TAG" ]; then
+              echo "::error::Cannot determine release tag. Trigger this workflow by pushing a v* tag or set the 'ref' input."
+              exit 1
+            fi
+          fi
+          echo "Uploading to release: $TAG"
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "$TAG" --notes "Draft release. Promote to public when Windows + macOS artifacts are both attached and smoke-tested."
+          fi
+
+          # Upload everything electron-updater needs.
+          shopt -s nullglob
+          ASSETS=(dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml)
+          if [ ${#ASSETS[@]} -eq 0 ]; then
+            echo "::error::No artifacts found in dist/ to upload."
+            ls -la dist/ || true
+            exit 1
+          fi
+          gh release upload "$TAG" "${ASSETS[@]}" --clobber
+
+      - name: Persist build diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-mac-diagnostics
+          path: |
+            dist/builder-debug.yml
+            dist/builder-effective-config.yaml
+            dist/*.log
+          if-no-files-found: ignore
+          retention-days: 14

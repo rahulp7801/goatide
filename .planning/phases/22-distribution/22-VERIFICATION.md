@@ -93,9 +93,11 @@ implementation code committed across Plans 22-01 through 22-04.
 
 | Requirement | Status | Blocking Issue | Next Action |
 |-------------|--------|----------------|-------------|
-| C1 -- macOS notarization | CERT-GATED | Apple Developer account ($99/yr) not provisioned; APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID + CSC_LINK + CSC_KEY_PASSWORD env vars not available on CI macOS runner | Procure Apple Developer account; add 5 env vars to GitHub Actions macOS runner secrets; run macOS build; verify `xcrun stapler validate` + `codesign --verify --deep --strict` + `spctl --assess` PASS; flip C1 to Closed in REQUIREMENTS.md |
-| C2 -- Windows Azure Trusted Signing | CERT-GATED | Azure Trusted Signing account not provisioned; Service Principal not created; AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET not configured in CI | Follow 22-03-AZURE-SETUP.md Steps 1-8; replace 4 `<TBD-...>` placeholders in electron-builder.yml; add 3 env vars to GitHub Actions Windows runner; run `signtool verify /pa GoatIDE-Setup-x64.exe` PASS; flip C2 to Closed |
+| C1 -- macOS notarization | CERT-GATED | Apple Developer account ($99/yr) not provisioned; APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID + CSC_LINK + CSC_KEY_PASSWORD env vars not available on CI macOS runner | Procure Apple Developer account; add 5 env vars to GitHub Actions macOS runner secrets; push a `v*` tag -> `.github/workflows/release-mac.yml` builds + verifies (`codesign --verify --deep --strict` + `spctl --assess` + `xcrun stapler validate`) + uploads to draft Release; flip C1 to Closed in REQUIREMENTS.md |
+| C2 -- Windows Azure Trusted Signing | CERT-GATED | Azure Trusted Signing account not provisioned; Service Principal not created; AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET not configured in CI | Follow 22-03-AZURE-SETUP.md Steps 1-8; replace 4 `<TBD-...>` placeholders in electron-builder.yml; add 3 env vars to GitHub Actions Windows runner; push a `v*` tag -> `.github/workflows/release-win.yml` runs the NuGet pre-step (Pitfall 4) + signs + verifies (`signtool verify /pa`) + uploads to draft Release; flip C2 to Closed |
 | C3 -- electron-updater + Mandate D | GREEN | None | Closed 2026-05-18 |
+
+**Release scaffolding (added 2026-05-19):** `.github/workflows/release-mac.yml` and `.github/workflows/release-win.yml` are wired and ready. Both workflows fail fast if their respective secrets are missing, so a stray tag push on a not-yet-provisioned repo prints a clear "configure these secrets" error rather than producing an unsigned binary.
 
 ---
 

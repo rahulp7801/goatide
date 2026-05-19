@@ -1,0 +1,185 @@
+# Phase 22 C2 -- Windows Azure Trusted Signing release workflow.
+#
+# Triggered by:
+#   - Pushing a tag matching `v*` (e.g. v2.1.0)
+#   - Manual workflow_dispatch
+#
+# Cert preconditions (configure in repo Settings -> Secrets and variables -> Actions):
+#   AZURE_TENANT_ID                  Azure AD / Entra ID tenant ID
+#   AZURE_CLIENT_ID                  App Registration client ID (Service Principal)
+#   AZURE_CLIENT_SECRET              App Registration client secret
+#
+# YAML preconditions (operator must complete before this workflow can produce signed output):
+#   Replace 4 <TBD-...> sentinels in electron-builder.yml per
+#   .planning/phases/22-distribution/22-03-AZURE-SETUP.md Step 5. The sentinel-detector
+#   in scripts/package-goatide.sh refuses to proceed if AZURE_* env vars are set and
+#   placeholders remain unreplaced.
+#
+# Produces:
+#   dist/GoatIDE-Setup-x64.exe         (Azure-Trusted-Signed NSIS installer)
+#   dist/latest.yml                    (electron-updater metadata)
+# Uploaded as a draft GitHub Release (releaseType: draft in electron-builder.yml).
+#
+# Source-of-truth references:
+#   - .planning/phases/22-distribution/22-03-windows-azure-sign-PLAN.md
+#   - .planning/phases/22-distribution/22-03-AZURE-SETUP.md (operator runbook)
+#   - .planning/phases/22-distribution/22-VERIFICATION.md (Cert-Availability Status table)
+
+name: Release (Windows)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Tag or ref to build (e.g. v2.1.0). Defaults to the current branch HEAD.'
+        required: false
+        type: string
+
+permissions:
+  contents: write  # required for `gh release` upload
+
+jobs:
+  release-win:
+    name: Sign Windows installer via Azure Trusted Signing
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    steps:
+      - name: Verify required secrets present
+        shell: bash
+        env:
+          AZURE_TENANT_ID:     ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID:     ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          MISSING=()
+          [ -z "$AZURE_TENANT_ID" ]     && MISSING+=("AZURE_TENANT_ID")
+          [ -z "$AZURE_CLIENT_ID" ]     && MISSING+=("AZURE_CLIENT_ID")
+          [ -z "$AZURE_CLIENT_SECRET" ] && MISSING+=("AZURE_CLIENT_SECRET")
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "::error::Missing required secrets: ${MISSING[*]}"
+            echo "::error::Configure these in Settings -> Secrets and variables -> Actions before tagging a release."
+            echo "::error::See .planning/phases/22-distribution/22-03-AZURE-SETUP.md Steps 3 + 6 for each value's source."
+            exit 1
+          fi
+          echo "All required Azure secrets present."
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          lfs: true
+
+      - name: Refuse build if electron-builder.yml still has <TBD-AZURE-*> sentinels
+        shell: bash
+        run: |
+          if grep -q "<TBD-AZURE" electron-builder.yml; then
+            echo "::error::electron-builder.yml still contains <TBD-AZURE-...> sentinel placeholders."
+            echo "::error::Replace per .planning/phases/22-distribution/22-03-AZURE-SETUP.md Step 5 before signing."
+            grep -n "<TBD-AZURE" electron-builder.yml
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+
+      # Pitfall 4 (22-03-AZURE-SETUP.md Step 7): GitHub Windows runners don't pre-install
+      # the NuGet provider that Invoke-TrustedSigning depends on. Install before
+      # electron-builder invokes the signing module.
+      - name: Install TrustedSigning NuGet provider
+        shell: pwsh
+        run: Install-PackageProvider -Name NuGet -Force -Scope CurrentUser
+
+      - name: Install dependencies (root)
+        shell: bash
+        run: npm ci
+
+      - name: Install dependencies (bridge mirror)
+        shell: bash
+        run: |
+          if [ -d extensions/goatide-bridge ]; then
+            cd extensions/goatide-bridge
+            npm install --omit=dev --ignore-scripts
+          fi
+
+      - name: Build + sign (package-goatide.sh)
+        shell: bash
+        env:
+          AZURE_TENANT_ID:     ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID:     ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: bash scripts/package-goatide.sh
+
+      - name: Verify Authenticode signature on installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path dist -Filter "GoatIDE-Setup-*.exe" -Recurse | Select-Object -First 1
+          if (-not $installer) {
+            Write-Error "GoatIDE-Setup-*.exe not found under dist/"
+            Get-ChildItem -Path dist -Recurse | Format-Table FullName
+            exit 1
+          }
+          Write-Host "Verifying outer installer: $($installer.FullName)"
+          & signtool.exe verify /pa /v $installer.FullName
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "signtool verify failed on outer installer (exit $LASTEXITCODE)"
+            exit $LASTEXITCODE
+          }
+
+          # 22-RESEARCH.md Open Question #1: some electron-builder versions sign only the
+          # outer wrapper. Verify the inner GoatIDE.exe too; downgrade to warning if it
+          # is unsigned, since the outer is what users see in SmartScreen.
+          $innerExe = Join-Path "dist\win-unpacked" "GoatIDE.exe"
+          if (Test-Path $innerExe) {
+            Write-Host "Verifying inner exe: $innerExe"
+            & signtool.exe verify /pa /v $innerExe
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Inner exe is unsigned (signtool exit $LASTEXITCODE). Outer installer signature is sufficient for SmartScreen; track via electron-builder issue #8276 if regression-sensitive."
+            }
+          }
+
+      - name: Upload artifacts to draft GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ "$TAG" = "$GITHUB_REF" ]; then
+            TAG="${{ inputs.ref }}"
+            if [ -z "$TAG" ]; then
+              echo "::error::Cannot determine release tag. Trigger this workflow by pushing a v* tag or set the 'ref' input."
+              exit 1
+            fi
+          fi
+          echo "Uploading to release: $TAG"
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "$TAG" --notes "Draft release. Promote to public when Windows + macOS artifacts are both attached and smoke-tested."
+          fi
+
+          shopt -s nullglob
+          ASSETS=(dist/*.exe dist/*.blockmap dist/latest.yml)
+          if [ ${#ASSETS[@]} -eq 0 ]; then
+            echo "::error::No artifacts found in dist/ to upload."
+            ls -la dist/ || true
+            exit 1
+          fi
+          gh release upload "$TAG" "${ASSETS[@]}" --clobber
+
+      - name: Persist build diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-win-diagnostics
+          path: |
+            dist/builder-debug.yml
+            dist/builder-effective-config.yaml
+            dist/*.log
+          if-no-files-found: ignore
+          retention-days: 14
