@@ -100,6 +100,47 @@ if ! cp -r "$(pwd)/kernel" "${KERNEL_DST}"; then
 fi
 echo "[package-goatide] step 3b: kernel injected (dist/main.js + node_modules/better-sqlite3 verified)"
 
+# Step 3c: synthesize resources/app-update.yml for electron-updater (C3).
+# electron-builder normally writes this file in an onAfterPack handler
+# (app-builder-lib/out/publish/PublishManager.js writeFile call), but with
+# --prepackaged the entire doPack() path short-circuits at the top
+# (platformPackager.js: `if (prepackaged != null) return;`), so the
+# onAfterPack handler never fires and resources/app-update.yml is missing
+# from the installable. Without app-update.yml, the installed electron-updater
+# client has no idea where to look for latest.yml and silently no-ops.
+# We mirror what getAppUpdatePublishConfiguration() would emit: the publish
+# stanza minus releaseType (which is a build-time concern, not a client-time one)
+# plus updaterCacheDirName derived from appId. Read the publish stanza from
+# electron-builder.yml so a single edit to the YAML stays the source of truth.
+APP_UPDATE_DST="${PORTABLE_APP}/resources/app-update.yml"
+# Node on native Windows does not understand the MSYS-style `/c/Users/...` path
+# that bash's `dirname "$(pwd)"` returns. Convert to a Windows path before
+# embedding it in the Node script. cygpath ships with Git Bash; fall back to the
+# raw value when unavailable (Linux/macOS, where the raw path is already correct).
+if command -v cygpath >/dev/null 2>&1; then
+	APP_UPDATE_DST_NATIVE=$(cygpath -m "${APP_UPDATE_DST}")
+else
+	APP_UPDATE_DST_NATIVE="${APP_UPDATE_DST}"
+fi
+echo "[package-goatide] step 3c: synthesizing ${APP_UPDATE_DST}"
+if ! node -e "
+const fs = require('fs');
+const yaml = require('js-yaml');
+const cfg = yaml.load(fs.readFileSync('electron-builder.yml', 'utf8'));
+if (!cfg.publish) { console.error('no publish stanza in electron-builder.yml'); process.exit(1); }
+const out = {
+	provider: cfg.publish.provider,
+	owner: cfg.publish.owner,
+	repo: cfg.publish.repo,
+	updaterCacheDirName: 'goatide-updater',
+};
+fs.writeFileSync('${APP_UPDATE_DST_NATIVE}', yaml.dump(out));
+console.log('[app-update.yml]', JSON.stringify(out));
+"; then
+	echo "[package-goatide] FATAL: failed to synthesize app-update.yml" >&2
+	exit 2
+fi
+
 # Step 4: electron-builder --prepackaged.
 if [ "$PROFILE" = "test" ]; then
 	CONFIG="electron-builder.test.yml"
