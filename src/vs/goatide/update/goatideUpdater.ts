@@ -3,6 +3,17 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { createRequire } from 'node:module';
+
+// Phase 22 UAT 2026-05-20: the production main.js bundle is ESM ("type": "module"
+// in package.json). Bare `require('electron-updater')` inside a lazy-load function
+// throws `Error: Dynamic require of "electron-updater" is not supported` -- ESM
+// modules cannot use CJS dynamic require. Use createRequire(import.meta.url) to
+// produce a CJS-compatible require fn that DOES work inside ESM. Tests still
+// override `_autoUpdaterProvider.get` so the actual `requireCjs(...)` call in
+// production never fires in renderer-process test context.
+const requireCjs = createRequire(import.meta.url);
+
 /**
  * Minimal interface for the autoUpdater API surface used by GoatIDE.
  * Using an interface rather than a direct `electron-updater` import avoids loading
@@ -28,7 +39,7 @@ export interface IAutoUpdaterApi {
  */
 export const _autoUpdaterProvider: { get(): IAutoUpdaterApi } = {
 	get() {
-		const { autoUpdater } = require('electron-updater') as { autoUpdater: IAutoUpdaterApi };
+		const { autoUpdater } = requireCjs('electron-updater') as { autoUpdater: IAutoUpdaterApi };
 		return autoUpdater;
 	}
 };
@@ -57,7 +68,7 @@ export const _dialogApi: {
 	showMessageBox(options: IShowMessageBoxOptions): Promise<{ response: number; checkboxChecked: boolean }>;
 } = {
 	showMessageBox(options: IShowMessageBoxOptions) {
-		const { dialog } = require('electron') as typeof import('electron');
+		const { dialog } = requireCjs('electron') as typeof import('electron');
 		return dialog.showMessageBox(options as Parameters<typeof dialog.showMessageBox>[0]);
 	}
 };

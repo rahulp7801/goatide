@@ -2458,6 +2458,7 @@ export default tseslint.config(
 						'vs/goatide/**',
 						'vs/nls.js',
 						'assert', // allowed in test files (electron-main / node layer standard)
+						'node:module', // createRequire for production ESM bundle -- Phase 22 UAT 2026-05-20 (goatideUpdater.ts)
 					]
 				}
 			]

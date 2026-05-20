@@ -31,18 +31,23 @@ win:
   target: nsis                                          # Phase 18 (already present)
   artifactName: "${productName}-Setup-${arch}.${ext}"   # Phase 18 (already present)
   # Phase 22 C2 (Plan 22-03): Azure Trusted Signing.
-  # Replace all <TBD-...> sentinels per .planning/phases/22-distribution/22-03-AZURE-SETUP.md
-  # before the first signed CI build. CI auth via AZURE_TENANT_ID / AZURE_CLIENT_ID /
-  # AZURE_CLIENT_SECRET env vars (service principal, NOT OIDC -- electron-builder uses
-  # Invoke-TrustedSigning PowerShell module which does not understand federated identity).
-  azureSignOptions:
-    publisherName: "<TBD-AZURE-CN>"                     # MUST match the CN in the Certificate Profile exactly
-    endpoint: "<TBD-AZURE-REGION-ENDPOINT>"             # e.g. https://neu.codesigning.azure.net/ for North Europe
-    certificateProfileName: "<TBD-PROFILE-NAME>"
-    codeSigningAccountName: "<TBD-ACCOUNT-NAME>"        # Trusted Signing Account name (NOT the App Registration name)
-    fileDigest: "SHA256"
-    timestampDigest: "SHA256"
-    timestampRfc3161: "http://timestamp.acs.microsoft.com"
+  # DISABLED 2026-05-20 -- merely having `azureSignOptions` present triggers
+  # electron-builder to attempt Azure Trusted Signing whenever the host has the
+  # TrustedSigning PowerShell module installed, regardless of whether AZURE_*
+  # env vars are set. With `<TBD-...>` placeholders that signing call fails and
+  # blocks the build (rebuild on 2026-05-20 surfaced this against Plan 22-03's
+  # original wiring). When C2 re-opens, uncomment the block AND replace the
+  # placeholders per .planning/phases/22-distribution/22-03-AZURE-SETUP.md Step 5.
+  # CI auth via AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET (service
+  # principal, NOT OIDC -- Invoke-TrustedSigning does not understand federated identity).
+  # azureSignOptions:
+  #   publisherName: "<TBD-AZURE-CN>"                     # MUST match the CN in the Certificate Profile exactly
+  #   endpoint: "<TBD-AZURE-REGION-ENDPOINT>"             # e.g. https://neu.codesigning.azure.net/ for North Europe
+  #   certificateProfileName: "<TBD-PROFILE-NAME>"
+  #   codeSigningAccountName: "<TBD-ACCOUNT-NAME>"        # Trusted Signing Account name (NOT the App Registration name)
+  #   fileDigest: "SHA256"
+  #   timestampDigest: "SHA256"
+  #   timestampRfc3161: "http://timestamp.acs.microsoft.com"
 mac:
   target:
     - dmg
@@ -59,7 +64,13 @@ nsis:
   perMachine: false
 
 # Phase 22 C1 (Plan 22-02): macOS signing + notarization hooks. Hooks short-circuit on non-darwin platforms.
-beforeSign: build/signing/beforeSign.cjs
+# Note: `beforeSign` is NOT a valid top-level electron-builder@26.x hook (schema only
+# recognises afterPack/afterSign/afterAllArtifactBuild/beforeBuild/beforePack/artifactBuild*).
+# Plan 22-02 introduced `beforeSign` in error; electron-builder rejected the YAML the moment
+# a real build ran (rebuild on 2026-05-20 surfaced this). The hook script itself
+# (build/signing/beforeSign.cjs) is preserved as documentation of the .node re-sign step.
+# When C1 re-opens, rewire it as `afterPack` (re-sign .node files post-pack, before
+# afterSign notarization).
 afterSign: build/signing/afterSign.cjs
 afterAllArtifactBuild: build/signing/afterAllArtifactBuild.cjs
 
