@@ -3,31 +3,35 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Plan 12-06: default VSCODE_DEV=1 for first-time-launch ergonomics.
-// scripts/code.sh and scripts/code.bat already export VSCODE_DEV=1 before
-// spawning the Electron binary, but a user (or downstream tool) that invokes
-// the compiled binary directly — e.g. double-clicking .build/electron/GoatIDE.exe
-// from a fresh checkout — bypasses those shells and loses the default, which
-// makes the workbench load the production-shaped index.html instead of
-// workbench-dev.html and renders a blank window.
+import * as path from 'node:path';
+import * as fs from 'original-fs';
+
+// Plan 12-06 / Phase 22-05 UAT (2026-05-19): default VSCODE_DEV=1 for first-time-launch
+// ergonomics from a dev checkout — but NEVER misclassify an installable as dev.
 //
-// The heuristic below defaults VSCODE_DEV=1 only when this file is being
-// loaded from a development checkout (out/ on disk, NOT inside an asar
-// archive). Production builds package out/ inside resources/app.asar/, so
-// import.meta.dirname contains '.asar' and the default does not apply —
-// shipped binaries retain their production behaviour. This matches the
-// dev-vs-prod signal used elsewhere in the bootstrap (e.g. configurePortable
-// in bootstrap-node.ts inspects appRoot for the asar marker).
+// scripts/code.sh and scripts/code.bat export VSCODE_DEV=1 before spawning the dev
+// Electron binary; a developer who double-clicks .build/electron/GoatIDE.exe directly
+// bypasses those shells, so we want a default. But: when the install ships out/ outside
+// any asar archive (electron-builder `--prepackaged` produces resources/app/out/ even
+// with `asar: true` because the prepackaged dir is copied as-is on some pipelines), the
+// previous "no .asar in import.meta.dirname" heuristic incorrectly fires VSCODE_DEV=1
+// against production installs. That triggers setupNLS() to early-return without loading
+// _VSCODE_NLS_MESSAGES, and the first localize(<index>, ...) call (policy.ts ->
+// update.config.contribution.ts -> electron-main/main.ts) crashes the main process
+// with `NLS MISSING: 138` before the workbench ever opens (root cause logged in
+// .planning/phases/22-distribution/22-UAT-2026-05-19.md).
+//
+// Robust signal: a dev checkout has out/ co-located with src/ (the TypeScript sources
+// gulp builds from). Installable builds ship only out/ — there is no src/ sibling.
+// This is deterministic and does not depend on the build pipeline's asar-packing
+// behaviour.
 if (typeof process.env['VSCODE_DEV'] === 'undefined' || process.env['VSCODE_DEV'] === '') {
 	const entryDir = import.meta.dirname;
-	const isLikelyDevCheckout = entryDir.includes('out') && !entryDir.includes('.asar');
-	if (isLikelyDevCheckout) {
+	const srcSibling = path.join(entryDir, '..', 'src');
+	if (entryDir.includes('out') && fs.existsSync(srcSibling)) {
 		process.env['VSCODE_DEV'] = '1';
 	}
 }
-
-import * as path from 'node:path';
-import * as fs from 'original-fs';
 import * as os from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { configurePortable } from './bootstrap-node.js';
